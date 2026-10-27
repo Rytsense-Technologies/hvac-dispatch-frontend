@@ -1,0 +1,213 @@
+@import "./tokens.css";
+
+:root {
+  /* This page's own names, pointed at the shared palette so it matches the console and the portal. */
+  --agent-bubble: var(--neutral-soft);
+  --user-bubble: var(--primary);
+}
+
+* { box-sizing: border-box; }
+
+[hidden] { display: none !important; }
+
+body {
+  margin: 0;
+  font-family: var(--font-sans);
+  background: var(--bg);
+  color: var(--text);
+}
+
+.topbar {
+  background: var(--card);
+  border-bottom: 1px solid var(--border);
+  padding: 14px 16px;
+}
+
+.topbar h1 {
+  max-width: 720px;
+  margin: 0 auto;
+  font-size: 1.25rem;
+}
+
+.badge {
+  font-size: 0.7rem;
+  font-weight: 500;
+  color: var(--primary);
+  background: var(--agent-bubble);
+  border-radius: 999px;
+  padding: 2px 8px;
+  vertical-align: middle;
+}
+
+.content {
+  max-width: 720px;
+  margin: 20px auto;
+  padding: 0 16px;
+  display: grid;
+  gap: 16px;
+}
+
+.card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 18px;
+}
+
+.card h2 { margin: 0; font-size: 1rem; }
+
+label { display: block; font-weight: 600; font-size: 0.9rem; margin-bottom: 6px; }
+
+input[type="text"] {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-size: 0.95rem;
+}
+
+input[type="text"]:disabled { background: var(--bg); color: var(--muted); }
+
+.muted { color: var(--muted); }
+.small { font-size: 0.82rem; margin: 8px 0 0; }
+
+/* ---------- call card ---------- */
+
+.call-card { text-align: center; }
+
+.agent-state {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.9rem;
+  color: var(--muted);
+  margin-bottom: 16px;
+}
+
+.agent-state .dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #b8c0ca;
+}
+
+.agent-state[data-state="listening"] .dot { background: #16a34a; }
+.agent-state[data-state="thinking"] .dot { background: #f59e0b; animation: pulse 1s ease-in-out infinite; }
+.agent-state[data-state="speaking"] .dot { background: var(--primary); animation: pulse 0.8s ease-in-out infinite; }
+.agent-state[data-state="connecting"] .dot,
+.agent-state[data-state="initializing"] .dot { background: #94a3b8; animation: pulse 1.2s ease-in-out infinite; }
+
+.call-controls {
+  display: flex;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.call-btn,
+.mute-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 1rem;
+  padding: 12px 22px;
+  border-radius: 999px;
+  cursor: pointer;
+}
+
+.call-btn {
+  background: var(--primary);
+  color: #fff;
+  border: none;
+}
+
+.call-btn:hover { background: var(--primary-dark); }
+.call-btn[aria-pressed="true"] { background: var(--danger); }
+.call-btn:disabled, .mute-btn:disabled { opacity: 0.6; cursor: wait; }
+
+.mute-btn {
+  background: transparent;
+  color: var(--text);
+  border: 1px solid var(--border);
+}
+
+.mute-btn[aria-pressed="true"] {
+  background: var(--muted);
+  border-color: var(--muted);
+  color: #fff;
+}
+
+.status-line { min-height: 1.2em; }
+
+/* ---------- transcript ---------- */
+
+.transcript-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.link-btn {
+  background: none;
+  border: none;
+  color: var(--primary);
+  cursor: pointer;
+  font-size: 0.85rem;
+}
+
+.transcript {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 420px;
+  overflow-y: auto;
+}
+
+.empty-hint { margin: 0; font-size: 0.9rem; }
+
+.bubble {
+  max-width: 85%;
+  padding: 9px 13px;
+  border-radius: 14px;
+  line-height: 1.4;
+  font-size: 0.95rem;
+  overflow-wrap: anywhere;
+}
+
+.bubble .who {
+  display: block;
+  font-size: 0.72rem;
+  font-weight: 600;
+  opacity: 0.75;
+  margin-bottom: 2px;
+}
+
+.bubble.agent {
+  align-self: flex-start;
+  background: var(--agent-bubble);
+  border-bottom-left-radius: 4px;
+}
+
+.bubble.user {
+  align-self: flex-end;
+  background: var(--user-bubble);
+  color: #fff;
+  border-bottom-right-radius: 4px;
+}
+
+.bubble.interim { opacity: 0.65; }
+
+.footer {
+  text-align: center;
+  color: var(--muted);
+  font-size: 0.8rem;
+  padding: 8px 16px 24px;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
+}
+
+.back { font-size: 0.8rem; font-weight: 500; margin-left: 12px; color: var(--primary); }
