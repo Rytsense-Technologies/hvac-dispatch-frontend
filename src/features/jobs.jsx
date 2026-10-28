@@ -8,10 +8,10 @@ import { can } from '../lib/session.js';
 import { useEvery } from '../lib/hooks.js';
 import {
   Badge, Spinner, Empty, ErrorBox, PageHeader, Overlay, Details, ProgressBadge, ArrivalBadge, toast, useRun,
-} from '../lib/ui.jsx';
+} from '../components/index.js';
 import { ScheduleFlow } from './schedule.jsx';
-import { DrawMap, Legend, GoogleMap, etaText } from '../lib/map.jsx';
-import { googleMapView } from '../lib/gmap.js';
+import { DrawMap, Legend, GoogleMap, etaText } from './map.jsx';
+import { googleMapView } from './gmap.js';
 import { QuotePanel, InvoicePanel, QuoteEditor } from './billing.jsx';
 
 // ---- rules ----
@@ -152,7 +152,7 @@ function BillingFor({ job, reload }) {
               <li key={`i${i.id}`}>Invoice{' '}<a href="#/billing" onClick={(e) => { e.preventDefault(); setInvoiceId(i.id); }}>{i.number || '(draft)'}</a>{` · ${i.state} · ${i.total}`}</li>
             ))}
           </ul>
-        ) : <p className="muted">No quote or invoice yet.</p>}
+        ) : <Empty text="No quote or invoice yet." />}
         {can('dispatcher', 'admin') && !open.length ? (
           <button type="button" className="btn btn--outline" onClick={async () => {
             const summary = await api('/v1/billing/summary').catch(() => ({ currency: 'INR' }));
@@ -384,28 +384,30 @@ export default function Jobs() {
         <button type="button" className="btn btn--ghost" aria-label="Next day" onClick={() => go(addDays(date, 1))}>›</button>
         <button type="button" className="btn btn--ghost" onClick={() => go(todayIn())}>Today</button>
       </PageHeader>
-      <div className="row wrap" aria-label="Summary of the day">
-        {hasJobs ? Object.entries(counts).map(([key, n]) => <Badge key={key} text={`${PROGRESS[key][0]}: ${n}`} tone={PROGRESS[key][1]} />) : null}
+      <div className="stack">
+        <div className="row wrap" aria-label="Summary of the day">
+          {hasJobs ? Object.entries(counts).map(([key, n]) => <Badge key={key} text={`${PROGRESS[key][0]}: ${n}`} tone={PROGRESS[key][1]} />) : null}
+        </div>
+        <section className="map-panel" aria-label="Map" hidden={!located.length}>
+          {located.length ? (
+            <>
+              <div className="map-panel__head"><h2>Map</h2><span className="muted">{note}</span>
+                <button type="button" className="btn btn--ghost btn--small" onClick={() => setShowMap((v) => !v)}>{showMap ? 'Hide map' : 'Show map'}</button></div>
+              {showMap ? (
+                <>
+                  {mapView}
+                  <Legend ref={legendRef} />
+                  {live.length ? (
+                    <ul className="live-list" aria-label="Technicians on the way">
+                      {live.map((p, i) => <li key={i}><strong>{p.name}</strong>{' — '}{etaText(p)}</li>)}
+                    </ul>
+                  ) : null}
+                </>
+              ) : null}
+            </>
+          ) : null}
+        </section>
       </div>
-      <section className="map-panel" aria-label="Map" hidden={!located.length}>
-        {located.length ? (
-          <>
-            <div className="map-panel__head"><h2>Map</h2><span className="muted">{note}</span>
-              <button type="button" className="btn btn--ghost btn--small" onClick={() => setShowMap((v) => !v)}>{showMap ? 'Hide map' : 'Show map'}</button></div>
-            {showMap ? (
-              <>
-                {mapView}
-                <Legend ref={legendRef} />
-                {live.length ? (
-                  <ul className="live-list" aria-label="Technicians on the way">
-                    {live.map((p, i) => <li key={i}><strong>{p.name}</strong>{' — '}{etaText(p)}</li>)}
-                  </ul>
-                ) : null}
-              </>
-            ) : null}
-          </>
-        ) : null}
-      </section>
       <div className="two-col">
         <nav className="side-list" aria-label="Technicians">
           {hasJobs ? (

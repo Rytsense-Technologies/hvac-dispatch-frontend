@@ -2,7 +2,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { api } from '../lib/api.js';
 import { formatDateTime } from '../lib/format.js';
-import { DataTable, Empty, ErrorBox, PageHeader, Spinner } from '../lib/ui.jsx';
+import { Card, DataTable, Empty, ErrorBox, PageHeader, Spinner } from '../components/index.js';
 import { MemoryOverlay } from './memory_panel.jsx';
 
 export default function Memory() {
@@ -46,8 +46,13 @@ export default function Memory() {
   return (
     <>
       <PageHeader title="Memory" subtitle="Everyone the AI has spoken with: what it remembers about them, and the conversation of each call." />
-      <div className="row"><input type="search" placeholder="Search a name or number" aria-label="Search" value={query} onChange={(e) => setQuery(e.target.value)} /></div>
-      <div>{list}</div>
+      <Card as="section">
+        <div className="between">
+          <Card.Title>People</Card.Title>
+          <input type="search" placeholder="Search a name or number" aria-label="Search" value={query} onChange={(e) => setQuery(e.target.value)} />
+        </div>
+        <div>{list}</div>
+      </Card>
       {open && <MemoryOverlay person={open} onClose={() => setOpen(null)} onErased={load} />}
     </>
   );

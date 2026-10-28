@@ -7,8 +7,8 @@ import { formatDateTime, percent } from '../lib/format.js';
 import { useEvery } from '../lib/hooks.js';
 import { can } from '../lib/session.js';
 import {
-  ActionButton, Badge, Button, DataTable, Details, Empty, ErrorBox, Field, Note, Overlay, PageHeader, Select, Spinner, toast, useRun,
-} from '../lib/ui.jsx';
+  ActionButton, Badge, Button, Card, DataTable, Details, Empty, ErrorBox, Field, Note, Overlay, PageHeader, Select, Spinner, toast, useRun,
+} from '../components/index.js';
 
 const STATUS = {
   new: ['Waiting for first call', 'warn'], retry: ['Will try again', 'info'], dialing: ['Calling now', 'info'], contacted: ['Spoke to them', 'good'],
@@ -378,16 +378,18 @@ export default function Leads() {
         {writer && <Button className="btn btn--outline" onClick={() => setDialog({ type: 'import' })}>Import old leads</Button>}
         {writer && <Button className="btn btn--outline" onClick={() => setDialog({ type: 'campaign' })}>New campaign</Button>}
       </PageHeader>
-      <div className="stack">{topContent}</div>
-      {can('admin') ? <JobberCard /> : null}
-      <section><h2>Campaigns</h2><div>{campaignsContent}</div></section>
-      <section>
-        <div className="between">
-          <h2>Leads</h2>
-          <Select options={[['', 'All leads'], ...Object.entries(STATUS).map(([k, v]) => [k, v[0]])]} value={status} aria-label="Show" onChange={(e) => setStatus(e.target.value)} />
-        </div>
-        <div>{listContent}</div>
-      </section>
+      <div className="stack">
+        {topContent}
+        {can('admin') ? <JobberCard /> : null}
+        <Card as="section"><Card.Title>Campaigns</Card.Title><div>{campaignsContent}</div></Card>
+        <Card as="section">
+          <div className="between">
+            <h2>Leads</h2>
+            <Select options={[['', 'All leads'], ...Object.entries(STATUS).map(([k, v]) => [k, v[0]])]} value={status} aria-label="Show" onChange={(e) => setStatus(e.target.value)} />
+          </div>
+          <div>{listContent}</div>
+        </Card>
+      </div>
       {dialog?.type === 'call' && <CallDialog lead={dialog.lead} reload={reloadAll} onClose={close} />}
       {dialog?.type === 'lead' && <LeadDialog id={dialog.id} reload={reloadAll} onClose={close} />}
       {dialog?.type === 'add' && <AddDialog campaigns={campaigns} reload={reloadAll} onClose={close} />}

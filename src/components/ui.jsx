@@ -2,7 +2,7 @@
 // Text from the server is always rendered as text by React, never as HTML.
 import { Children, cloneElement, useEffect, useId, useRef, useState, useSyncExternalStore } from 'react';
 import { createPortal } from 'react-dom';
-import { PROGRESS, STATUS } from './format.js';
+import { PROGRESS, STATUS } from '../lib/format.js';
 
 export const Badge = ({ text, tone = 'neutral', children }) => <span className={`badge badge--${tone}`}>{text ?? children}</span>;
 export const Spinner = ({ text = 'Loading…' }) => <p className="loading" role="status">{text}</p>;

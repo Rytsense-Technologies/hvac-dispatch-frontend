@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { api } from '../lib/api.js';
 import { formatDateTime } from '../lib/format.js';
 import { can } from '../lib/session.js';
-import { ActionButton, Badge, Empty, ErrorBox, Overlay, Spinner, toast } from '../lib/ui.jsx';
+import { ActionButton, Badge, Card, Empty, ErrorBox, Overlay, Spinner, toast } from '../components/index.js';
 
 const WHO = { user: 'Customer', assistant: 'AI' };
 const length = (seconds) => (seconds === null || seconds === undefined ? '' : seconds < 90 ? `${seconds} s` : `${Math.round(seconds / 60)} min`);
@@ -67,14 +67,18 @@ export function MemorySections({ userId, mine = null, onErased = null }) {
     const { facts, calls } = state;
     content = (
       <>
-        <h3>What the AI remembers</h3>
-        {facts.length ? <ul className="facts">{facts.map((fact, i) => <li key={i}>{fact}</li>)}</ul> : <Empty text="Nothing remembered about this person yet." />}
-        <h3>{`Conversations (${calls.length})`}</h3>
-        {calls.length
-          ? <div className="stack">{calls.map((call, i) => <CallCard key={i} call={call} mine={mine !== null && call.service_request_id === mine} />)}</div>
-          : <Empty text="No conversation has been kept for this person yet. Calls are kept from the moment this feature was switched on." />}
+        <Card as="section">
+          <Card.Title>What the AI remembers</Card.Title>
+          {facts.length ? <ul className="facts">{facts.map((fact, i) => <li key={i}>{fact}</li>)}</ul> : <Empty text="Nothing remembered about this person yet." />}
+        </Card>
+        <Card as="section">
+          <Card.Title>{`Conversations (${calls.length})`}</Card.Title>
+          {calls.length
+            ? <div className="stack">{calls.map((call, i) => <CallCard key={i} call={call} mine={mine !== null && call.service_request_id === mine} />)}</div>
+            : <Empty text="No conversation has been kept for this person yet. Calls are kept from the moment this feature was switched on." />}
+        </Card>
         {can('admin') && (facts.length || calls.length)
-          ? <button type="button" className="btn btn--outline btn--small" onClick={() => setErasing(true)}>Erase memory and conversations</button> : null}
+          ? <div className="right"><button type="button" className="btn btn--outline btn--small" onClick={() => setErasing(true)}>Erase memory and conversations</button></div> : null}
       </>
     );
   }

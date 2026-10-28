@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { api } from '../lib/api.js';
 import { formatMinor, formatDateTime } from '../lib/format.js';
-import { Badge, Spinner, Note, Empty, ErrorBox, PageHeader, DataTable, Select, toast, Overlay, ActionButton, Button } from '../lib/ui.jsx';
+import { Badge, Spinner, Note, Empty, ErrorBox, PageHeader, DataTable, Select, toast, Overlay, ActionButton, Button, Card, StatGrid } from '../components/index.js';
 
 const monthLabel = (month) => new Date(`${month}-01T12:00:00`).toLocaleString('en-US', { month: 'long', year: 'numeric' });
 const money = (minor, currency) => (minor === null || minor === undefined ? '-' : formatMinor(minor, currency));
@@ -45,12 +45,6 @@ async function copyLink(url) {
   try { await navigator.clipboard.writeText(url); toast('The authorisation link is copied: send it to the company.'); } catch { toast(`Send this link to the company: ${url}`, 'warn'); }
 }
 
-function Card({ title, value, hint }) {
-  return (
-    <div className="stat"><strong>{value}</strong><span>{title}</span>{hint ? <small className="muted">{hint}</small> : null}</div>
-  );
-}
-
 function Statement({ month, tick }) {
   const [state, setState] = useState({ loading: true });
   const seq = useRef(0);
@@ -78,31 +72,30 @@ function Statement({ month, tick }) {
     <>
       {s.in_progress ? <Note text="This month is still running, so these are the numbers so far." tone="info" /> : null}
       {!s.plan_set ? <Note text="No plan is set for this company yet, so only the usage is shown. The person who runs the product sets the price (PRODUCT_PLANS)." tone="warn" /> : null}
-      <section className="row wrap" aria-label="This month">
-        <Card title="Calls" value={String(u.calls)} hint={`${u.inbound_calls} in, ${u.outbound_calls} out`} />
-        <Card title="Minutes used" value={String(u.minutes)} hint="each call rounded up to a full minute" />
-        {c ? <Card title="Included in the plan" value={String(c.included_minutes)} hint={c.plan} /> : null}
-        {c ? <Card title="Extra minutes" value={String(c.extra_minutes)} hint={c.extra_minutes ? 'charged below' : 'none'} /> : null}
-        {c ? <Card title="Amount due" value={money(c.total_minor, s.currency)} hint="for the month" /> : null}
+      <section aria-label="This month">
+        <StatGrid items={[
+          ['Calls', String(u.calls), `${u.inbound_calls} in, ${u.outbound_calls} out`],
+          ['Minutes used', String(u.minutes), 'each call rounded up to a full minute'],
+          ...(c ? [['Included in the plan', String(c.included_minutes), c.plan]] : []),
+          ...(c ? [['Extra minutes', String(c.extra_minutes), c.extra_minutes ? 'charged below' : 'none']] : []),
+          ...(c ? [['Amount due', money(c.total_minor, s.currency), 'for the month']] : []),
+        ]} />
       </section>
       {c ? (
-        <section>
-          <h2>The charges</h2>
+        <Card as="section"><Card.Title>The charges</Card.Title>
           <DataTable label="Charges" head={['', 'Quantity', 'Unit price', 'Amount']} rows={[
             ...c.lines.map((line) => [line.description, String(line.quantity), money(line.unit_minor, s.currency), money(line.amount_minor, s.currency)]),
             ...(c.tax_bps ? [[`Tax (${c.tax_bps / 100}%)`, '', '', money(c.tax_minor, s.currency)]] : []),
             [<strong>Total</strong>, '', '', <strong>{money(c.total_minor, s.currency)}</strong>]]} />
-        </section>
+        </Card>
       ) : null}
-      <section>
-        <h2>Day by day</h2>
+      <Card as="section"><Card.Title>Day by day</Card.Title>
         {u.by_day.length ? <DataTable label="Usage by day" head={['Day', 'Calls', 'Minutes']} rows={u.by_day.map((d) => [d.date, String(d.calls), String(d.minutes)])} /> : <Empty text="No calls this month." />}
-      </section>
-      <section>
-        <h2>The last months</h2>
+      </Card>
+      <Card as="section"><Card.Title>The last months</Card.Title>
         <DataTable label="History" head={['Month', 'Calls', 'Minutes', 'Amount due']}
           rows={history.months.map((m) => [monthLabel(m.month), String(m.calls), String(m.minutes), m.total_minor === null ? '-' : money(m.total_minor, history.currency)])} />
-      </section>
+      </Card>
     </>
   );
 }
@@ -129,8 +122,8 @@ function Mine({ tick }) {
   if (state.error) return <ErrorBox error={state.error} />;
   const { sub, addons, planSet } = state;
   return (
-    <section>
-      <h2>Monthly fee subscription</h2>
+    <Card as="section">
+      <Card.Title>Monthly fee subscription</Card.Title>
       {sub ? (
         <div className="stack">
           <div className="row wrap"><SubscriptionBadge status={sub.status} /><Badge text={`${money(sub.amount_minor, sub.currency)} a month`} tone="neutral" /></div>
@@ -139,7 +132,7 @@ function Mine({ tick }) {
         </div>
       ) : <Note text={planSet ? 'No subscription yet: the fee is invoiced by hand from the statement.' : 'No plan is set, so there is nothing to charge.'} tone="neutral" />}
       {addons.length ? <DataTable label="Extra-minute charges" head={['Month', 'Extra minutes charge', 'State']} rows={addons.map((a) => [monthLabel(a.month), money(a.amount_minor, 'USD'), a.status + (a.error ? `: ${a.error}` : '')])} /> : null}
-    </section>
+    </Card>
   );
 }
 
@@ -183,10 +176,10 @@ function Everyone({ month, tick, refresh }) {
   });
   return (
     <>
-      <section>
-        <h2>{`Every company: ${monthLabel(data.month)}`} <Badge text="operator" tone="info" /></h2>
+      <Card as="section">
+        <Card.Title>{`Every company: ${monthLabel(data.month)}`} <Badge text="operator" tone="info" /></Card.Title>
         <DataTable label="Companies" head={['Company', 'Plan', 'Calls', 'Minutes', 'Amount due', 'Subscription', '']} rows={rows} />
-      </section>
+      </Card>
       {dialog ? <ConfirmDialog {...dialog} onClose={() => setDialog(null)} /> : null}
     </>
   );
@@ -205,9 +198,11 @@ export default function Usage() {
         <Button className="btn btn--outline" onClick={() => window.print()}>Print</Button>
       </PageHeader>
       <div className="row"><Select options={months.map((m) => [m, monthLabel(m)])} value={month} onChange={(e) => setMonth(e.target.value)} aria-label="Month" /></div>
-      <div className="stack"><Statement month={month} tick={tick} /></div>
-      <div><Mine tick={tick} /></div>
-      <div><Everyone month={month} tick={tick} refresh={refresh} /></div>
+      <div className="stack">
+        <Statement month={month} tick={tick} />
+        <Mine tick={tick} />
+        <Everyone month={month} tick={tick} refresh={refresh} />
+      </div>
     </>
   );
 }

@@ -2,7 +2,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { api } from '../lib/api.js';
 import { percent, hours, addDays, todayIn, reasonText } from '../lib/format.js';
-import { PageHeader, Spinner, ErrorBox, DataTable } from '../lib/ui.jsx';
+import { PageHeader, Spinner, ErrorBox, DataTable, Card, StatGrid } from '../components/index.js';
 
 export const fetchSummary = (from, to) => api('/v1/dispatch/reports/summary', { params: { from, to } });
 
@@ -58,11 +58,11 @@ export default function Dashboard() {
     const data = state.data;
     body = (
       <>
-        <div className="cards">{cards(data).map(([label, value]) => <div className="card stat" key={label}><h3>{label}</h3><p className="stat__value">{value}</p></div>)}</div>
-        <section className="card"><h2>Technicians</h2>{technicianTable(data.technicians)}</section>
-        <section className="card"><h2>Problems found</h2>
+        <StatGrid items={cards(data)} />
+        <Card as="section"><Card.Title>Technicians</Card.Title>{technicianTable(data.technicians)}</Card>
+        <Card as="section"><Card.Title>Problems found</Card.Title>
           <p>{`${data.problems.opened} found, ${data.problems.still_open} still open. `}{Object.entries(data.problems.by_reason).map(([k, v]) => `${reasonText(k)} ${v}`).join(', ')}</p>
-        </section>
+        </Card>
       </>
     );
   }

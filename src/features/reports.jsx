@@ -1,10 +1,8 @@
 // Reports: the same numbers as the dashboard in full, plus a spreadsheet download of the booked jobs. No customer details.
 import { useEffect, useRef, useState } from 'react';
 import { percent, addDays, todayIn, reasonText } from '../lib/format.js';
-import { PageHeader, Spinner, ErrorBox, DataTable } from '../lib/ui.jsx';
+import { PageHeader, Spinner, ErrorBox, DataTable, Card, Empty } from '../components/index.js';
 import { fetchSummary, technicianTable } from './dashboard.jsx';
-
-const Section = ({ title, children }) => <section className="card"><h2>{title}</h2>{children}</section>;
 
 export default function Reports() {
   const [range, setRange] = useState(() => ({ from: addDays(todayIn(), -6), to: todayIn() }));
@@ -39,24 +37,24 @@ export default function Reports() {
     const d = state.data;
     body = (
       <>
-        <Section title="Jobs and punctuality">
+        <Card as="section"><Card.Title>Jobs and punctuality</Card.Title>
           <DataTable head={['Booked jobs', 'Done', 'Arrived', 'On time', 'Inside window', 'Avg minutes late']}
             rows={[[d.jobs.total, d.jobs.by_progress.completed, d.jobs.arrived, percent(d.jobs.on_time_share), percent(d.jobs.inside_window_share), d.jobs.average_minutes_late ?? '-']]} />
-        </Section>
-        <Section title="Requests">
+        </Card>
+        <Card as="section"><Card.Title>Requests</Card.Title>
           <DataTable head={['Requests', 'Emergencies (people handle)', 'Booked share', 'By status']}
             rows={[[d.requests.total, d.requests.emergencies, percent(d.requests.booked_share), Object.entries(d.requests.by_status).map(([k, v]) => `${k} ${v}`).join(', ') || '-']]} />
-        </Section>
-        <Section title="Proposals">
+        </Card>
+        <Card as="section"><Card.Title>Proposals</Card.Title>
           {Object.keys(d.proposals).length
             ? <DataTable head={['From', 'Total', 'Approved', 'Rejected', 'Expired', 'Waiting']} rows={Object.entries(d.proposals).map(([source, c]) => [source, c.total, c.executed || 0, c.rejected || 0, c.expired || 0, c.pending || 0])} />
-            : <p className="empty">No proposals in this period.</p>}
-        </Section>
-        <Section title="Problems found">
+            : <Empty text="No proposals in this period." />}
+        </Card>
+        <Card as="section"><Card.Title>Problems found</Card.Title>
           <DataTable head={['Found', 'Still open', 'Reasons']}
             rows={[[d.problems.opened, d.problems.still_open, Object.entries(d.problems.by_reason).map(([k, v]) => `${reasonText(k)} ${v}`).join(', ') || '-']]} />
-        </Section>
-        <Section title="Technicians">{technicianTable(d.technicians)}</Section>
+        </Card>
+        <Card as="section"><Card.Title>Technicians</Card.Title>{technicianTable(d.technicians)}</Card>
       </>
     );
   }

@@ -1,28 +1,12 @@
-// The staff console: sign-in, the menu (by role) and moving between sections.
+// The staff console's shell: sign-in, the menu (by role) and moving between sections.
 // Sign-in sends the staff key once; the server answers with an HttpOnly cookie this script cannot read, plus a CSRF token kept in memory.
-import { Component, lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react';
-import { api, setCsrf, onSessionExpired } from './lib/api.js';
-import { setZone } from './lib/format.js';
-import { session, can, SECTION_ROLES } from './lib/session.js';
-import { Badge, Toasts } from './lib/ui.jsx';
-
-const SECTIONS = [
-  { id: 'dashboard', label: 'Dashboard', view: lazy(() => import('./views/dashboard.jsx')) },
-  { id: 'requests', label: 'Requests', view: lazy(() => import('./views/requests.jsx')) },
-  { id: 'jobs', label: 'Jobs', view: lazy(() => import('./views/jobs.jsx')) },
-  { id: 'tracking', label: 'Tracking', view: lazy(() => import('./views/tracking.jsx')) },
-  // Quotes and invoices for a company's own customers: off, and not what this product bills for. Put the line back (and set BILLING_ENABLED=true) to use it.
-  // { id: 'billing', label: 'Billing', view: lazy(() => import('./views/billing.jsx')) },
-  { id: 'leads', label: 'Leads', view: lazy(() => import('./views/leads.jsx')) },
-  { id: 'memory', label: 'Memory', view: lazy(() => import('./views/memory.jsx')) },
-  { id: 'usage', label: 'Usage and bill', view: lazy(() => import('./views/usage.jsx')) },
-  { id: 'approvals', label: 'Approvals', view: lazy(() => import('./views/approvals.jsx')) },
-  { id: 'attention', label: 'Needs attention', view: lazy(() => import('./views/attention.jsx')) },
-  { id: 'plan', label: 'Nightly plan', view: lazy(() => import('./views/plan.jsx')) },
-  { id: 'technicians', label: 'Technicians', view: lazy(() => import('./views/technicians.jsx')) },
-  { id: 'reports', label: 'Reports', view: lazy(() => import('./views/reports.jsx')) },
-  { id: 'copilot', label: 'Co-pilot', view: lazy(() => import('./views/copilot.jsx')) },
-];
+// The sections themselves (what they are, which role may open them) live in ./routes.js.
+import { Component, Suspense, useCallback, useEffect, useRef, useState } from 'react';
+import { api, setCsrf, onSessionExpired } from '../lib/api.js';
+import { setZone } from '../lib/format.js';
+import { session, can, SECTION_ROLES } from '../lib/session.js';
+import { Badge, Icon, Toasts } from '../components/index.js';
+import { SECTIONS } from './routes.js';
 
 const allowedIn = (section) => !SECTION_ROLES[section.id] || can(...SECTION_ROLES[section.id]);
 
@@ -99,18 +83,24 @@ function Shell({ timezone, onSignOut }) {
   return (
     <div id="shell" className="shell">
       <aside className="sidebar">
-        <div className="brand">HVAC Dispatch</div>
+        <div className="brand"><span className="brand__mark" aria-hidden="true">HD</span> HVAC Dispatch</div>
         <nav id="menu" className="menu" aria-label="Sections">
           {SECTIONS.filter(allowedIn).map((s) => (
-            <a key={s.id} href={`#/${s.id}`} className={`menu-item ${s.id === section.id ? 'menu-item--on' : ''}`} aria-current={s.id === section.id ? 'page' : undefined}>{s.label}</a>
+            <a key={s.id} href={`#/${s.id}`} className={`menu-item ${s.id === section.id ? 'menu-item--on' : ''}`} aria-current={s.id === section.id ? 'page' : undefined}>
+              <Icon name={s.icon} /><span>{s.label}</span>
+            </a>
           ))}
         </nav>
         <div className="sidebar__foot">
-          <a className="menu-item" href="call.html">Test call</a>
+          <a className="menu-item" href="call.html"><Icon name="phone" /><span>Test call</span></a>
           <div id="who" className="who" data-testid="identity">
-            <strong>{session.actor}</strong>{' '}<Badge text={session.role} tone="info" /><small className="block muted">{`${session.tenant} · ${timezone}`}</small>
+            <span className="who__avatar" aria-hidden="true">{(session.actor || '?').slice(0, 1).toUpperCase()}</span>
+            <span className="who__body">
+              <strong>{session.actor}</strong> <Badge text={session.role} tone="info" />
+              <small className="block muted">{`${session.tenant} · ${timezone}`}</small>
+            </span>
           </div>
-          <button id="signout" className="btn btn--outline btn--block" type="button" onClick={onSignOut}>Sign out</button>
+          <button id="signout" className="btn btn--outline btn--block" type="button" onClick={onSignOut}><Icon name="signOut" /><span>Sign out</span></button>
         </div>
       </aside>
       <main id="page" className="page" tabIndex={-1} ref={page}>

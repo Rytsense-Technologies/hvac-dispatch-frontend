@@ -5,7 +5,7 @@ import { createRoot } from 'react-dom/client';
 import '../styles/console.css';
 import { api } from '../lib/api.js';
 import { formatMinor, formatDay } from '../lib/format.js';
-import { Badge, Note, Field, DataTable, ActionButton, toast } from '../lib/ui.jsx';
+import { Badge, Note, Field, DataTable, ActionButton, toast, Card } from '../components/index.js';
 
 const match = /^\/billing\/(quotes|invoices)\/([^/]+)$/.exec(location.pathname);
 
@@ -39,8 +39,10 @@ function QuotePage({ token, initial }) {
   const status = { sent: ['Waiting for your answer', 'info'], accepted: ['Accepted: thank you', 'good'], declined: ['Declined', 'bad'], expired: ['This quote has expired', 'warn'], void: ['This quote was withdrawn', 'bad'], draft: ['Not ready yet', 'neutral'] }[q.status] || [q.status, 'neutral'];
   return (
     <>
-      <h1>{`Quote ${q.number || ''}`.trim()}</h1>
-      <div className="row wrap"><Badge text={status[0]} tone={status[1]} /><span className="spacer" /><strong className="big-total">{formatMinor(q.total_minor, q.currency)}</strong></div>
+      <Card className="stack">
+        <h1>{`Quote ${q.number || ''}`.trim()}</h1>
+        <div className="row wrap"><Badge text={status[0]} tone={status[1]} /><span className="spacer" /><strong className="big-total">{formatMinor(q.total_minor, q.currency)}</strong></div>
+      </Card>
       <Lines doc={q} />
       {q.notes ? <p>{q.notes}</p> : null}
       {q.valid_until ? <p className="muted">{`Valid until ${date(q.valid_until)}.`}</p> : null}
@@ -66,8 +68,10 @@ function InvoicePage({ token, i }) {
   const state = { paid: ['Paid in full: thank you', 'good'], void: ['This invoice was cancelled', 'bad'], issued: [i.state === 'overdue' ? 'Overdue' : 'Waiting for payment', i.state === 'overdue' ? 'bad' : 'info'], draft: ['Not ready yet', 'neutral'] }[i.status] || [i.status, 'neutral'];
   return (
     <>
-      <h1>{`Invoice ${i.number || ''}`.trim()}</h1>
-      <div className="row wrap"><Badge text={state[0]} tone={state[1]} /><span className="spacer" /><strong className="big-total">{money(i.total_minor)}</strong></div>
+      <Card className="stack">
+        <h1>{`Invoice ${i.number || ''}`.trim()}</h1>
+        <div className="row wrap"><Badge text={state[0]} tone={state[1]} /><span className="spacer" /><strong className="big-total">{money(i.total_minor)}</strong></div>
+      </Card>
       <Lines doc={i} />
       <p>{`Paid so far: ${money(i.paid_minor)}. `}<strong>{`Balance: ${money(i.balance_minor)}.`}</strong>{i.due_date ? ` Due ${date(i.due_date)}.` : ''}</p>
       {i.notes ? <p>{i.notes}</p> : null}

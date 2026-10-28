@@ -1,6 +1,6 @@
 // The Jobs map drawn by Google Maps (the browser key comes from /v1/dispatch/map/config). One map is kept alive and its markers are replaced on each
 // refresh, so the live technician positions move without the map reloading or losing the dispatcher's zoom.
-import { formatTime } from './format.js';
+import { formatTime } from '../lib/format.js';
 import { etaText } from './map.jsx';
 
 let loading = null;

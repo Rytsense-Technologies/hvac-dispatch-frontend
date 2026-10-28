@@ -2,7 +2,7 @@
 // Drawn here as plain SVG from the coordinates alone: no map service, no key, no outside request, and nothing about a customer leaves the page.
 // It shows WHERE things are relative to each other (with a distance scale), not streets; the road time to the job comes from the server.
 import { forwardRef, useLayoutEffect } from 'react';
-import { formatTime, span } from './format.js';
+import { formatTime, span } from '../lib/format.js';
 
 const W = 760;
 const H = 440;

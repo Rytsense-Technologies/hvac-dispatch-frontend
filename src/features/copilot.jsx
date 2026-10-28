@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from 'react';
 import { api } from '../lib/api.js';
 import { formatDateTime, reasonText, short } from '../lib/format.js';
 import { can } from '../lib/session.js';
-import { Badge, Spinner, ErrorBox, PageHeader, DataTable, ProgressBadge, toast, ActionButton, Button } from '../lib/ui.jsx';
+import { Badge, Spinner, Empty, ErrorBox, PageHeader, DataTable, ProgressBadge, toast, ActionButton, Button, Icon } from '../components/index.js';
 
 // The preview of a change: confirming sends it to Approvals, where a different person decides it.
 function ConfirmationBox({ confirmation }) {
@@ -126,8 +126,8 @@ export default function Copilot() {
   let logBody;
   if (log.kind === 'intro') {
     logBody = (
-      <div className="empty">
-        <p>Try one of these, or ask in your own words.</p>
+      <div className="stack">
+        <Empty text="Try one of these, or ask in your own words." />
         <div className="row wrap center">{suggestions.map((s) => <Button key={s} className="btn btn--outline btn--small" onClick={() => submit(s)}>{s}</Button>)}</div>
       </div>
     );
@@ -142,24 +142,22 @@ export default function Copilot() {
             {m.role === 'assistant' ? <ResultView data={m.data} names={m.names} /> : null}
           </div>
         ))}
-        {waiting ? <p className="loading" role="status">Thinking…</p> : null}
+        {waiting ? <Spinner text="Thinking…" /> : null}
       </>
     );
   }
 
   return (
     <>
-      <PageHeader title="Co-pilot" subtitle="Ask about jobs and technicians. It recommends, you confirm, a different person approves, and the system checks again." />
+      <PageHeader title={<span className="row"><Icon name="copilot" /><span>Co-pilot</span></span>} subtitle="Ask about jobs and technicians. It recommends, you confirm, a different person approves, and the system checks again." />
       <div className="chat">
         <aside className="chat-side" aria-label="Conversations">
           <Button className="btn btn--outline btn--small" onClick={() => { openSeq.current += 1; setThread(null); intro(); loadThreads(); }}>New conversation</Button>
-          <ul className="plain threads">
+          <div className="side-list">
             {threads ? (threads.length ? threads.map((t) => (
-              <li key={t.id}>
-                <button type="button" className={`side-item ${t.id === thread ? 'side-item--on' : ''}`} onClick={() => openThread(t.id).then(loadThreads)}>{t.title}</button>
-              </li>
-            )) : <li className="muted">No conversations yet.</li>) : null}
-          </ul>
+              <button type="button" key={t.id} className={`side-item ${t.id === thread ? 'side-item--on' : ''}`} onClick={() => openThread(t.id).then(loadThreads)}>{t.title}</button>
+            )) : <Empty text="No conversations yet." />) : null}
+          </div>
         </aside>
         <section className="chat-main" aria-label="Chat">
           <div className="chat-log" aria-live="polite" ref={logEl}>{logBody}</div>

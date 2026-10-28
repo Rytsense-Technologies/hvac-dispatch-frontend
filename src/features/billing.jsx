@@ -6,7 +6,7 @@ import { api } from '../lib/api.js';
 import { formatDateTime, formatDay, todayIn, parseMoney, parsePercent, formatMinor, minorToInput, bpsToInput, newKey } from '../lib/format.js';
 import { can } from '../lib/session.js';
 import { useEvery } from '../lib/hooks.js';
-import { Badge, Spinner, Note, Empty, ErrorBox, PageHeader, DataTable, Field, Select, Details, toast, Overlay, ActionButton, Button } from '../lib/ui.jsx';
+import { Badge, Spinner, Note, Empty, ErrorBox, PageHeader, DataTable, Field, Select, Details, toast, Overlay, ActionButton, Button, StatGrid, Tabs } from '../components/index.js';
 
 const QUOTE_TONE = { draft: 'neutral', sent: 'info', accepted: 'good', declined: 'bad', expired: 'warn', void: 'bad' };
 const INVOICE_TONE = { draft: 'neutral', unpaid: 'info', partial: 'warn', overdue: 'bad', paid: 'good', void: 'bad' };
@@ -536,17 +536,9 @@ export default function Billing() {
       <PageHeader title="Billing" subtitle="Quotes the customer agrees to, invoices for finished work, and the money received.">
         {canWriteQuotes() ? <Button className="btn btn--primary" onClick={() => setView({ kind: 'new' })}>New quote</Button> : null}
       </PageHeader>
-      <div className="cards">
-        {summary ? [['Invoiced (30 days)', summary.invoiced.total], ['Collected (net)', summary.collected.net], ['Still owed', summary.outstanding.balance], ['Overdue', summary.overdue.balance],
-          ['Quotes accepted', summary.quotes.accept_rate === null ? '-' : `${Math.round(summary.quotes.accept_rate * 100)}%`], ['Payments to review', summary.payments_needing_review]]
-          .map(([label, value]) => <div key={label} className="card stat"><h3>{label}</h3><p className="stat__value">{value}</p></div>) : null}
-      </div>
-      <div className="tabs" role="tablist">
-        {[['quotes', 'Quotes'], ['invoices', 'Invoices']].map(([id, label]) => (
-          <button key={id} type="button" role="tab" className={`tab ${tab === id ? 'tab--on' : ''}`} aria-selected={String(tab === id)}
-            onClick={() => { setTab(id); setStatus(''); setOverdue(false); }}>{label}</button>
-        ))}
-      </div>
+      {summary ? <StatGrid items={[['Invoiced (30 days)', summary.invoiced.total], ['Collected (net)', summary.collected.net], ['Still owed', summary.outstanding.balance], ['Overdue', summary.overdue.balance],
+        ['Quotes accepted', summary.quotes.accept_rate === null ? '-' : `${Math.round(summary.quotes.accept_rate * 100)}%`], ['Payments to review', summary.payments_needing_review]]} /> : null}
+      <Tabs options={[['quotes', 'Quotes'], ['invoices', 'Invoices']]} value={tab} onChange={(id) => { setTab(id); setStatus(''); setOverdue(false); }} />
       <div className="toolbar">
         <Select options={tab === 'quotes' ? quoteOptions : invoiceOptions} value={overdue ? 'overdue' : status} aria-label="Status"
           onChange={(e) => { const isOverdue = e.target.value === 'overdue'; setOverdue(isOverdue); setStatus(isOverdue ? '' : e.target.value); }} />

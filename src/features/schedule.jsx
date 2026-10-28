@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { api } from '../lib/api.js';
 import { formatDateTime, formatTime, reasonText } from '../lib/format.js';
 import { can } from '../lib/session.js';
-import { ActionButton, ErrorBox, Field, Note, Spinner, toast } from '../lib/ui.jsx';
+import { ActionButton, ErrorBox, Field, Note, Spinner, toast } from '../components/index.js';
 
 export async function technicianNames() {
   const { technicians } = await api('/v1/dispatch/technicians');
@@ -48,16 +48,18 @@ export function ScheduleFlow({ jobId, onDone }) {
     );
   }
   const submit = (
-    <ActionButton
-      className="btn btn--primary"
-      disabled={chosen === null || !reason.trim()}
-      action={async () => {
-        const option = mine[chosen];
-        await api(`/v1/dispatch/jobs/${jobId}/assign`, { method: 'POST', body: { technician_id: option.technician_id, arrival: option.arrival, reason: reason.trim() } });
-        toast('Approval requested. A different person must approve it.');
-        if (onDone) onDone();
-      }}
-    >Request approval</ActionButton>
+    <div className="right">
+      <ActionButton
+        className="btn btn--primary"
+        disabled={chosen === null || !reason.trim()}
+        action={async () => {
+          const option = mine[chosen];
+          await api(`/v1/dispatch/jobs/${jobId}/assign`, { method: 'POST', body: { technician_id: option.technician_id, arrival: option.arrival, reason: reason.trim() } });
+          toast('Approval requested. A different person must approve it.');
+          if (onDone) onDone();
+        }}
+      >Request approval</ActionButton>
+    </div>
   );
   return (
     <div className="stack">

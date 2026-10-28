@@ -6,8 +6,8 @@ import { CHANNELS, PRIORITIES, STATUS, formatDateTime, timeAgo } from '../lib/fo
 import { useEvery } from '../lib/hooks.js';
 import { can } from '../lib/session.js';
 import {
-  ActionButton, Badge, Button, DataTable, Details, Empty, ErrorBox, Field, Overlay, PageHeader, Select, Spinner, StatusBadge, toast,
-} from '../lib/ui.jsx';
+  ActionButton, Badge, Button, DataTable, Details, Empty, ErrorBox, Field, Overlay, PageHeader, Select, Spinner, StatusBadge, Tabs, toast,
+} from '../components/index.js';
 import { ScheduleFlow } from './schedule.jsx';
 import { MemorySections } from './memory_panel.jsx';
 
@@ -273,18 +273,7 @@ export default function Requests() {
   return (
     <>
       <PageHeader title="Requests" subtitle="What the AI front desk took on each call: who, what, how urgent, and what has happened since." />
-      <div className="tabs" role="tablist">
-        {TABS.map(([id, label]) => (
-          <button
-            key={id}
-            type="button"
-            role="tab"
-            aria-selected={String(tab === id)}
-            className={`tab ${tab === id ? 'tab--on' : ''}`}
-            onClick={() => { setTab(id); setOffset(0); setStatus(''); setSearch(''); setNonce((v) => v + 1); }}
-          >{label}</button>
-        ))}
-      </div>
+      <Tabs options={TABS} value={tab} onChange={(id) => { setTab(id); setOffset(0); setStatus(''); setSearch(''); setNonce((v) => v + 1); }} />
       <div className="toolbar" hidden={tab === 'alerts'}>
         <input type="text" aria-label="Search" placeholder="Search name, number, address, service…" className="search" value={search} onChange={(e) => setSearch(e.target.value)} />
         <Select options={[['', 'Any status'], ...Object.entries(STATUS).map(([k, [text]]) => [k, text])]} value={status} aria-label="Status" onChange={(e) => { setStatus(e.target.value); setOffset(0); }} />

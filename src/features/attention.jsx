@@ -4,7 +4,7 @@ import { api } from '../lib/api.js';
 import { formatDateTime, short, reasonText } from '../lib/format.js';
 import { can } from '../lib/session.js';
 import { useEvery } from '../lib/hooks.js';
-import { PageHeader, Spinner, ErrorBox, Empty, Badge, DataTable, Select, ActionButton, toast } from '../lib/ui.jsx';
+import { PageHeader, Spinner, ErrorBox, Empty, Badge, DataTable, Select, ActionButton, toast } from '../components/index.js';
 
 export function proposalText(v) {
   if (v.status === 'resolved') return v.resolution === 'cleared' ? 'Fixed: it fits again' : 'Closed: the booking moved or ended';

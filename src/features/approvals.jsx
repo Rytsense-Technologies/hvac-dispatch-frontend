@@ -4,7 +4,7 @@ import { api } from '../lib/api.js';
 import { formatDateTime, timeAgo, dayOf } from '../lib/format.js';
 import { session } from '../lib/session.js';
 import { useEvery } from '../lib/hooks.js';
-import { PageHeader, Spinner, ErrorBox, Empty, Badge, Field, ActionButton, toast } from '../lib/ui.jsx';
+import { PageHeader, Spinner, ErrorBox, Empty, Badge, Field, ActionButton, toast, Card } from '../components/index.js';
 
 const ACTIONS = { assign_job: 'Assign a technician', replan_jobs: 'Move jobs to other technicians' };
 
@@ -34,7 +34,7 @@ export function describe(approval, { technicians = {}, jobs = {} }) {
 // A person may not decide their own request: the server refuses it, the screen says so up front.
 export const isOwn = (approval, actor) => !!actor && approval.requested_by === actor;
 
-function Card({ approval, names, jobs, reload }) {
+function ApprovalCard({ approval, names, jobs, reload }) {
   const { title, items } = describe(approval, { technicians: names, jobs });
   const [reason, setReason] = useState('');
   const empty = !reason.trim();
@@ -44,7 +44,7 @@ function Card({ approval, names, jobs, reload }) {
     reload();
   };
   return (
-    <article className="card stack" aria-label={title}>
+    <Card as="article" className="stack" aria-label={title}>
       <div className="between"><h2>{title}</h2><p className="muted">Requested by <strong>{approval.requested_by}</strong>{` · ${timeAgo(approval.created_at)}`}</p></div>
       <ul className="plain">{items.map((i, n) => (
         <li className="line" key={n}>
@@ -65,7 +65,7 @@ function Card({ approval, names, jobs, reload }) {
             </div>
           </div>
         )}
-    </article>
+    </Card>
   );
 }
 
@@ -96,13 +96,13 @@ export default function Approvals() {
   let body;
   if (state.status === 'loading') body = <Spinner />;
   else if (state.status === 'error') body = <ErrorBox error={state.error} />;
-  else if (state.list.length) body = state.list.map((a) => <Card key={a.id} approval={a} names={state.names} jobs={state.jobs} reload={() => load(true)} />);
+  else if (state.list.length) body = state.list.map((a) => <ApprovalCard key={a.id} approval={a} names={state.names} jobs={state.jobs} reload={() => load(true)} />);
   else body = <Empty text="Nothing is waiting for approval." />;
 
   return (
     <>
       <PageHeader title="Approvals" subtitle="A proposal becomes a booking only when a person other than the requester approves it.">
-        <span>{ready && state.list.length ? <Badge text={`${state.list.length} waiting`} tone="warn" /> : null}</span>
+        {ready && state.list.length ? <Badge text={`${state.list.length} waiting`} tone="warn" /> : null}
       </PageHeader>
       <div className="stack">{body}</div>
     </>

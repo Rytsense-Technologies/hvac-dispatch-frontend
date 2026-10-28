@@ -3,10 +3,30 @@
 * { box-sizing: border-box; }
 [hidden] { display: none !important; }
 body { margin: 0; font-family: var(--font-sans); background: var(--bg); color: var(--text); line-height: 1.5; -webkit-font-smoothing: antialiased; }
+
+/* Selecting text otherwise uses the browser's own default highlight, which is made for a light
+   background - on the sidebar's solid indigo it washes the white text out. These make a selection
+   legible on both. */
+::selection { background: var(--primary-100); color: var(--primary-700); }
+.sidebar ::selection { background: rgba(255, 255, 255, 0.92); color: var(--primary-600); }
+
+/* A slim scrollbar that matches the rest of the UI instead of the browser's default thick gray one.
+   The sidebar gets its own lighter version since it sits on a solid, dark-ish brand color. */
+html { scrollbar-width: thin; scrollbar-color: var(--gray-300) transparent; }
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background-color: var(--gray-300); border-radius: 999px; border: 2.5px solid var(--bg); background-clip: padding-box; }
+::-webkit-scrollbar-thumb:hover { background-color: var(--primary-400); }
+.card::-webkit-scrollbar-thumb, .overlay::-webkit-scrollbar-thumb, .chat-side::-webkit-scrollbar-thumb, .chat-log::-webkit-scrollbar-thumb, .table-wrap::-webkit-scrollbar-thumb {
+  border-color: var(--card);
+}
+.sidebar { scrollbar-color: rgba(255, 255, 255, 0.35) transparent; }
+.sidebar::-webkit-scrollbar-thumb { background-color: rgba(255, 255, 255, 0.3); border-color: var(--sidebar-bg); }
+.sidebar::-webkit-scrollbar-thumb:hover { background-color: rgba(255, 255, 255, 0.5); }
 h1, h2, h3 { margin: 0; letter-spacing: -0.01em; }
-h1 { font-size: 1.6rem; font-weight: 700; }
-h2 { font-size: 1.1rem; margin-bottom: 8px; font-weight: 650; }
-h3 { font-size: 1rem; margin: 14px 0 4px; font-weight: 650; }
+h1 { font-size: 1.75rem; font-weight: 750; }
+h2 { font-size: 1.2rem; margin-bottom: 9px; font-weight: 700; }
+h3 { font-size: 1.05rem; margin: 14px 0 4px; font-weight: 700; }
 a { color: var(--primary); }
 a:hover { color: var(--primary-dark); }
 p { margin: 0 0 8px; }
@@ -27,17 +47,31 @@ small, .small { font-size: 0.82rem; }
 .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 
 /* ---------- shell ---------- */
-.shell { display: grid; grid-template-columns: 15rem 1fr; min-height: 100vh; }
-.sidebar { background: var(--card); border-right: 1px solid var(--border); padding: 18px 12px; display: flex; flex-direction: column; gap: 12px; position: sticky; top: 0; height: 100vh; overflow-y: auto; }
-.brand { font-weight: 700; font-size: 1.1rem; padding: 4px 8px 14px; color: var(--primary-dark); letter-spacing: -0.01em; }
-.menu { display: grid; gap: 2px; }
-.menu-item { display: block; padding: 9px 12px; border-radius: var(--radius-sm); color: var(--text); text-decoration: none; font-size: 0.95rem; transition: background-color 0.12s ease, color 0.12s ease; }
-.menu-item:hover { background: var(--neutral-soft); }
-.menu-item--on { background: var(--primary-soft); color: var(--primary-dark); font-weight: 600; }
-.sidebar__foot { margin-top: auto; display: grid; gap: 10px; border-top: 1px solid var(--border); padding-top: 12px; }
-.who { padding: 8px; font-size: 0.9rem; }
-.page { padding: 28px 32px 52px; max-width: 78rem; width: 100%; outline: none; }
-.page-header { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; flex-wrap: wrap; margin-bottom: 22px; }
+.shell { display: grid; grid-template-columns: 16rem 1fr; min-height: 100vh; }
+
+/* The sidebar is solid in the app's brand color - it reads as "navigation", the white area as "content" -
+   independent of the light/dark toggle above, which only affects the content side. The active section is
+   a white pill, the way the reference screenshot marks it. */
+.sidebar { background: var(--sidebar-bg); color: var(--sidebar-text); padding: 20px 14px; display: flex; flex-direction: column; gap: 16px; position: sticky; top: 0; height: 100vh; overflow-y: auto; box-shadow: var(--shadow-md); }
+.brand { display: flex; align-items: center; gap: 10px; font-weight: 800; font-size: 1.2rem; padding: 4px 10px 14px; color: var(--sidebar-text); letter-spacing: -0.01em; }
+.brand__mark { display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px; border-radius: var(--radius-sm); background: #ffffff; color: var(--primary-600); font-size: 0.74rem; font-weight: 800; letter-spacing: 0.02em; flex-shrink: 0; }
+.menu { display: grid; gap: 4px; }
+.menu-item { display: flex; align-items: center; gap: 12px; padding: 11px 14px; border-radius: 999px; color: var(--sidebar-muted); text-decoration: none; font-size: 0.97rem; transition: background-color 0.12s ease, color 0.12s ease, box-shadow 0.12s ease; }
+.menu-item .icon { flex-shrink: 0; opacity: 0.9; }
+.menu-item:hover { background: var(--sidebar-hover); color: var(--sidebar-text); }
+.menu-item--on { background: var(--sidebar-active-bg); color: var(--sidebar-active-text); font-weight: 700; box-shadow: var(--shadow-sm); }
+.menu-item--on .icon { opacity: 1; }
+.sidebar__foot { margin-top: auto; display: grid; gap: 10px; border-top: 1px solid var(--sidebar-border); padding-top: 14px; }
+.who { display: flex; align-items: center; gap: 10px; padding: 6px 10px; font-size: 0.93rem; }
+.who__avatar { display: inline-flex; align-items: center; justify-content: center; width: 34px; height: 34px; border-radius: 50%; background: #ffffff; color: var(--primary-600); font-weight: 800; font-size: 0.88rem; flex-shrink: 0; }
+.who__body { min-width: 0; color: var(--sidebar-text); }
+.who__body strong { color: var(--sidebar-text); }
+.who__body .badge--info { background: rgba(255, 255, 255, 0.22); color: #ffffff; }
+.sidebar__foot .btn--outline { border-color: var(--sidebar-border); background: transparent; color: var(--sidebar-text); border-radius: 999px; }
+.sidebar__foot .btn--outline:hover:not(:disabled) { background: var(--sidebar-hover); }
+.sidebar__foot .btn--outline .icon { opacity: 0.9; }
+.page { padding: 30px 34px 54px; width: 100%; outline: none; }
+.page-header { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; flex-wrap: wrap; margin-bottom: 24px; }
 .page-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 
 /* ---------- login ---------- */
@@ -47,10 +81,10 @@ small, .small { font-size: 0.82rem; }
 .note-line { color: var(--danger); min-height: 1.2em; margin: 0; }
 
 /* ---------- parts ---------- */
-.card { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); padding: 18px; box-shadow: var(--shadow-xs); }
-.cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(13rem, 1fr)); gap: 14px; }
-.stat h3 { margin: 0; font-size: 0.83rem; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.03em; }
-.stat__value { font-size: 1.95rem; font-weight: 700; margin: 6px 0 0; letter-spacing: -0.01em; }
+.card { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); padding: 20px; box-shadow: var(--shadow-sm); }
+.cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(13.5rem, 1fr)); gap: 16px; }
+.stat h3 { margin: 0; font-size: 0.85rem; font-weight: 650; color: var(--muted); text-transform: uppercase; letter-spacing: 0.03em; }
+.stat__value { font-size: 2.15rem; font-weight: 750; margin: 7px 0 0; letter-spacing: -0.01em; color: var(--primary-700); }
 .field { display: grid; gap: 4px; }
 label { font-weight: 600; font-size: 0.88rem; }
 label.inline { display: flex; align-items: center; gap: 6px; font-weight: 500; color: var(--muted); }
@@ -61,7 +95,7 @@ label.inline input, .page-actions input, .page-actions select { width: auto; }
 input:focus-visible, select:focus-visible, textarea:focus-visible, .btn:focus-visible, a:focus-visible, .clickable:focus-visible, .job:focus-visible, .side-item:focus-visible {
   outline: 2px solid var(--primary); outline-offset: 1px;
 }
-.btn { font: inherit; font-weight: 600; font-size: 0.92rem; padding: 9px 16px; border-radius: var(--radius-sm); border: 1px solid transparent; cursor: pointer; background: transparent; color: var(--text); text-decoration: none; display: inline-flex; align-items: center; justify-content: center; transition: background-color 0.12s ease, border-color 0.12s ease, box-shadow 0.12s ease; }
+.btn { font: inherit; font-weight: 650; font-size: 0.95rem; padding: 10px 18px; border-radius: 999px; border: 1px solid transparent; cursor: pointer; background: transparent; color: var(--text); text-decoration: none; display: inline-flex; align-items: center; justify-content: center; transition: background-color 0.12s ease, border-color 0.12s ease, box-shadow 0.12s ease; }
 .btn:disabled { opacity: 0.55; cursor: not-allowed; }
 .btn--primary { background: var(--primary); color: #fff; box-shadow: var(--shadow-xs); }
 .btn--primary:hover:not(:disabled) { background: var(--primary-dark); }
@@ -72,7 +106,8 @@ input:focus-visible, select:focus-visible, textarea:focus-visible, .btn:focus-vi
 .btn--small { padding: 5px 11px; font-size: 0.85rem; }
 .btn--block { width: 100%; }
 
-.badge { display: inline-block; padding: 3px 10px; border-radius: 999px; font-size: 0.78rem; font-weight: 600; white-space: nowrap; letter-spacing: 0.01em; }
+.badge { display: inline-flex; align-items: center; gap: 6px; padding: 4px 11px; border-radius: 999px; font-size: 0.81rem; font-weight: 650; white-space: nowrap; letter-spacing: 0.01em; }
+.badge::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: currentColor; flex-shrink: 0; }
 .badge--neutral { background: var(--neutral-soft); color: var(--muted); }
 .badge--good { background: var(--good-soft); color: var(--good); }
 .badge--warn { background: var(--warn-soft); color: var(--warn); }
@@ -87,10 +122,10 @@ input:focus-visible, select:focus-visible, textarea:focus-visible, .btn:focus-vi
 ul.note { padding-left: 30px; }
 .loading, .empty { color: var(--muted); padding: 22px 4px; text-align: center; }
 
-.table-wrap { overflow-x: auto; background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow-xs); }
-table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
-th { text-align: left; color: var(--muted); font-weight: 600; font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.03em; padding: 11px 14px; background: var(--neutral-soft); white-space: nowrap; }
-td { padding: 11px 14px; border-top: 1px solid var(--border); vertical-align: top; }
+.table-wrap { overflow-x: auto; background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow-sm); }
+table { width: 100%; border-collapse: collapse; font-size: 0.93rem; }
+th { text-align: left; color: var(--primary-700); font-weight: 700; font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.03em; padding: 13px 16px; background: var(--primary-50); white-space: nowrap; }
+td { padding: 13px 16px; border-top: 1px solid var(--border); vertical-align: top; }
 tr.clickable { cursor: pointer; transition: background-color 0.1s ease; }
 tr.clickable:hover, tr.clickable:focus { background: var(--primary-soft); }
 

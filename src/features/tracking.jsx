@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from 'react';
 import { api } from '../lib/api.js';
 import { percent, todayIn, addDays, formatTime, lateness, PROGRESS } from '../lib/format.js';
 import { useEvery } from '../lib/hooks.js';
-import { PageHeader, Spinner, ErrorBox, Empty, Badge, ProgressBadge, ArrivalBadge, DataTable, Button } from '../lib/ui.jsx';
+import { PageHeader, Spinner, ErrorBox, Empty, Badge, ProgressBadge, ArrivalBadge, DataTable, Button, Card, StatGrid } from '../components/index.js';
 
 export default function Tracking() {
   const [day, setDay] = useState(todayIn);
@@ -35,19 +35,19 @@ export default function Tracking() {
     const { summary, jobs } = state;
     body = (
       <>
-        <div className="cards">
-          {Object.entries(PROGRESS).filter(([key]) => key in summary.by_progress).map(([key, [label]]) => <div className="card stat" key={key}><h3>{label}</h3><p className="stat__value">{summary.by_progress[key]}</p></div>)}
-          <div className="card stat"><h3>Average lateness</h3><p className="stat__value">{summary.average_minutes_late === null ? '-' : `${summary.average_minutes_late} min`}</p></div>
-          <div className="card stat"><h3>{`On time (within ${summary.grace_minutes} min)`}</h3><p className="stat__value">{percent(summary.on_time_share)}</p></div>
-        </div>
-        <section className="card"><h2>Visits</h2>
+        <StatGrid items={[
+          ...Object.entries(PROGRESS).filter(([key]) => key in summary.by_progress).map(([key, [label]]) => [label, summary.by_progress[key]]),
+          ['Average lateness', summary.average_minutes_late === null ? '-' : `${summary.average_minutes_late} min`],
+          [`On time (within ${summary.grace_minutes} min)`, percent(summary.on_time_share)],
+        ]} />
+        <Card as="section"><Card.Title>Visits</Card.Title>
           {jobs.length ? (
             <DataTable head={['Technician', 'Customer', 'Planned', 'Progress', 'On the way', 'Arrived', 'Finished', 'Against plan']}
               rows={jobs.map((j) => [<strong>{j.technician_name || '-'}</strong>, j.customer_name || '-', formatTime(j.scheduled_at), <ProgressBadge progress={j.progress} />,
                 formatTime(j.en_route_at), formatTime(j.arrived_at), formatTime(j.completed_at),
                 j.arrived_at ? <span className="row wrap"><Badge text={lateness(j.minutes_late)} tone={j.within_window === false || j.minutes_late > summary.grace_minutes ? 'bad' : 'good'} /><ArrivalBadge check={j.arrival_check} metres={j.arrival_distance_meters} /></span> : '-'])} />
           ) : <Empty text="No booked visits on this day." />}
-        </section>
+        </Card>
       </>
     );
   }

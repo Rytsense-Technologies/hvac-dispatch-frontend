@@ -17,23 +17,23 @@
   --gray-800: #22262e;
   --gray-900: #15171b;
 
-  /* ---- brand: a settled slate-indigo, deliberately muted rather than a bright generic blue ---- */
-  --primary-50: #eef1f7;
-  --primary-100: #dce2f0;
-  --primary-400: #6b7fab;
-  --primary-500: #46578a;
-  --primary-600: #374570;
-  --primary-700: #2a3657;
+  /* ---- brand: a vivid indigo-blue, the app's one signature color (sidebar, buttons, links, active states) ---- */
+  --primary-50: #eef0ff;
+  --primary-100: #e0e3ff;
+  --primary-400: #818cf8;
+  --primary-500: #4f46e5;
+  --primary-600: #4338ca;
+  --primary-700: #3730a3;
 
-  /* ---- semantic colors: desaturated so a page of badges reads as calm, not alarming ---- */
-  --good-500: #3f7d58;
-  --good-50: #e8f3ec;
-  --warn-500: #966a20;
-  --warn-50: #f8f0dd;
-  --danger-500: #b1473a;
-  --danger-50: #f8e9e7;
-  --info-500: #3f6e8a;
-  --info-50: #e8eff3;
+  /* ---- semantic colors: saturated and clearly colorful, each with a colored dot in front of its badge ---- */
+  --good-500: #16a34a;
+  --good-50: #dcfce7;
+  --warn-500: #d97706;
+  --warn-50: #fef3c7;
+  --danger-500: #dc2626;
+  --danger-50: #fee2e2;
+  --info-500: #0284c7;
+  --info-50: #e0f2fe;
 
   /* ---- surface tokens the component CSS actually uses ---- */
   --bg: var(--gray-50);
@@ -56,10 +56,10 @@
   --info-soft: var(--info-50);
 
   /* ---- shape and elevation: subtle, so a card reads as a surface, not a box ---- */
-  --radius-sm: 8px;
-  --radius-md: 12px;
-  --radius-lg: 16px;
-  --radius: var(--radius-md);
+  --radius-sm: 10px;
+  --radius-md: 14px;
+  --radius-lg: 18px;
+  --radius: var(--radius-lg);
   --shadow-xs: 0 1px 2px rgba(21, 23, 27, 0.04);
   --shadow-sm: 0 1px 3px rgba(21, 23, 27, 0.07), 0 1px 2px rgba(21, 23, 27, 0.04);
   --shadow-md: 0 8px 20px rgba(21, 23, 27, 0.08), 0 2px 6px rgba(21, 23, 27, 0.05);
@@ -74,9 +74,26 @@
   --space-8: 32px;
 
   --font-sans: system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans", sans-serif;
-  color-scheme: light dark;
+  /* Always light: the app no longer follows the OS/browser dark-mode setting. */
+  color-scheme: light;
+
+  /* ---- the sidebar: the app's signature color, solid - navigation stands out as clearly its own
+     surface, with a white pill marking the active section (the look the reference screenshot uses). ---- */
+  --sidebar-bg: var(--primary-500);
+  --sidebar-bg-raised: var(--primary-600);
+  --sidebar-text: #ffffff;
+  --sidebar-muted: rgba(255, 255, 255, 0.72);
+  --sidebar-border: rgba(255, 255, 255, 0.16);
+  --sidebar-hover: rgba(255, 255, 255, 0.12);
+  --sidebar-active-bg: #ffffff;
+  --sidebar-active-text: var(--primary-600);
+  --sidebar-accent: #ffffff;
 }
 
+/* A slightly larger base so text throughout the app - the console, the test-call page and the portal - reads a touch bigger. */
+html { font-size: 106.25%; }
+
+/* Disabled on purpose - the app stays on the light palette above regardless of prefers-color-scheme.
 @media (prefers-color-scheme: dark) {
   :root {
     --gray-0: #171b21;
@@ -113,3 +130,4 @@
     --shadow-md: 0 8px 20px rgba(0, 0, 0, 0.4);
   }
 }
+*/

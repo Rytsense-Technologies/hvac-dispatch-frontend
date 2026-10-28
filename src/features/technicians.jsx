@@ -7,8 +7,8 @@ import {
 } from '../lib/format.js';
 import { can } from '../lib/session.js';
 import {
-  Badge, Spinner, Empty, ErrorBox, PageHeader, DataTable, Field, Overlay, ActionButton, toast, useRun,
-} from '../lib/ui.jsx';
+  Badge, Spinner, Empty, ErrorBox, PageHeader, DataTable, Field, Overlay, ActionButton, toast, useRun, Card, Icon,
+} from '../components/index.js';
 
 const ProblemsBox = ({ list }) => <ul className="note note--bad" role="alert" hidden={!list.length}>{list.map((p, i) => <li key={i}>{p}</li>)}</ul>;
 
@@ -179,7 +179,7 @@ function UnavailableDialog({ tech, reload, onClose }) {
         <button type="button" className="btn btn--outline" disabled={lookBusy} onClick={look}>See what would change</button>
         <div>
           {preview ? (
-            <div className="card stack" data-testid="unavailable-preview">
+            <Card className="stack" data-testid="unavailable-preview">
               {preview.affected === 0 ? <p>No booked jobs on that day, so nothing needs to move.</p> : (
                 <>
                   <p><strong>{`${preview.affected} booked job(s) would move:`}</strong></p>
@@ -191,7 +191,7 @@ function UnavailableDialog({ tech, reload, onClose }) {
                   {preview.blocked ? <p className="note note--warn" role="alert">{`Some jobs cannot be moved safely (${preview.result.rejected.map((r) => (r.reasons || []).map(reasonText).join(', ')).join('; ')}). A person has to handle those; nothing will be queued.`}</p> : null}
                 </>
               )}
-            </div>
+            </Card>
           ) : null}
         </div>
         <div className="right">
@@ -256,7 +256,10 @@ export default function Technicians() {
       <PageHeader title="Technicians" subtitle="Who can be sent, with what skills and in which areas, and the days they work.">
         {can('admin') ? <button type="button" className="btn btn--primary" onClick={() => setDialog({ kind: 'add' })}>Add technician</button> : null}
       </PageHeader>
-      <div>{body}</div>
+      <Card as="section">
+        <Card.Title><span className="row"><Icon name="technicians" /><span>Technicians</span></span></Card.Title>
+        {body}
+      </Card>
       {dialog?.kind === 'add' ? <AddDialog reload={load} onClose={close} /> : null}
       {dialog?.kind === 'contact' ? <ContactDialog tech={dialog.tech} reload={load} onClose={close} /> : null}
       {dialog?.kind === 'shifts' ? <ShiftsDialog tech={dialog.tech} reload={load} onClose={close} /> : null}

@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from 'react';
 import { api } from '../lib/api.js';
 import { formatDateTime, addDays, todayIn, reasonText, short } from '../lib/format.js';
 import { can } from '../lib/session.js';
-import { PageHeader, Spinner, ErrorBox, Empty, Badge, DataTable, ActionButton, useRun, toast } from '../lib/ui.jsx';
+import { PageHeader, Spinner, ErrorBox, Empty, Badge, Card, DataTable, ActionButton, useRun, toast } from '../components/index.js';
 
 export function runLine(summary = {}) {
   const parts = [`${(summary.proposals || []).length} proposed`];
@@ -112,9 +112,11 @@ export default function Plan() {
         <input type="date" aria-label="Day to plan" min={todayIn()} value={day} onChange={(e) => setDay(e.target.value)} />
         <button type="button" className="btn btn--primary" disabled={busy} onClick={go}>{planning ? 'Planning…' : 'Run the plan now'}</button>
       </PageHeader>
-      <Automation reload={loadRuns} />
-      <div>{outcome ? <Result s={outcome} /> : null}</div>
-      <section><h2>Recent runs</h2><div>{runsBody}</div></section>
+      <div className="stack">
+        <Automation reload={loadRuns} />
+        {outcome ? <Result s={outcome} /> : null}
+        <Card as="section"><Card.Title>Recent runs</Card.Title><div>{runsBody}</div></Card>
+      </div>
     </>
   );
 }
