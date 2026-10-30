@@ -1,4 +1,4 @@
-// Talking to the API. Same behaviour as the original console: same-origin session cookie, CSRF token kept in memory only.
+// Talking to the API. Same-origin session cookie (hvac_user_session, HttpOnly), CSRF token kept in memory only.
 
 // The console is served from the same address as the API (the frontend server forwards /v1), so the browser's session cookie
 // is first-party. The cookie cannot be read by this script; only the CSRF token is kept here, in memory, never in storage.
@@ -42,7 +42,9 @@ export async function api(path, { method = 'GET', params, body, headers = {} } =
   }
   const data = await response.json().catch(() => null);
   if (!response.ok) {
-    if (response.status === 401 && !path.startsWith('/v1/copilot/session')) onExpired();
+    // /v1/auth/* covers sign-in, registration, "who am I" and password reset - an expected 401 happens there
+    // before anyone is signed in, so it must not trigger the "your session ended" handling the rest of the app uses.
+    if (response.status === 401 && !path.startsWith('/v1/auth/')) onExpired();
     throw new ApiError(messageFrom(data, response.status), response.status);
   }
   return data;

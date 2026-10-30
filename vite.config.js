@@ -22,6 +22,8 @@ export default defineConfig({
       '/v1': forward,
       '/tech': forward,
       '/healthz': forward,
+      // The emailed one-time link opens this address; the backend serves the ready-made page itself.
+      '/set-password': forward,
       // A customer opening their quote/invoice link in a browser gets the page; the page then asks the API (Accept: application/json).
       '/billing': {
         ...forward,

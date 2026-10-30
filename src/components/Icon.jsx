@@ -100,6 +100,16 @@ const PATHS = {
       <line x1="15.2" y1="10" x2="7.3" y2="10" />
     </>
   ),
+  // One person with a small key badge - who can sign in, distinct from the two-person "technicians" roster icon.
+  users: (
+    <>
+      <circle cx="9.5" cy="7.3" r="3.3" />
+      <path d="M3.5 17c0-3.4 2.7-5.6 6-5.6 1 0 1.9.2 2.8.6" />
+      <circle cx="15.3" cy="14.5" r="2.1" />
+      <path d="M16.8 13 18.5 11.3" />
+      <path d="M17.6 10.5 18.6 11.5" />
+    </>
+  ),
 };
 
 export function Icon({ name, className = '' }) {
