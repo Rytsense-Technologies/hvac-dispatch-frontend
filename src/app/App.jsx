@@ -28,7 +28,7 @@ class SectionBoundary extends Component {
 
 // ---------- sign in ----------
 
-function LoginForm({ message, setupOpen, onSignedIn, onRegister, onForgot }) {
+function LoginForm({ message, setupOpen, signupOpen, onSignedIn, onRegister, onSignup, onForgot }) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [text, setText] = useState(message || '');
@@ -79,6 +79,7 @@ function LoginForm({ message, setupOpen, onSignedIn, onRegister, onForgot }) {
         <a href="#" onClick={(e) => { e.preventDefault(); onForgot(); }}>Forgot your password?</a>
         {setupOpen ? <a href="#" onClick={(e) => { e.preventDefault(); onRegister(); }}>Register the first admin</a> : null}
       </p>
+      {signupOpen ? <p className="muted small">New company? <a href="#" onClick={(e) => { e.preventDefault(); onSignup(); }}>Create your company</a></p> : null}
       <p className="muted small">Test the phone assistant: <a href="call.html">test call page</a></p>
     </form>
   );
@@ -125,6 +126,55 @@ function RegisterForm({ codeRequired, onRegistered, onBack }) {
   );
 }
 
+// A company signs itself up: its name, and the first admin. Nothing is created until the emailed link is opened (the server says so, and so does this screen).
+function SignupForm({ onBack }) {
+  const [f, setF] = useState({ company: '', name: '', email: '', password: '', confirm: '' });
+  const [text, setText] = useState('');
+  const [done, setDone] = useState('');
+  const [busy, setBusy] = useState(false);
+  const bind = (key) => ({ value: f[key], onChange: (e) => setF({ ...f, [key]: e.target.value }) });
+
+  const submit = async (event) => {
+    event.preventDefault();
+    setText('');
+    if (f.password.length < 12 || f.password.length > 128) { setText('The password must be 12 to 128 characters.'); return; }
+    if (f.password !== f.confirm) { setText('The passwords do not match.'); return; }
+    setBusy(true);
+    try {
+      const data = await api('/v1/auth/signup', { method: 'POST', body: { company_name: f.company.trim(), name: f.name.trim(), email: f.email.trim(), password: f.password } });
+      setF({ company: '', name: '', email: '', password: '', confirm: '' });
+      setDone(data.message || 'Check your email. We sent a link to confirm your company.');
+    } catch (error) {
+      setF({ ...f, password: '', confirm: '' }); // never leave a password in the field after a failure
+      setText(error.message);
+    } finally { setBusy(false); }
+  };
+
+  if (done) {
+    return (
+      <div className="card login__box">
+        <h1>Check your email</h1>
+        <p role="status">{done}</p>
+        <p className="muted small"><a href="#" onClick={(e) => { e.preventDefault(); onBack(); }}>Back to sign in</a></p>
+      </div>
+    );
+  }
+  return (
+    <form className="card login__box" autoComplete="off" onSubmit={submit}>
+      <h1>Create your company</h1>
+      <p className="muted">Your company gets its own private space: its people and its data are never shown to any other company. We email you a link to confirm; nothing is created until you open it.</p>
+      <div className="field"><label htmlFor="suCompany">Company name</label><input id="suCompany" type="text" autoComplete="organization" required maxLength={120} {...bind('company')} /></div>
+      <div className="field"><label htmlFor="suName">Your name</label><input id="suName" type="text" autoComplete="name" required maxLength={160} {...bind('name')} /></div>
+      <div className="field"><label htmlFor="suEmail">Your email (this is your username)</label><input id="suEmail" type="email" autoComplete="username" required maxLength={255} {...bind('email')} /></div>
+      <div className="field"><label htmlFor="suPassword">Password</label><input id="suPassword" type="password" autoComplete="new-password" required maxLength={128} {...bind('password')} /><small className="muted">12 to 128 characters, not all digits, and not a common password.</small></div>
+      <div className="field"><label htmlFor="suConfirm">Password again</label><input id="suConfirm" type="password" autoComplete="new-password" required maxLength={128} {...bind('confirm')} /></div>
+      <p className="note-line" role="alert">{text}</p>
+      <button className="btn btn--primary" type="submit" disabled={busy}>Create my company</button>
+      <p className="muted small"><a href="#" onClick={(e) => { e.preventDefault(); onBack(); }}>Back to sign in</a></p>
+    </form>
+  );
+}
+
 function ForgotForm({ onBack }) {
   const [email, setEmail] = useState('');
   const [sent, setSent] = useState(false);
@@ -165,6 +215,7 @@ function ForgotForm({ onBack }) {
 function AuthScreen({ message, onSignedIn }) {
   const [view, setView] = useState('login');
   const [setup, setSetup] = useState(null);
+  const [signupOpen, setSignupOpen] = useState(false);
 
   useEffect(() => {
     let live = true;
@@ -172,9 +223,17 @@ function AuthScreen({ message, onSignedIn }) {
     return () => { live = false; };
   }, []);
 
+  // Offer "Create your company" only while the server says sign-up is open (switched on, email works, today's limit not used up).
+  useEffect(() => {
+    let live = true;
+    api('/v1/auth/signup-status').then((data) => { if (live) setSignupOpen(!!data.open); }).catch(() => { if (live) setSignupOpen(false); });
+    return () => { live = false; };
+  }, []);
+
   return (
     <main id="login" className="login">
-      {view === 'login' && <LoginForm message={message} setupOpen={!!setup?.open} onSignedIn={onSignedIn} onRegister={() => setView('register')} onForgot={() => setView('forgot')} />}
+      {view === 'login' && <LoginForm message={message} setupOpen={!!setup?.open} signupOpen={signupOpen} onSignedIn={onSignedIn} onRegister={() => setView('register')} onSignup={() => setView('signup')} onForgot={() => setView('forgot')} />}
+      {view === 'signup' && <SignupForm onBack={() => setView('login')} />}
       {view === 'register' && <RegisterForm codeRequired={!!setup?.code_required} onRegistered={onSignedIn} onBack={() => setView('login')} />}
       {view === 'forgot' && <ForgotForm onBack={() => setView('login')} />}
     </main>
