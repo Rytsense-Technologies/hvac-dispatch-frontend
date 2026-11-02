@@ -245,3 +245,18 @@ input[type="text"]:focus-visible {
 
 .back { font-size: 0.8rem; font-weight: 500; margin-left: 12px; color: var(--primary); text-decoration: none; }
 .back:hover { color: var(--primary-dark); text-decoration: underline; }
+
+/* ---------- text-message test ---------- */
+.mode-tabs { display: flex; gap: 8px; }
+.mode-tab { flex: 1; padding: 10px 14px; font: inherit; font-weight: 600; color: var(--text); background: var(--card); border: 1px solid var(--border); border-radius: 10px; cursor: pointer; }
+.mode-tab[aria-pressed="true"] { background: var(--primary); border-color: var(--primary); color: #fff; }
+.sms-form { display: flex; gap: 8px; margin-top: 12px; }
+.sms-form input[type="text"] { flex: 1; }
+.send-btn { padding: 10px 18px; font: inherit; font-weight: 600; color: #fff; background: var(--primary); border: 0; border-radius: 10px; cursor: pointer; }
+.send-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+.flag { display: block; margin-top: 4px; font-size: 0.75rem; opacity: 0.85; }
+
+.direction { margin-top: 12px; }
+.direction .mode-tab { padding: 7px 12px; font-size: 0.9rem; }
+.out-row { display: flex; gap: 8px; margin-top: 12px; }
+.out-row select { flex: 1; padding: 10px; font: inherit; border: 1px solid var(--border); border-radius: 10px; background: var(--card); color: var(--text); }

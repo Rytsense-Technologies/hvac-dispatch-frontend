@@ -62,7 +62,7 @@ function LoginForm({ message, setupOpen, onSignedIn, onRegister, onForgot }) {
   };
 
   return (
-    <form id="loginForm" className="card login__box" autoComplete="off" onSubmit={submit}>
+    <form id="loginForm" className="card login__box" onSubmit={submit}>
       <h1>HVAC Dispatch</h1>
       <p className="muted">Sign in with your email and password.</p>
       <div className="field">
