@@ -18,6 +18,7 @@ export const SECTIONS = [
   { id: 'plan', label: 'Nightly plan', icon: 'plan', view: lazy(() => import('../features/plan.jsx')) },
   { id: 'technicians', label: 'Technicians', icon: 'technicians', view: lazy(() => import('../features/technicians.jsx')) },
   { id: 'users', label: 'Users', icon: 'users', view: lazy(() => import('../features/users.jsx')) },
+  { id: 'numbers', label: 'Phone number', icon: 'phone', view: lazy(() => import('../features/numbers.jsx')) },
   { id: 'reports', label: 'Reports', icon: 'reports', view: lazy(() => import('../features/reports.jsx')) },
   { id: 'copilot', label: 'Co-pilot', icon: 'copilot', view: lazy(() => import('../features/copilot.jsx')) },
 ];
