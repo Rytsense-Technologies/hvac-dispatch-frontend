@@ -1,9 +1,10 @@
 // Leads: people who asked for service from an ad or form (and old leads to win back), the calls made to reach them, and how fast the first call goes out.
+// Below the leads, the requests the AI took on calls that CAME IN, so both kinds of phone work are on one page (the Requests page has the full detail).
 // It shows whether the system may call anyone at all (the dial mode is a server setting, never a button here), and never shows a lead a person's phone
 // number to someone who may not see it: the server refuses viewers.
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { api } from '../lib/api.js';
-import { formatDateTime, percent } from '../lib/format.js';
+import { formatDateTime, percent, STATUS as REQUEST_STATUS } from '../lib/format.js';
 import { useEvery } from '../lib/hooks.js';
 import { can } from '../lib/session.js';
 import {
@@ -199,6 +200,30 @@ function CallDialog({ lead, reload, onClose }) {
               reload();
             }}
           >Call now</ActionButton>
+        </div>
+      </div>
+    </Overlay>
+  );
+}
+
+// Calling back someone who phoned in: the same dialer and the same checks as "Call now" on a lead, started from the request the AI took.
+function CallBackDialog({ item, reload, onClose }) {
+  const who = item.customer.name || item.customer.phone;
+  return (
+    <Overlay title="Call this caller back" onClose={onClose}>
+      <div className="stack">
+        <p>{`Call ${who} back now about request #${item.service_request.id}? The assistant rings them straight away.`}</p>
+        <p className="muted">It still follows the consent, calling-hours and allow-list checks, so a call that is not allowed is refused with the reason. The caller is also kept on the Leads list.</p>
+        <div className="right">
+          <ActionButton
+            className="btn btn--primary"
+            action={async () => {
+              const out = await api('/v1/leads/call-back', { method: 'POST', body: { request_id: item.service_request.id } });
+              onClose();
+              toast(out.placed ? 'Calling now. The phone should ring within a few seconds.' : `Not called: ${out.reason}`, out.placed ? 'good' : 'warn');
+              reload();
+            }}
+          >Call back now</ActionButton>
         </div>
       </div>
     </Overlay>
@@ -410,7 +435,7 @@ export default function Leads() {
   const [activeTab, setActiveTab] = useState('leads');
   const [status, setStatus] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
-  const [dialog, setDialog] = useState(null);
+  const [dialog, setDialog] = useState(null); // { type: 'call', lead } | { type: 'callback', item } | { type: 'lead', id } | { type: 'add' | 'import' | 'campaign' }
   const writer = can('dispatcher', 'admin');
   const campaignsSeen = useRef([]);
 
@@ -426,11 +451,13 @@ export default function Leads() {
   });
 
   const [list, loadList] = useLoader(async () => (await api('/v1/leads', { params: { status: status || undefined, limit: 100 } })).leads);
-  const reloadAll = () => { loadTop(); loadCampaigns(); loadList(); };
+  // The calls that came in: the AI's service requests taken by phone (a web test call is not one), newest first.
+  const [inbound, loadInbound] = useLoader(async () => (await api('/v1/service-requests', { params: { limit: 100 } })).service_requests.filter((item) => item.source?.channel === 'phone'));
+  const reloadAll = () => { loadTop(); loadCampaigns(); loadList(); loadInbound(); };
 
-  useEffect(() => { loadTop(); loadCampaigns(); }, [loadTop, loadCampaigns]);
+  useEffect(() => { loadTop(); loadCampaigns(); loadInbound(); }, [loadTop, loadCampaigns, loadInbound]);
   useEffect(() => { loadList(); }, [status, loadList]);
-  useEvery(() => { loadTop(); loadList(); }, 10000);
+  useEvery(() => { loadTop(); loadList(); loadInbound(); }, 10000);
 
   const close = () => setDialog(null);
   const campaigns = campaignsSeen.current;
@@ -458,6 +485,28 @@ export default function Leads() {
     return counts;
   }, [list.data]);
 
+  let inboundContent;
+  if (inbound.error) inboundContent = <ErrorBox error={inbound.error} />;
+  else if (!inbound.data) inboundContent = <Spinner />;
+  else if (!inbound.data.length) inboundContent = <Empty text="No inbound calls yet." />;
+  else {
+    inboundContent = (
+      <DataTable
+        head={['#', 'Caller', 'Asked about', 'Priority', 'Status', 'Visit', '']}
+        rows={inbound.data.slice(0, 25).map((item) => {
+          const r = item.service_request;
+          const [statusText, statusTone] = REQUEST_STATUS[r.status] || [r.status, 'neutral'];
+          return [r.id, <span><strong>{item.customer.name || 'Unknown'}</strong><small className="block muted">{item.customer.phone}</small></span>,
+            <span>{r.service_type || r.category}<small className="block muted clip">{r.description}</small></span>,
+            <Badge text={r.priority} tone={r.is_emergency ? 'bad' : r.priority === 'high' ? 'warn' : 'neutral'} />, <Badge text={statusText} tone={statusTone} />,
+            item.appointment ? formatDateTime(item.appointment.start_at) : '-',
+            writer && item.customer.phone ? <Button className="btn btn--outline btn--small" aria-label={`Call ${item.customer.name || item.customer.phone} back`} onClick={() => setDialog({ type: 'callback', item })}>Call back</Button> : null];
+        })}
+        label="Inbound calls"
+      />
+    );
+  }
+
   return (
     <div className="leads-container">
       <PageHeader title="Leads & Outreach" subtitle="Speed-to-lead automated callbacks, campaign management and acquisition metrics">
@@ -483,6 +532,7 @@ export default function Leads() {
       <Tabs
         options={[
           ['leads', `Leads Queue (${list.data?.length || 0})`],
+          ['inbound', `Inbound calls (${inbound.data?.length || 0})`],
           ['campaigns', `Campaigns (${camp.data?.length || 0})`],
           ['settings', 'Dialer & Integrations'],
         ]}
@@ -641,6 +691,18 @@ export default function Leads() {
         </Card>
       )}
 
+      {/* Tab: Inbound calls (the calls the AI took, with a Call back button) */}
+      {activeTab === 'inbound' && (
+        <Card as="section">
+          <div className="between">
+            <h2>Inbound calls</h2>
+            <a className="btn btn--outline btn--small" href="#/requests">All requests</a>
+          </div>
+          <p className="muted small">The latest calls that came in, as the AI took them: who called, what they need and what has happened since.</p>
+          <div>{inboundContent}</div>
+        </Card>
+      )}
+
       {/* Tab 3: Dialer & Integrations */}
       {activeTab === 'settings' && (
         <div className="leads-integrations-grid">
@@ -652,6 +714,7 @@ export default function Leads() {
       {/* Dialog Overlays */}
       {dialog?.type === 'call' && <CallDialog lead={dialog.lead} reload={reloadAll} onClose={close} />}
       {dialog?.type === 'lead' && <LeadDialog id={dialog.id} reload={reloadAll} onClose={close} />}
+      {dialog?.type === 'callback' && <CallBackDialog item={dialog.item} reload={reloadAll} onClose={close} />}
       {dialog?.type === 'add' && <AddDialog campaigns={campaigns} reload={reloadAll} onClose={close} />}
       {dialog?.type === 'import' && <ImportDialog campaigns={campaigns} reload={reloadAll} onClose={close} />}
       {dialog?.type === 'campaign' && <CampaignDialog reload={reloadAll} onClose={close} />}

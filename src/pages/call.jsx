@@ -11,9 +11,6 @@ import "../styles/call.css";
 
 // Same address as this page (the frontend server forwards /v1 to the API); set a full URL here to call another host.
 const API_BASE = "";
-// The staff API key is NOT stored in this file (anyone who can load the page could read it). It is asked for
-// once and kept for this browser tab only. Leave the prompt empty if the backend has no API_KEY set.
-const API_KEY_STORAGE_KEY = "voice_support_api_key";
 const USER_ID_STORAGE_KEY = "voice_support_user_id";
 
 const TRANSCRIPTION_TOPIC = "lk.transcription";
@@ -42,21 +39,16 @@ function safeStorageGet(key) {
   try { return localStorage.getItem(key); } catch { return null; }
 }
 
-function getApiKey() {
-  try {
-    let key = sessionStorage.getItem(API_KEY_STORAGE_KEY);
-    if (key === null) {
-      key = window.prompt("Staff API key (kept in this browser tab only; leave empty if the server has none):") || "";
-      sessionStorage.setItem(API_KEY_STORAGE_KEY, key);
-    }
-    return key;
-  } catch {
-    return "";
-  }
-}
+// The call uses the console sign-in (the session cookie plus its CSRF token), exactly like the text-message test box below. There is no key to type.
+let voiceCsrf = null;
 
-function forgetApiKey() {
-  try { sessionStorage.removeItem(API_KEY_STORAGE_KEY); } catch { /* nothing to forget */ }
+async function sessionHeaders() {
+  if (voiceCsrf === null) {
+    const me = await fetch(`${API_BASE}/v1/auth/me`, { credentials: "same-origin", headers: { Accept: "application/json" } });
+    if (!me.ok) throw new Error("Sign in to the console first, then reload this page.");
+    voiceCsrf = ((await me.json().catch(() => ({}))).csrf_token) || "";
+  }
+  return voiceCsrf ? { "X-CSRF-Token": voiceCsrf } : {};
 }
 
 function safeStorageSet(key, value) {
@@ -68,9 +60,11 @@ function safeStorageSet(key, value) {
 async function fetchVoiceToken(userId) {
   const res = await fetch(`${API_BASE}/v1/voice/token?user_id=${encodeURIComponent(userId)}`, {
     method: "POST",
-    headers: getApiKey() ? { "X-API-Key": getApiKey() } : {},
+    credentials: "same-origin",
+    headers: await sessionHeaders(),
   });
-  if (res.status === 401) forgetApiKey(); // a wrong key is asked for again next time
+  if (res.status === 401 || res.status === 403) voiceCsrf = null; // the session ended: it is checked again next time
+  if (res.status === 401) throw new Error("Sign in to the console first, then reload this page.");
   if (!res.ok) {
     const body = await res.text().catch(() => "");
     throw new Error(`${res.status} ${res.statusText}${body ? " - " + body : ""}`);

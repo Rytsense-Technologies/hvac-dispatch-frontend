@@ -59,7 +59,7 @@ function ConnectDialog({ onClose, onConnected }) {
       <form className="stack" noValidate onSubmit={submit}>
         <p className="muted">Use the number you already have at your phone provider. Your provider sends its calls to us over SIP, and your assistant answers them. You keep paying your provider as now.</p>
         <Field label="Your phone number" hint="With the + and country code."><input type="text" placeholder="+918012345678" autoComplete="off" required maxLength={20} {...bind('number')} /></Field>
-        <Field label="Your phone provider"><input type="text" placeholder="e.g. Exotel, Twilio, TeleCMI" maxLength={80} {...bind('provider')} /></Field>
+        <Field label="Your phone provider"><input type="text" placeholder="e.g. Exotel, Twilio, Telnyx" maxLength={80} {...bind('provider')} /></Field>
         <Field label="How should your provider prove a call is yours?">
           <Select options={[['password', 'A username and password (we make them)'], ['ip', 'Only my provider addresses']]} {...bind('mode')} />
         </Field>
