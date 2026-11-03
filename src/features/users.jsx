@@ -204,7 +204,7 @@ export default function Users() {
         u.last_login_at ? <span title={formatDateTime(u.last_login_at)}>{timeAgo(u.last_login_at)}</span> : 'Never',
         <span className="row wrap">
           <button type="button" className="btn btn--outline btn--small" onClick={() => setDialog({ kind: 'edit', user: u })}>Edit</button>
-          <ActionButton className="btn btn--outline btn--small" action={invite(u)}>Invite</ActionButton>
+          {u.status === 'invited' ? <ActionButton className="btn btn--outline btn--small" action={invite(u)}>Invite</ActionButton> : null}
           <button type="button" className="btn btn--ghost btn--small" onClick={() => setDialog({ kind: 'reset', user: u })}>Reset password</button>
           <ActionButton className="btn btn--ghost btn--small" action={toggle(u)}>{u.status === 'active' ? 'Disable' : 'Enable'}</ActionButton>
         </span>,

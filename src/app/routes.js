@@ -22,4 +22,3 @@ export const SECTIONS = [
   { id: 'reports', label: 'Reports', icon: 'reports', group: 'manage', view: lazy(() => import('../features/reports.jsx')) },
   { id: 'copilot', label: 'Co-pilot', icon: 'copilot', group: 'manage', view: lazy(() => import('../features/copilot.jsx')) },
 ];
-      

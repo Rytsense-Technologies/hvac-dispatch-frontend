@@ -78,6 +78,138 @@ async function fetchVoiceToken(userId) {
   return res.json();
 }
 
+// ---------- text-message test ----------
+// Type a text as the customer and see what the SMS assistant would answer. Signed in as an admin (the console's session cookie);
+// nothing is sent to anyone and staff are not alerted.
+const SMS_PHONE_STORAGE_KEY = "sms_test_phone";
+// The texts WE send on our own (the same ones the real system sends); picking one shows it, nothing is actually sent.
+const OUTBOUND_KINDS = [["confirmation", "Appointment confirmation"], ["reminder", "Appointment reminder"], ["on_the_way", "Technician on the way"]];
+
+async function smsApi(path, { method = "GET", body, csrf } = {}) {
+  const res = await fetch(`${API_BASE}${path}`, {
+    method,
+    credentials: "same-origin",
+    headers: { Accept: "application/json", ...(body ? { "Content-Type": "application/json" } : {}), ...(csrf ? { "X-CSRF-Token": csrf } : {}) },
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  const data = await res.json().catch(() => null);
+  if (!res.ok) {
+    const detail = data && data.detail;
+    const error = new Error(typeof detail === "string" ? detail : Array.isArray(detail) ? detail.map((d) => d.msg).join("; ") : `Request failed (${res.status})`);
+    error.status = res.status;
+    throw error;
+  }
+  return data;
+}
+
+function SmsTest() {
+  const [phone, setPhone] = useState(() => safeStorageGet(SMS_PHONE_STORAGE_KEY) || "");
+  const [text, setText] = useState("");
+  const [items, setItems] = useState([]);
+  const [busy, setBusy] = useState(false);
+  const [note, setNote] = useState("");
+  const [signedIn, setSignedIn] = useState(null);
+  const [direction, setDirection] = useState("in");
+  const [kind, setKind] = useState(OUTBOUND_KINDS[0][0]);
+  const csrf = useRef(null);
+  const box = useRef(null);
+  const counter = useRef(0);
+
+  useEffect(() => {
+    smsApi("/v1/auth/me").then((data) => { csrf.current = data.csrf_token; setSignedIn(true); }).catch(() => setSignedIn(false));
+  }, []);
+  useEffect(() => { box.current.scrollTop = box.current.scrollHeight; }, [items]);
+
+  const add = (mine, message, flag) => setItems((prev) => [...prev, { id: counter.current++, mine, message, flag }]);
+
+  async function send(event) {
+    event.preventDefault();
+    const message = text.trim();
+    if (!message || busy) return;
+    if (phone.replace(/\D/g, "").length < 7) { setNote("Enter the customer's phone number, with the country code."); return; }
+    safeStorageSet(SMS_PHONE_STORAGE_KEY, phone.trim());
+    setBusy(true);
+    setNote("");
+    add(true, message);
+    setText("");
+    try {
+      const out = await smsApi("/v1/sms-bot/test", { method: "POST", body: { phone: phone.trim(), message }, csrf: csrf.current });
+      if (out.reply) add(false, out.reply, out.needs_a_person ? "A real text would also alert your team." : "");
+      else setNote(out.note || "No reply.");
+    } catch (error) {
+      if (error.status === 401) setSignedIn(false);
+      setNote(error.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  // The other direction: the system texts the customer first (confirmation, reminder, "on the way"). Shown, not sent.
+  async function sendOutbound(event) {
+    event.preventDefault();
+    if (busy) return;
+    if (phone.replace(/\D/g, "").length < 7) { setNote("Enter the customer's phone number, with the country code."); return; }
+    safeStorageSet(SMS_PHONE_STORAGE_KEY, phone.trim());
+    setBusy(true);
+    setNote("");
+    try {
+      const out = await smsApi("/v1/sms-bot/test-outbound", { method: "POST", body: { phone: phone.trim(), kind }, csrf: csrf.current });
+      add(false, out.text, `Outbound text: ${out.label}. Shown here, not actually sent. Switch to "Inbound" to reply.`);
+    } catch (error) {
+      if (error.status === 401) setSignedIn(false);
+      setNote(error.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <>
+      <section className="card">
+        <label htmlFor="smsPhone">Customer's phone number</label>
+        <input id="smsPhone" type="text" inputMode="tel" placeholder="+1 803 555 0101" autoComplete="off" value={phone} onChange={(e) => setPhone(e.target.value)} />
+        <p className="muted small">The assistant answers from the visits it finds for this number. This is a test box: nothing is sent to anyone and your team is not alerted.</p>
+      </section>
+
+      <section className="card">
+        <div className="transcript-header">
+          <h2>Text conversation</h2>
+          <button className="link-btn" type="button" onClick={() => { setItems([]); setNote(""); }}>Clear</button>
+        </div>
+        <div className="transcript" aria-live="polite" ref={box}>
+          {items.length === 0 ? <p className="muted empty-hint">Type a text as the customer, for example "What time is my technician coming?"</p> : null}
+          {items.map((item) => (
+            <div key={item.id} className={`bubble ${item.mine ? "user" : "agent"}`}>
+              <span className="who">{item.mine ? "Customer" : "Assistant"}</span>
+              <span className="body">{item.message}</span>
+              {item.flag ? <span className="flag">{item.flag}</span> : null}
+            </div>
+          ))}
+        </div>
+        <div className="mode-tabs direction" role="group" aria-label="Direction">
+          <button type="button" className="mode-tab" aria-pressed={String(direction === "in")} onClick={() => setDirection("in")}>Inbound: customer texts us</button>
+          <button type="button" className="mode-tab" aria-pressed={String(direction === "out")} onClick={() => setDirection("out")}>Outbound: we text the customer</button>
+        </div>
+        {direction === "in" ? (
+          <form className="sms-form" onSubmit={send}>
+            <input type="text" aria-label="Text message" placeholder="Type a text message" maxLength={1000} autoComplete="off" value={text} onChange={(e) => setText(e.target.value)} disabled={signedIn === false} />
+            <button className="send-btn" type="submit" disabled={busy || signedIn === false || !text.trim()}>Send</button>
+          </form>
+        ) : (
+          <form className="out-row" onSubmit={sendOutbound}>
+            <select aria-label="Which text we send" value={kind} onChange={(e) => setKind(e.target.value)} disabled={signedIn === false}>
+              {OUTBOUND_KINDS.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+            </select>
+            <button className="send-btn" type="submit" disabled={busy || signedIn === false}>Show the text</button>
+          </form>
+        )}
+        {signedIn === false ? <p className="muted small">Sign in to the console first, then reload this page. <a href="index.html">Open the console</a></p> : null}
+        <p className="muted small status-line" role="status">{note}</p>
+      </section>
+    </>
+  );
+}
+
 function CallPage() {
   const [agentState, setAgentStateValue] = useState("idle");
   const [status, setStatus] = useState("");
@@ -89,6 +221,7 @@ function CallPage() {
   // segment id -> bubble, so interim transcripts update in place.
   const [bubbles, setBubbles] = useState([]);
   const [hintVisible, setHintVisible] = useState(true);
+  const [mode, setMode] = useState("voice");
 
   const roomRef = useRef(null);
   const micMutedRef = useRef(false);
@@ -271,13 +404,18 @@ function CallPage() {
 
       <main className="content">
 
-        <section className="card">
+        <div className="mode-tabs" role="group" aria-label="Test mode">
+          <button type="button" className="mode-tab" aria-pressed={String(mode === "voice")} onClick={() => setMode("voice")}>Voice call</button>
+          <button type="button" className="mode-tab" aria-pressed={String(mode === "sms")} onClick={() => setMode("sms")}>Text messages</button>
+        </div>
+
+        <section className="card" hidden={mode !== "voice"}>
           <label htmlFor="userIdInput">Your user ID</label>
           <input id="userIdInput" type="text" placeholder="e.g. jane-doe" autoComplete="off" ref={userIdRef} disabled={userIdLocked} />
           <p className="muted small">The assistant remembers you across calls by this ID. Change it to start as a new customer.</p>
         </section>
 
-        <section className="card call-card">
+        <section className="card call-card" hidden={mode !== "voice"}>
           <div id="agentState" className="agent-state" data-state={agentState}>
             <span className="dot"></span>
             <span id="agentStateLabel">{STATE_LABELS[agentState] || agentState}</span>
@@ -298,7 +436,7 @@ function CallPage() {
           <p id="callStatus" className="muted small status-line">{status}</p>
         </section>
 
-        <section className="card">
+        <section className="card" hidden={mode !== "voice"}>
           <div className="transcript-header">
             <h2>Conversation</h2>
             <button id="clearBtn" className="link-btn" onClick={clearTranscript}>Clear</button>
@@ -313,6 +451,8 @@ function CallPage() {
             ))}
           </div>
         </section>
+
+        {mode === "sms" ? <SmsTest /> : null}
 
       </main>
 

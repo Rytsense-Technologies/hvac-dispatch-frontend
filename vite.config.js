@@ -24,6 +24,10 @@ export default defineConfig({
       '/healthz': forward,
       // The emailed one-time link opens this address; the backend serves the ready-made page itself.
       '/set-password': forward,
+      // The page the sign-up confirmation email opens (and its script and style); the backend serves it itself.
+      '/signup': forward,
+      '/signup-confirm.js': forward,
+      '/signup-confirm.css': forward,
       // A customer opening their quote/invoice link in a browser gets the page; the page then asks the API (Accept: application/json).
       '/billing': {
         ...forward,

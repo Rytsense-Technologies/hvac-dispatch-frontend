@@ -1,0 +1,74 @@
+name: Deploy HVAC Frontend Console
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: 'Branch to deploy'
+        required: true
+        default: 'main'
+
+concurrency:
+  group: hvac-frontend-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy on Self-Hosted EC2 Runner
+    runs-on: [self-hosted, linux, x64]
+    timeout-minutes: 15
+
+    steps:
+      - name: Deploy Frontend Container
+        run: |
+          set -e
+          echo "=========================================================="
+          echo "🚀 Starting HVAC Frontend Deployment on EC2 Runner"
+          echo "=========================================================="
+
+          FRONTEND_DIR="/home/ubuntu/hvac/hvac-dispatch-frontend"
+          COMPOSE_DIR="/home/ubuntu/hvac/hvac-voice-dispatch"
+          TARGET_BRANCH="${{ github.event.inputs.branch || 'main' }}"
+
+          cd "$FRONTEND_DIR"
+          echo "📂 Frontend directory: $(pwd)"
+          echo "🌿 Pulling target branch: $TARGET_BRANCH"
+          git fetch origin "$TARGET_BRANCH"
+          git checkout "$TARGET_BRANCH"
+          git pull origin "$TARGET_BRANCH"
+
+          cd "$COMPOSE_DIR"
+          echo "📂 Compose directory: $(pwd)"
+
+          echo "🔨 Building Frontend Docker container..."
+          docker compose build frontend
+
+          echo "🔄 Restarting Frontend service..."
+          docker compose up -d --no-deps frontend
+
+          echo "⏳ Verifying Frontend availability..."
+          RETRIES=10
+          until curl -fsS http://127.0.0.1:5505/ > /dev/null 2>&1 || [ $RETRIES -eq 0 ]; do
+            echo "Waiting for http://127.0.0.1:5505/ to respond... ($RETRIES attempts remaining)"
+            RETRIES=$((RETRIES-1))
+            sleep 2
+          done
+
+          if [ $RETRIES -eq 0 ]; then
+            echo "❌ Frontend check failed after timeout!"
+            docker compose logs --tail 40 frontend
+            exit 1
+          fi
+
+          echo "✅ Frontend service is healthy!"
+          curl -I http://127.0.0.1:5505/
+
+          echo "🧹 Pruning unused Docker build images..."
+          docker image prune -f
+
+          echo "=========================================================="
+          echo "🎉 HVAC Frontend Deployment Finished Successfully!"
+          echo "=========================================================="
