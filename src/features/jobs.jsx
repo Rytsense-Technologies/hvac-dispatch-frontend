@@ -2,12 +2,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { api } from '../lib/api.js';
 import {
-  formatTime, formatDateTime, lateness, addDays, todayIn, PROGRESS, reasonText,
+  formatTime, formatDateTime, formatDay, lateness, addDays, todayIn, PROGRESS, reasonText,
 } from '../lib/format.js';
 import { can } from '../lib/session.js';
 import { useEvery } from '../lib/hooks.js';
 import {
-  Badge, Spinner, Empty, ErrorBox, PageHeader, Overlay, Details, ProgressBadge, ArrivalBadge, toast, useRun,
+  Badge, Spinner, Empty, ErrorBox, PageHeader, Overlay, Details, ProgressBadge, ArrivalBadge, toast, useRun, Icon,
 } from '../components/index.js';
 import { ScheduleFlow } from './schedule.jsx';
 import { DrawMap, Legend, GoogleMap, etaText } from './map.jsx';
@@ -175,29 +175,38 @@ function BillingFor({ job, reload }) {
 function JobDrawer({ job, reload, onClose }) {
   const pending = job.status === 'pending';
   return (
-    <Overlay title={job.service_type || 'Job'} onClose={onClose}>
+    <Overlay title={job.service_type || 'Job'} onClose={onClose} wide>
       <div className="stack">
-        <div className="row wrap">
+        <div className="drawer-header-pill">
           <ProgressBadge progress={job.progress} />
           {job.arrived_at ? <span className="muted">{lateness(job.minutes_late)}</span> : null}
           <ArrivalBadge check={job.arrival_check} metres={job.arrival_distance_meters} />
         </div>
-        <Details rows={[
-          ['Customer', job.customer_name], ['Address', job.address], ['Technician', job.technician_name],
-          ['Planned arrival', job.scheduled_at && formatDateTime(job.scheduled_at)], ['Customer window', `${formatTime(job.window_start)} – ${formatTime(job.window_end)}`],
-          ['Duration', `${job.duration_minutes} min`], ['Area', job.service_area], ['Needs', (job.required_skills || []).join(', ')], ['What the customer said', job.description],
-        ]} />
+        <div className="drawer-card">
+          <h4>Job Details</h4>
+          <Details rows={[
+            ['Customer', job.customer_name], ['Address', job.address], ['Technician', job.technician_name],
+            ['Planned arrival', job.scheduled_at && formatDateTime(job.scheduled_at)], ['Customer window', `${formatTime(job.window_start)} – ${formatTime(job.window_end)}`],
+            ['Duration', `${job.duration_minutes} min`], ['Area', job.service_area], ['Needs', (job.required_skills || []).join(', ')], ['What the customer said', job.description],
+          ]} />
+        </div>
         {pending ? (
-          <>
+          <div className="drawer-card">
+            <h4>Assign Technician</h4>
             {can('dispatcher', 'approver', 'admin') ? <NearbyPanel job={job} /> : null}
-            <h3>Find a technician</h3>
             <ScheduleFlow jobId={job.id} onDone={() => { onClose(); reload(); }} />
-          </>
+          </div>
         ) : (
           <>
-            <h3>What happened</h3>
-            <JobEvents job={job} />
-            {job.progress === 'completed' ? <BillingFor job={job} reload={reload} /> : null}
+            <div className="drawer-card">
+              <h4>Activity & History</h4>
+              <JobEvents job={job} />
+            </div>
+            {job.progress === 'completed' ? (
+              <div className="drawer-card">
+                <BillingFor job={job} reload={reload} />
+              </div>
+            ) : null}
           </>
         )}
       </div>
@@ -207,26 +216,70 @@ function JobDrawer({ job, reload, onClose }) {
 
 // ---- the screen ----
 
-function StepButton({ label, action }) {
+function JobCard({ job, index, onOpen, onStep }) {
   const [busy, run] = useRun();
-  return (
-    <button type="button" className="btn btn--primary btn--small" disabled={busy} onClick={(e) => { e.stopPropagation(); run(action); }}>{label}</button>
-  );
-}
-
-function JobCard({ job, onOpen, onStep }) {
   const step = nextStep(job);
-  const advance = step && can('dispatcher', 'admin') ? <StepButton label={step[1]} action={() => onStep(job, step)} /> : null;
+  const advance = step && can('dispatcher', 'admin') ? (
+    <button
+      type="button"
+      className="btn btn--primary btn--small job-advance-btn"
+      disabled={busy}
+      onClick={(e) => {
+        e.stopPropagation();
+        run(() => onStep(job, step));
+      }}
+    >
+      <span>{step[1]}</span>
+      <span aria-hidden="true">→</span>
+    </button>
+  ) : null;
+
+  const timeLabel = job.scheduled_at
+    ? formatTime(job.scheduled_at)
+    : `${formatTime(job.window_start)} – ${formatTime(job.window_end)}`;
+
+  const isPending = job.status === 'pending';
+
   return (
-    <article className="job" tabIndex={0} aria-label={`${job.service_type || 'Job'} for ${job.customer_name || 'customer'}`}
-      onClick={() => onOpen(job)} onKeyDown={(e) => { if (e.key === 'Enter') onOpen(job); }}>
-      <div className="job__time">{job.scheduled_at ? formatTime(job.scheduled_at) : `${formatTime(job.window_start)}–${formatTime(job.window_end)}`}</div>
-      <div className="job__main"><strong>{job.service_type || 'Job'}</strong>{job.customer_name ? ` for ${job.customer_name}` : ''}
-        <small className="block muted">{job.address || ''}</small>
-        {job.arrived_at ? <small className="block muted">{`Arrived ${formatTime(job.arrived_at)} (${lateness(job.minutes_late)})`}</small> : null}
+    <article
+      className={`job-card ${isPending ? 'job-card--pending' : ''}`}
+      tabIndex={0}
+      aria-label={`${job.service_type || 'Job'} for ${job.customer_name || 'customer'}`}
+      onClick={() => onOpen(job)}
+      onKeyDown={(e) => { if (e.key === 'Enter') onOpen(job); }}
+    >
+      <div className="job-card__order">
+        {index !== undefined ? <span className="job-card__seq">{index + 1}</span> : null}
+        <div className="job-card__time">
+          <span className="job-card__time-val">{timeLabel}</span>
+          {job.duration_minutes ? <small className="muted">{job.duration_minutes} min</small> : null}
+        </div>
+      </div>
+
+      <div className="job-card__body">
+        <div className="job-card__title-row">
+          <strong className="job-card__title">{job.service_type || 'Job'}</strong>
+          {job.customer_name ? <span className="job-card__customer">for {job.customer_name}</span> : null}
+        </div>
+        {job.address ? (
+          <div className="job-card__address">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z" />
+              <circle cx="12" cy="10" r="3" />
+            </svg>
+            <span>{job.address}</span>
+          </div>
+        ) : null}
+        {job.arrived_at ? (
+          <small className="block muted">{`Arrived ${formatTime(job.arrived_at)} (${lateness(job.minutes_late)})`}</small>
+        ) : null}
         <ArrivalBadge check={job.arrival_check} metres={job.arrival_distance_meters} />
       </div>
-      <div className="job__side"><ProgressBadge progress={job.progress} />{advance}</div>
+
+      <div className="job-card__actions">
+        <ProgressBadge progress={job.progress} />
+        {advance}
+      </div>
     </article>
   );
 }
@@ -238,6 +291,8 @@ export default function Jobs() {
   const [pickerValue, setPickerValue] = useState(date);
   const [reloadToken, setReloadToken] = useState(0);
   const [technicianId, setTechnicianId] = useState(null);
+  const [statusFilter, setStatusFilter] = useState('all');
+  const [techSearch, setTechSearch] = useState('');
   const [jobs, setJobs] = useState([]);
   const [status, setStatus] = useState('loading');
   const [error, setError] = useState(null);
@@ -250,7 +305,7 @@ export default function Jobs() {
   const [googleFailed, setGoogleFailed] = useState(false);
   const [opened, setOpened] = useState(null);
 
-  const watchers = can('dispatcher', 'approver', 'admin'); // a viewer sees the jobs but may not follow the technicians
+  const watchers = can('dispatcher', 'approver', 'admin');
   const jobsRef = useRef(jobs);
   jobsRef.current = jobs;
   const failures = useRef(0);
@@ -272,15 +327,14 @@ export default function Jobs() {
       if (seq !== positionSeq.current) return;
       failures.current += 1;
       setPositionFailures(failures.current);
-      if (failures.current < 2) return; // one missed refresh is not worth a warning
-      // Two in a row: what is on the map is no longer fresh, whatever its age said when it arrived. Grey it out and say so.
+      if (failures.current < 2) return;
       setPositions((before) => ({ ...before, positions: (before.positions || []).map((p) => ({ ...p, stale: true })) }));
     }
   };
 
   useEffect(() => {
     let current = true;
-    api('/v1/dispatch/map/config').then((c) => { // no street map: the plain map is drawn
+    api('/v1/dispatch/map/config').then((c) => {
       if (!current) return;
       setStreets(c);
       if (jobsRef.current.length) loadPositions();
@@ -313,15 +367,14 @@ export default function Jobs() {
 
   useEffect(() => { loadLatest.current(false); }, [date, reloadToken]);
   useEvery(() => load(true), 30000);
-  useEvery(loadPositions, 15000); // technicians on the way move: refresh their dots more often than the job list
+  useEvery(loadPositions, 15000);
 
   const go = (to) => { setDate(to); setPickerValue(to); setTechnicianId(null); setReloadToken((n) => n + 1); };
 
-  // Google Maps when the server has a browser key (one map kept alive across refreshes); otherwise, or if Google cannot load, the drawn map.
   const googleKey = streets && streets.google_key;
   const located = useMemo(() => jobs.filter((j) => Number.isFinite(j.latitude) && Number.isFinite(j.longitude) && !(j.latitude === 0 && j.longitude === 0)), [jobs]);
   const live = useMemo(() => {
-    const onBoard = new Set(jobs.map((j) => j.id)); // a technician is shown on the day whose job they are heading for
+    const onBoard = new Set(jobs.map((j) => j.id));
     return positions.enabled ? positions.positions.filter((p) => p.job && onBoard.has(p.job.id)) : [];
   }, [jobs, positions]);
 
@@ -346,84 +399,275 @@ export default function Jobs() {
   const counts = countByProgress(jobs);
   const people = new Map();
   jobs.forEach((j) => j.technician_id && people.set(j.technician_id, j.technician_name || j.technician_id));
-  const { unassigned, groups } = groupJobs(jobs, technicianId);
+
+  // Filter jobs by progress status if selected
+  const displayedJobs = useMemo(() => {
+    if (statusFilter === 'all') return jobs;
+    return jobs.filter((j) => j.progress === statusFilter);
+  }, [jobs, statusFilter]);
+
+  const { unassigned, groups } = groupJobs(displayedJobs, technicianId);
+
+  // Filter technician roster list by search term
+  const filteredPeople = useMemo(() => {
+    const term = techSearch.trim().toLowerCase();
+    const sorted = [...people].sort((a, b) => a[1].localeCompare(b[1]));
+    if (!term) return sorted;
+    return sorted.filter(([, name]) => name.toLowerCase().includes(term));
+  }, [people, techSearch]);
 
   const note = positionFailures >= 2 ? 'Live positions could not be refreshed: what is shown may be out of date.'
     : !watchers ? 'Job locations. Technician positions are for dispatchers.'
     : positions.enabled === false ? 'Job locations. Live position is switched off for this company.'
-        : live.length ? 'Job locations and the technicians who are on the way, updated every few seconds.' : 'Job locations. No technician is on the way right now.';
+        : live.length ? 'Job locations and technicians on the way (updated every 15s).' : 'Job locations. No technician is on the way right now.';
 
   let mapView = null;
   if (googleKey && !googleFailed) mapView = google ? <GoogleMap view={google} anchorRef={legendRef} jobs={located} positions={live} onSelectJob={open} /> : null;
   else mapView = <DrawMap jobs={located} positions={live} selectedId={null} onSelectJob={open} streets={streets} />;
 
-  let main;
-  if (status === 'loading') main = <Spinner />;
-  else if (status === 'error') main = <ErrorBox error={error} />;
-  else if (status === 'empty') main = <Empty text="No jobs for this day." />;
+  let mainContent;
+  if (status === 'loading') mainContent = <Spinner text="Loading schedule..." />;
+  else if (status === 'error') mainContent = <ErrorBox error={error} />;
+  else if (status === 'empty') mainContent = <Empty text="No jobs scheduled for this date." />;
+  else if (!displayedJobs.length) mainContent = <Empty text={`No jobs matching the "${PROGRESS[statusFilter]?.[0] || statusFilter}" filter.`} />;
   else {
-    main = (
-      <>
+    mainContent = (
+      <div className="stack">
         {unassigned.length ? (
-          <section aria-label="Jobs that need a technician"><h2>{`Needs a technician (${unassigned.length})`}</h2>
-            <div className="stack">{unassigned.map((j) => <JobCard key={j.id} job={j} onOpen={open} onStep={step} />)}</div></section>
+          <section className="jobs-unassigned-card" aria-label="Jobs needing assignment">
+            <div className="jobs-unassigned-card__head">
+              <div className="row">
+                <span className="badge badge--warn">Action Required</span>
+                <h3>Needs a technician ({unassigned.length})</h3>
+              </div>
+              <small className="muted">These bookings require technician assignment</small>
+            </div>
+            <div className="stack">
+              {unassigned.map((j) => (
+                <JobCard key={j.id} job={j} onOpen={open} onStep={step} />
+              ))}
+            </div>
+          </section>
         ) : null}
-        {groups.map((g) => (
-          <section key={g.technicianId} aria-label={`${g.name}'s day`}><h2>{g.name}<small className="muted">{` (${g.jobs.length})`}</small></h2>
-            <div className="stack">{g.jobs.map((j) => <JobCard key={j.id} job={j} onOpen={open} onStep={step} />)}</div></section>
-        ))}
-      </>
+
+        {groups.map((g) => {
+          const completedCount = g.jobs.filter((j) => j.progress === 'completed').length;
+          return (
+            <section key={g.technicianId} className="jobs-route-card" aria-label={`${g.name}'s route`}>
+              <div className="jobs-route-card__head">
+                <div className="jobs-route-card__info">
+                  <span className="jobs-route-card__avatar">{g.name.slice(0, 1).toUpperCase()}</span>
+                  <div>
+                    <h3 className="jobs-route-card__title">{g.name}</h3>
+                    <small className="muted">{`${g.jobs.length} visits · ${completedCount} completed`}</small>
+                  </div>
+                </div>
+                <div className="row">
+                  <Badge text={`${g.jobs.length} visits`} tone={completedCount === g.jobs.length ? 'good' : 'neutral'} />
+                </div>
+              </div>
+              <div className="jobs-route-card__body">
+                {g.jobs.map((j, idx) => (
+                  <JobCard key={j.id} job={j} index={idx} onOpen={open} onStep={step} />
+                ))}
+              </div>
+            </section>
+          );
+        })}
+      </div>
     );
   }
 
+  const isToday = date === todayIn();
+  const dateFormatted = isToday ? `Today · ${formatDay(date)}` : formatDay(date);
+
   return (
-    <>
-      <PageHeader title="Jobs" subtitle="Technicians' days, in visit order">
-        <button type="button" className="btn btn--ghost" aria-label="Previous day" onClick={() => go(addDays(date, -1))}>‹</button>
-        <input type="date" value={pickerValue} aria-label="Day" onChange={(e) => { setPickerValue(e.target.value); if (e.target.value) go(e.target.value); }} />
-        <button type="button" className="btn btn--ghost" aria-label="Next day" onClick={() => go(addDays(date, 1))}>›</button>
-        <button type="button" className="btn btn--ghost" onClick={() => go(todayIn())}>Today</button>
-      </PageHeader>
-      <div className="stack">
-        <div className="row wrap" aria-label="Summary of the day">
-          {hasJobs ? Object.entries(counts).map(([key, n]) => <Badge key={key} text={`${PROGRESS[key][0]}: ${n}`} tone={PROGRESS[key][1]} />) : null}
+    <div className="jobs-container">
+      <PageHeader title="Jobs" subtitle="Daily routes, technician schedules and live dispatch">
+        <div className="jobs-header-actions">
+          <div className="jobs-date-nav" role="group" aria-label="Date navigation">
+            <button
+              type="button"
+              className="jobs-date-nav__btn"
+              aria-label="Previous day"
+              onClick={() => go(addDays(date, -1))}
+              title="Previous day"
+            >
+              ‹
+            </button>
+            <label className="jobs-date-nav__display" title="Click to choose a date">
+              <span>{dateFormatted}</span>
+              <input
+                type="date"
+                value={pickerValue}
+                aria-label="Choose day"
+                onChange={(e) => {
+                  setPickerValue(e.target.value);
+                  if (e.target.value) go(e.target.value);
+                }}
+              />
+            </label>
+            <button
+              type="button"
+              className="jobs-date-nav__btn"
+              aria-label="Next day"
+              onClick={() => go(addDays(date, 1))}
+              title="Next day"
+            >
+              ›
+            </button>
+          </div>
+
+          {!isToday ? (
+            <button type="button" className="btn btn--outline btn--small" onClick={() => go(todayIn())}>
+              Today
+            </button>
+          ) : null}
+
+          {located.length > 0 ? (
+            <button
+              type="button"
+              className={`btn ${showMap ? 'btn--primary' : 'btn--outline'} btn--small`}
+              onClick={() => setShowMap((v) => !v)}
+              title={showMap ? 'Hide map panel' : 'Show map panel'}
+            >
+              <Icon name="tracking" />
+              <span>{showMap ? 'Hide Map' : 'Show Map'}</span>
+            </button>
+          ) : null}
         </div>
-        <section className="map-panel" aria-label="Map" hidden={!located.length}>
-          {located.length ? (
-            <>
-              <div className="map-panel__head"><h2>Map</h2><span className="muted">{note}</span>
-                <button type="button" className="btn btn--ghost btn--small" onClick={() => setShowMap((v) => !v)}>{showMap ? 'Hide map' : 'Show map'}</button></div>
-              {showMap ? (
-                <>
-                  {mapView}
-                  <Legend ref={legendRef} />
-                  {live.length ? (
-                    <ul className="live-list" aria-label="Technicians on the way">
-                      {live.map((p, i) => <li key={i}><strong>{p.name}</strong>{' — '}{etaText(p)}</li>)}
-                    </ul>
-                  ) : null}
-                </>
-              ) : null}
-            </>
+      </PageHeader>
+
+      {/* Dispatcher status strip / KPI ribbon */}
+      {hasJobs ? (
+        <div className="jobs-status-strip" role="tablist" aria-label="Status filter">
+          <button
+            type="button"
+            className={`jobs-status-chip ${statusFilter === 'all' ? 'jobs-status-chip--active' : ''}`}
+            onClick={() => setStatusFilter('all')}
+          >
+            <span>All Visits</span>
+            <span className="jobs-status-chip__count">{jobs.length}</span>
+          </button>
+          {counts.pending > 0 ? (
+            <button
+              type="button"
+              className={`jobs-status-chip jobs-status-chip--alert ${statusFilter === 'pending' ? 'jobs-status-chip--active' : ''}`}
+              onClick={() => setStatusFilter((curr) => (curr === 'pending' ? 'all' : 'pending'))}
+            >
+              <span className="jobs-status-chip__dot" />
+              <span>Needs Tech</span>
+              <span className="jobs-status-chip__count">{counts.pending}</span>
+            </button>
+          ) : null}
+          {['scheduled', 'en_route', 'arrived', 'completed'].map((key) => {
+            const count = counts[key] || 0;
+            if (count === 0 && statusFilter !== key) return null;
+            return (
+              <button
+                key={key}
+                type="button"
+                className={`jobs-status-chip ${statusFilter === key ? 'jobs-status-chip--active' : ''}`}
+                onClick={() => setStatusFilter((curr) => (curr === key ? 'all' : key))}
+              >
+                <span className="jobs-status-chip__dot" />
+                <span>{PROGRESS[key][0]}</span>
+                <span className="jobs-status-chip__count">{count}</span>
+              </button>
+            );
+          })}
+        </div>
+      ) : null}
+
+      {/* Map panel */}
+      {located.length > 0 && showMap ? (
+        <section className="card map-panel" aria-label="Map view">
+          <div className="map-panel__head">
+            <div className="row">
+              <span className="badge badge--info">Live Map</span>
+              <span className="muted small">{note}</span>
+            </div>
+            <button
+              type="button"
+              className="btn btn--ghost btn--small"
+              onClick={() => setShowMap(false)}
+            >
+              Close map
+            </button>
+          </div>
+          {mapView}
+          <Legend ref={legendRef} />
+          {live.length ? (
+            <ul className="live-list" aria-label="Technicians on the way">
+              {live.map((p, i) => (
+                <li key={i}>
+                  <strong>{p.name}</strong> — {etaText(p)}
+                </li>
+              ))}
+            </ul>
           ) : null}
         </section>
-      </div>
+      ) : null}
+
+      {/* Two-column workspace */}
       <div className="two-col">
-        <nav className="side-list" aria-label="Technicians">
+        <aside className="side-list" aria-label="Technicians directory">
+          <div className="between" style={{ padding: '4px 8px 6px' }}>
+            <span className="eyebrow" style={{ margin: 0 }}>Technicians</span>
+            <span className="count">{people.size}</span>
+          </div>
+
+          {people.size > 5 ? (
+            <input
+              type="search"
+              className="jobs-roster__search"
+              placeholder="Search technician..."
+              value={techSearch}
+              onChange={(e) => setTechSearch(e.target.value)}
+              style={{ margin: '0 0 6px', height: '32px', fontSize: '0.82rem' }}
+            />
+          ) : null}
+
           {hasJobs ? (
             <>
-              <button type="button" className={`side-item ${!technicianId ? 'side-item--on' : ''}`} onClick={() => setTechnicianId(null)}>All technicians<span className="count">{jobs.length}</span></button>
-              {[...people].sort((a, b) => a[1].localeCompare(b[1])).map(([id, name]) => (
-                <button type="button" key={id} className={`side-item ${technicianId === id ? 'side-item--on' : ''}`} onClick={() => setTechnicianId(id)}>
-                  {name}<span className="count">{jobs.filter((j) => j.technician_id === id).length}</span>
-                </button>
-              ))}
+              <button
+                type="button"
+                className={`side-item ${!technicianId ? 'side-item--on' : ''}`}
+                onClick={() => setTechnicianId(null)}
+              >
+                <span>All Technicians</span>
+                <span className="count">{jobs.length}</span>
+              </button>
+              {filteredPeople.map(([id, name]) => {
+                const count = jobs.filter((j) => j.technician_id === id).length;
+                const hasActive = jobs.some((j) => j.technician_id === id && (j.progress === 'en_route' || j.progress === 'arrived'));
+                return (
+                  <button
+                    type="button"
+                    key={id}
+                    className={`side-item ${technicianId === id ? 'side-item--on' : ''}`}
+                    onClick={() => setTechnicianId((curr) => (curr === id ? null : id))}
+                  >
+                    <span className="row" style={{ gap: '8px' }}>
+                      {hasActive ? <span className="badge badge--good" style={{ width: '6px', height: '6px', padding: 0 }} /> : null}
+                      <span>{name}</span>
+                    </span>
+                    <span className="count">{count}</span>
+                  </button>
+                );
+              })}
             </>
-          ) : null}
-        </nav>
-        <div className="stack">{main}</div>
+          ) : (
+            <small className="muted" style={{ padding: '8px 12px' }}>No technicians</small>
+          )}
+        </aside>
+
+        <main className="stack" style={{ minWidth: 0 }}>
+          {mainContent}
+        </main>
       </div>
+
       {opened ? <JobDrawer job={opened} reload={reload} onClose={() => setOpened(null)} /> : null}
-    </>
+    </div>
   );
 }

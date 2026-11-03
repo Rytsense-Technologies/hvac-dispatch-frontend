@@ -199,39 +199,49 @@ function Shell({ timezone, onSignOut }) {
   useEffect(() => { page.current?.focus({ preventScroll: true }); }, [hash]);
 
   const displayName = session.user?.name || session.actor;
+  const visible = SECTIONS.filter(allowedIn);
+  const workspace = visible.filter((s) => s.group !== 'manage');
+  const manage = visible.filter((s) => s.group === 'manage');
+  const navLink = (s) => (
+    <a key={s.id} href={`#/${s.id}`} className={`menu-item ${s.id === section.id ? 'menu-item--on' : ''}`} aria-current={s.id === section.id ? 'page' : undefined}>
+      <Icon name={s.icon} /><span>{s.label}</span>
+    </a>
+  );
 
   return (
     <div id="shell" className="shell">
       <aside className="sidebar">
         <div className="brand"><span className="brand__mark" aria-hidden="true">HD</span> HVAC Dispatch</div>
         <nav id="menu" className="menu" aria-label="Sections">
-          {SECTIONS.filter(allowedIn).map((s) => (
-            <a key={s.id} href={`#/${s.id}`} className={`menu-item ${s.id === section.id ? 'menu-item--on' : ''}`} aria-current={s.id === section.id ? 'page' : undefined}>
-              <Icon name={s.icon} /><span>{s.label}</span>
-            </a>
-          ))}
-        </nav>
-        <div className="sidebar__foot">
+          <div className="menu-group-label">Workspace</div>
+          {workspace.map(navLink)}
+          {manage.length ? <div className="menu-group-label">Manage</div> : null}
+          {manage.map(navLink)}
           <a className="menu-item" href="call.html"><Icon name="phone" /><span>Test call</span></a>
-          <div id="who" className="who" data-testid="identity">
-            <span className="who__avatar" aria-hidden="true">{(displayName || '?').slice(0, 1).toUpperCase()}</span>
-            <span className="who__body">
+        </nav>
+      </aside>
+      <div className="main">
+        <header className="topbar">
+          <div className="topbar__crumb"><span>Workspace</span><span aria-hidden="true">/</span><strong>{section.label}</strong></div>
+          <div id="who" className="identity" data-testid="identity">
+            <span className="identity__avatar" aria-hidden="true">{(displayName || '?').slice(0, 1).toUpperCase()}</span>
+            <span className="identity__body">
               <strong>{displayName}</strong> <Badge text={session.role} tone="info" />
               <small className="block muted">{`${session.actor} · ${timezone}`}</small>
             </span>
+            <button id="signout" className="btn btn--ghost btn--small" type="button" onClick={onSignOut} aria-label="Sign out" title="Sign out"><Icon name="signOut" /></button>
           </div>
-          <button id="signout" className="btn btn--outline btn--block" type="button" onClick={onSignOut}><Icon name="signOut" /><span>Sign out</span></button>
-        </div>
-      </aside>
-      <main id="page" className="page" tabIndex={-1} ref={page}>
-        {allowed ? (
-          <SectionBoundary key={`${section.id}${hash}`}>
-            <Suspense fallback={null}><View /></Suspense>
-          </SectionBoundary>
-        ) : (
-          <div className="card"><h1>Not available for your role</h1><p className="muted">Ask an administrator if you need this section.</p></div>
-        )}
-      </main>
+        </header>
+        <main id="page" className="page" tabIndex={-1} ref={page}>
+          {allowed ? (
+            <SectionBoundary key={`${section.id}${hash}`}>
+              <Suspense fallback={null}><View /></Suspense>
+            </SectionBoundary>
+          ) : (
+            <div className="card"><h1>Not available for your role</h1><p className="muted">Ask an administrator if you need this section.</p></div>
+          )}
+        </main>
+      </div>
     </div>
   );
 }

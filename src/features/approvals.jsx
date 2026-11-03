@@ -33,8 +33,7 @@ export function describe(approval, { technicians = {}, jobs = {} }) {
 
 // A person may not decide their own request: the server refuses it, the screen says so up front.
 export const isOwn = (approval, actor) => !!actor && approval.requested_by === actor;
-
-function ApprovalCard({ approval, names, jobs, reload }) {
+function ApprovalCard({ approva12l, names, jobs, reload }) {
   const { title, items } = describe(approval, { technicians: names, jobs });
   const [reason, setReason] = useState('');
   const empty = !reason.trim();

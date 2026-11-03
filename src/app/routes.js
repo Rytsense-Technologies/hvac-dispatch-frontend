@@ -1,6 +1,7 @@
 // The console's sections: which hash each is at, what the menu calls it, its sidebar icon, which roles
-// may open it, and the lazy import that loads its code. Kept separate from App.jsx so the shell (sign-in,
-// menu, routing) doesn't have to change every time a section is added, renamed or re-ordered.
+// may open it, which sidebar group it falls under, and the lazy import that loads its code. Kept
+// separate from App.jsx so the shell (sign-in, menu, routing) doesn't have to change every time a
+// section is added, renamed or re-ordered. A section with no `group` sits in the main "Workspace" list.
 import { lazy } from 'react';
 
 export const SECTIONS = [
@@ -12,13 +13,13 @@ export const SECTIONS = [
   // { id: 'billing', label: 'Billing', icon: 'usage', view: lazy(() => import('../features/billing.jsx')) },
   { id: 'leads', label: 'Leads', icon: 'leads', view: lazy(() => import('../features/leads.jsx')) },
   { id: 'memory', label: 'Memory', icon: 'memory', view: lazy(() => import('../features/memory.jsx')) },
-  { id: 'usage', label: 'Usage and bill', icon: 'usage', view: lazy(() => import('../features/usage.jsx')) },
   { id: 'approvals', label: 'Approvals', icon: 'approvals', view: lazy(() => import('../features/approvals.jsx')) },
   { id: 'attention', label: 'Needs attention', icon: 'attention', view: lazy(() => import('../features/attention.jsx')) },
   { id: 'plan', label: 'Nightly plan', icon: 'plan', view: lazy(() => import('../features/plan.jsx')) },
   { id: 'technicians', label: 'Technicians', icon: 'technicians', view: lazy(() => import('../features/technicians.jsx')) },
-  { id: 'users', label: 'Users', icon: 'users', view: lazy(() => import('../features/users.jsx')) },
-  { id: 'reports', label: 'Reports', icon: 'reports', view: lazy(() => import('../features/reports.jsx')) },
-  { id: 'copilot', label: 'Co-pilot', icon: 'copilot', view: lazy(() => import('../features/copilot.jsx')) },
+  { id: 'usage', label: 'Usage and bill', icon: 'usage', group: 'manage', view: lazy(() => import('../features/usage.jsx')) },
+  { id: 'users', label: 'Users', icon: 'users', group: 'manage', view: lazy(() => import('../features/users.jsx')) },
+  { id: 'reports', label: 'Reports', icon: 'reports', group: 'manage', view: lazy(() => import('../features/reports.jsx')) },
+  { id: 'copilot', label: 'Co-pilot', icon: 'copilot', group: 'manage', view: lazy(() => import('../features/copilot.jsx')) },
 ];
       
