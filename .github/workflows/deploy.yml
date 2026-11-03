@@ -1,0 +1,81 @@
+name: Deploy HVAC Frontend Console
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: 'Branch to deploy'
+        required: true
+        default: 'main'
+
+concurrency:
+  group: hvac-frontend-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy to EC2
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Deploy to EC2 via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          port: 22
+          script_stop: true
+          script: |
+            set -e
+            echo "=========================================================="
+            echo "🚀 Starting HVAC Frontend Deployment on EC2"
+            echo "=========================================================="
+
+            FRONTEND_DIR="/home/ubuntu/hvac/hvac-dispatch-frontend"
+            COMPOSE_DIR="/home/ubuntu/hvac/hvac-voice-dispatch"
+            TARGET_BRANCH="${{ github.event.inputs.branch || 'main' }}"
+
+            cd "$FRONTEND_DIR"
+            echo "📂 Frontend directory: $(pwd)"
+            echo "🌿 Pulling target branch: $TARGET_BRANCH"
+            git fetch origin "$TARGET_BRANCH"
+            git checkout "$TARGET_BRANCH"
+            git pull origin "$TARGET_BRANCH"
+
+            cd "$COMPOSE_DIR"
+            echo "📂 Compose directory: $(pwd)"
+
+            echo "🔨 Building Frontend Docker container..."
+            docker compose build frontend
+
+            echo "🔄 Restarting Frontend service..."
+            docker compose up -d --no-deps frontend
+
+            echo "⏳ Verifying Frontend availability..."
+            RETRIES=10
+            until curl -fsS http://127.0.0.1:5505/ > /dev/null 2>&1 || [ $RETRIES -eq 0 ]; do
+              echo "Waiting for http://127.0.0.1:5505/ to respond... ($RETRIES attempts remaining)"
+              RETRIES=$((RETRIES-1))
+              sleep 2
+            done
+
+            if [ $RETRIES -eq 0 ]; then
+              echo "❌ Frontend check failed after timeout!"
+              docker compose logs --tail 40 frontend
+              exit 1
+            fi
+
+            echo "✅ Frontend service is healthy!"
+            curl -I http://127.0.0.1:5505/
+
+            echo "🧹 Pruning unused Docker build images..."
+            docker image prune -f
+
+            echo "=========================================================="
+            echo "🎉 HVAC Frontend Deployment Finished Successfully!"
+            echo "=========================================================="
