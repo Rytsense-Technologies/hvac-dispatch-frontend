@@ -6,6 +6,7 @@ import { lazy } from 'react';
 
 export const SECTIONS = [
   { id: 'dashboard', label: 'Dashboard', icon: 'dashboard', view: lazy(() => import('../features/dashboard.jsx')) },
+  { id: 'agents', label: 'AI agents', icon: 'copilot', view: lazy(() => import('../features/agents.jsx')) },
   { id: 'requests', label: 'Requests', icon: 'requests', view: lazy(() => import('../features/requests.jsx')) },
   { id: 'jobs', label: 'Jobs', icon: 'jobs', view: lazy(() => import('../features/jobs.jsx')) },
   { id: 'tracking', label: 'Tracking', icon: 'tracking', view: lazy(() => import('../features/tracking.jsx')) },
