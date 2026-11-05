@@ -28,6 +28,10 @@ class SectionBoundary extends Component {
 
 // ---------- sign in ----------
 
+// On plain http at an address that is not this computer the server does not mark the sign-in cookie Secure (a browser would drop it), so signing in works, but nothing is encrypted:
+// say so on the sign-in page. (https and localhost are secure contexts: no notice.)
+const INSECURE_ADDRESS = typeof window !== 'undefined' && window.isSecureContext === false;
+
 function LoginForm({ message, setupOpen, signupOpen, onSignedIn, onRegister, onSignup, onForgot }) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -73,6 +77,7 @@ function LoginForm({ message, setupOpen, signupOpen, onSignedIn, onRegister, onS
         <label htmlFor="loginPassword">Password</label>
         <input id="loginPassword" type="password" autoComplete="current-password" required maxLength={256} value={password} onChange={(e) => setPassword(e.target.value)} />
       </div>
+      {INSECURE_ADDRESS ? <p id="insecureNote" className="note" role="note">This page is not encrypted (plain http). That is fine for testing, but anyone on the network can read what you type: use an <strong>https</strong> address for real use.</p> : null}
       <p id="loginMessage" className="note-line" role="alert">{text}{techLink ? <> <a href="/tech">Open the technician page</a>.</> : null}</p>
       <button className="btn btn--primary" type="submit" disabled={busy}>Sign in</button>
       <p className="muted small row between">
