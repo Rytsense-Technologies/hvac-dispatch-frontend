@@ -102,7 +102,7 @@ function RegisterForm({ codeRequired, onRegistered, onBack }) {
   const submit = async (event) => {
     event.preventDefault();
     setText('');
-    if (f.password.length < 12 || f.password.length > 128) { setText('The password must be 12 to 128 characters.'); return; }
+    if (f.password.length < 8 || f.password.length > 128) { setText('The password must be 8 to 128 characters.'); return; }
     if (f.password !== f.confirm) { setText('The passwords do not match.'); return; }
     setBusy(true);
     try {
@@ -121,7 +121,7 @@ function RegisterForm({ codeRequired, onRegistered, onBack }) {
       <p className="muted">This sets up the console. It only works once - as soon as an admin exists, this page closes for good.</p>
       <div className="field"><label htmlFor="regName">Name</label><input id="regName" type="text" required maxLength={160} {...bind('name')} /></div>
       <div className="field"><label htmlFor="regEmail">Email</label><input id="regEmail" type="email" autoComplete="username" required maxLength={255} {...bind('email')} /></div>
-      <div className="field"><label htmlFor="regPassword">Password</label><input id="regPassword" type="password" autoComplete="new-password" required maxLength={128} {...bind('password')} /><small className="muted">12 to 128 characters, not all digits, and not a common password.</small></div>
+      <div className="field"><label htmlFor="regPassword">Password</label><input id="regPassword" type="password" autoComplete="new-password" required maxLength={128} {...bind('password')} /><small className="muted">8 to 128 characters, not all digits, and not a common password.</small></div>
       <div className="field"><label htmlFor="regConfirm">Password again</label><input id="regConfirm" type="password" autoComplete="new-password" required maxLength={128} {...bind('confirm')} /></div>
       {codeRequired ? <div className="field"><label htmlFor="regCode">Setup code</label><input id="regCode" type="text" required maxLength={200} {...bind('setup_code')} /></div> : null}
       <p className="note-line" role="alert">{text}</p>
@@ -142,7 +142,7 @@ function SignupForm({ onBack }) {
   const submit = async (event) => {
     event.preventDefault();
     setText('');
-    if (f.password.length < 12 || f.password.length > 128) { setText('The password must be 12 to 128 characters.'); return; }
+    if (f.password.length < 8 || f.password.length > 128) { setText('The password must be 8 to 128 characters.'); return; }
     if (f.password !== f.confirm) { setText('The passwords do not match.'); return; }
     setBusy(true);
     try {
@@ -171,7 +171,7 @@ function SignupForm({ onBack }) {
       <div className="field"><label htmlFor="suCompany">Company name</label><input id="suCompany" type="text" autoComplete="organization" required maxLength={120} {...bind('company')} /></div>
       <div className="field"><label htmlFor="suName">Your name</label><input id="suName" type="text" autoComplete="name" required maxLength={160} {...bind('name')} /></div>
       <div className="field"><label htmlFor="suEmail">Your email (this is your username)</label><input id="suEmail" type="email" autoComplete="username" required maxLength={255} {...bind('email')} /></div>
-      <div className="field"><label htmlFor="suPassword">Password</label><input id="suPassword" type="password" autoComplete="new-password" required maxLength={128} {...bind('password')} /><small className="muted">12 to 128 characters, not all digits, and not a common password.</small></div>
+      <div className="field"><label htmlFor="suPassword">Password</label><input id="suPassword" type="password" autoComplete="new-password" required maxLength={128} {...bind('password')} /><small className="muted">8 to 128 characters, not all digits, and not a common password.</small></div>
       <div className="field"><label htmlFor="suConfirm">Password again</label><input id="suConfirm" type="password" autoComplete="new-password" required maxLength={128} {...bind('confirm')} /></div>
       <p className="note-line" role="alert">{text}</p>
       <button className="btn btn--primary" type="submit" disabled={busy}>Create my company</button>
