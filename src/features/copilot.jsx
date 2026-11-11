@@ -26,43 +26,37 @@ const SUGGESTION_CHIPS = [
   { label: 'Show existing lead campaigns', question: 'Show existing lead campaigns' },
 ];
 
-// Illustrative rows for reference parity — CTAs open the matching section list
-// (not a named record). Visible labels stay as in the design; aria-label names the destination.
+// Illustrative sample rows — CTAs are section navigation (not deep links to named records).
 const SUGGESTED_ACTIONS = [
   {
     title: 'Invoice follow-up',
     subtitle: 'Sarah Mitchell · Needs approval',
-    cta: 'Review',
+    cta: 'Open automation',
     href: '#/automation',
-    ariaLabel: 'Open Admin automation review queue',
   },
   {
     title: 'Customer record update',
     subtitle: 'David Rodriguez · Needs review',
-    cta: 'Review',
+    cta: 'Open automation',
     href: '#/automation',
-    ariaLabel: 'Open Admin automation review queue',
   },
   {
     title: 'Assign AC repair · Sarah Mitchell',
     subtitle: 'Unassigned work',
-    cta: 'Open task',
+    cta: 'Open Work',
     href: '#/work',
-    ariaLabel: 'Open Work task list',
   },
   {
     title: 'Assign Plumbing inspection · William Brooks',
     subtitle: 'Unassigned work',
-    cta: 'Open task',
+    cta: 'Open Work',
     href: '#/work',
-    ariaLabel: 'Open Work task list',
   },
   {
     title: 'Explore existing campaigns',
     subtitle: 'Sample outreach',
-    cta: 'Open',
+    cta: 'Open Campaigns',
     href: '#/campaigns',
-    ariaLabel: 'Open Campaigns',
   },
 ];
 
@@ -76,7 +70,7 @@ function ConfirmationBox({ confirmation }) {
         <div className="row" style={{ alignItems: 'center', gap: '8px' }}>
           <Badge text={submitted.status || 'Waiting'} tone="good" />
           <span style={{ fontWeight: 'var(--font-weight-medium)' }}>
-            Submitted for approval. A different person must review and approve it in the Approvals queue.
+            Live Approvals proposal submitted. A different person must review and approve it before any booking changes.
           </span>
         </div>
         <div>
@@ -96,7 +90,7 @@ function ConfirmationBox({ confirmation }) {
           <span>Action Preview: Confirmation Required</span>
         </h4>
         <p style={{ margin: 0, fontSize: '0.88rem', color: 'var(--text)' }}>
-          This is an automated schedule preview. Confirming will generate a formal proposal in the Approvals queue. No changes are booked without a second person&apos;s approval.
+          This preview is connected to your workspace. Confirming will POST a live Approvals proposal that another person must approve before any schedule change is booked.
         </p>
         <div style={{ marginTop: '4px' }}>
           <ActionButton
@@ -104,10 +98,10 @@ function ConfirmationBox({ confirmation }) {
             action={async () => {
               const r = await api(`/v1/copilot/actions/${confirmation.action_id}/confirm`, { method: 'POST' });
               setSubmitted(r);
-              toast('Submitted for approval. A different person must approve it.');
+              toast('Live Approvals proposal submitted. A different person must approve it.');
             }}
           >
-            Confirm and submit for approval
+            Confirm — submit live Approvals proposal
           </ActionButton>
         </div>
       </div>
@@ -464,7 +458,7 @@ export default function Copilot() {
           </form>
 
           <p className="sample-label">
-            Chat uses your live schedule data. Confirming a proposed change still creates an Approvals item for a second person to review.
+            Suggested chips and action rows are illustrative samples. Chat, threads, and confirmations use connected APIs — confirming a change creates a live Approvals proposal.
           </p>
 
           {threads && threads.length ? (
@@ -509,18 +503,13 @@ export default function Copilot() {
                 <strong>{action.title}</strong>
                 <small className="muted">{action.subtitle}</small>
               </span>
-              <a
-                href={action.href}
-                className="btn btn--secondary agent-btn coworker-action-btn"
-                aria-label={action.ariaLabel}
-                title={action.ariaLabel}
-              >
+              <a href={action.href} className="btn btn--secondary agent-btn coworker-action-btn">
                 {action.cta}
               </a>
             </div>
           ))}
           <p className="sample-label">
-            Sample examples — buttons open the Work, Automation, or Campaigns list, not a specific record.
+            Illustrative examples — buttons open the section list, not a specific record.
           </p>
         </Panel>
       </div>
