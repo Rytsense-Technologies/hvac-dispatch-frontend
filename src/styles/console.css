@@ -775,12 +775,43 @@ a.card.stat:hover { color: inherit; }
   font-size: 12px;
   color: #526b7b;
 }
+.overview-agents-meta {
+  margin: -4px 0 12px;
+  font-size: 12px;
+}
 .overview-extensions .empty { margin: 0; }
+.overview-extensions__actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.overview-detail {
+  margin-top: 8px;
+}
+.overview-detail__filters {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.overview-detail__body {
+  display: grid;
+  gap: 14px;
+}
+.overview-detail__problems {
+  margin: 0;
+  font-size: 13px;
+  color: #4f6877;
+  line-height: 1.45;
+}
 
 @media (max-width: 1000px) {
   .priority-grid { grid-template-columns: 1fr; }
   .agent-strip { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .overview-layout { grid-template-columns: 1fr; }
+  .overview-detail__filters { width: 100%; justify-content: flex-start; }
 }
 @media (max-width: 700px) {
   .priority { padding: 16px; }
