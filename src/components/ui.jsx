@@ -66,7 +66,7 @@ export function Row({ leading, title, subtitle, trailing, className = '', onClic
         <strong>{title}</strong>
         {subtitle ? <small className="muted">{subtitle}</small> : null}
       </span>
-      {trailing}
+      {trailing ? <span className="row-trail">{trailing}</span> : null}
     </Tag>
   );
 }

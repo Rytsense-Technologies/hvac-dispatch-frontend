@@ -21,9 +21,9 @@ Card.Row = function CardRow({ className = '', children }) {
 // items: [[label, value], ...], [[label, value, hint], ...] or [[label, value, hint, icon], ...] - value
 // can be any node (text, a formatted number, a badge); hint is a short line of muted detail under the
 // number (e.g. "4 in, 2 out"); icon is an optional Icon.jsx name shown in a small badge, top right.
-export function StatGrid({ items }) {
+export function StatGrid({ items, className = '' }) {
   return (
-    <div className="cards">
+    <div className={`cards ${className}`.trim()}>
       {items.map(([label, value, hint, icon]) => (
         <div key={label} className="card stat">
           <div className="stat__head">

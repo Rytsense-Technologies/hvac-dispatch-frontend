@@ -24,7 +24,8 @@ function currentSection() {
 
 function crumbFor(section) {
   const root = section.group === 'manage' ? 'Manage' : 'Workspace';
-  if (section.sectionGroup === 'work') return { root, strong: 'Work' };
+  // Reference crumb: "Workspace / Work / Tasks" (or Appointments).
+  if (section.sectionGroup === 'work') return { root, strong: `Work / ${section.label}` };
   if (section.sectionGroup === 'calls') return { root, strong: 'Calls' };
   if (section.id === 'automation') return { root, strong: 'Settings / Admin automation' };
   return { root, strong: section.label };
@@ -384,7 +385,8 @@ function Shell({ timezone, onSignOut }) {
           </div>
         </header>
         <main id="page" className="page" tabIndex={-1} ref={page}>
-          {sectionTabs ? (
+          {/* Work owns section tabs inside the page (after PageHeader) for reference order. */}
+          {sectionTabs && section.sectionGroup !== 'work' ? (
             <SectionTabs
               options={sectionTabs.map((tab) => [tab.id, tab.label, tab.href])}
               value={section.id}
