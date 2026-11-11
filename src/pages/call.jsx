@@ -167,65 +167,63 @@ function SmsTest() {
   );
 }
 
-// ---------- text call ----------
-// The real phone assistant, typed instead of spoken (the "Text call" tab). The server starts the same voice worker in a room with the speech turned off (voice/text_call.py):
-// the same instructions, tools, opening and endings as a voice call, with no speech-to-text or text-to-speech cost. Inbound = you are a customer who phoned in; outbound = you are the lead
-// the assistant is calling. Admin only (the console's session cookie plus its CSRF token). Everything the server sends is shown as text, never as HTML.
+// ---------- text test ----------
+// The real phone assistant tested by typing (the "Text test" tab). The browser only sends and receives plain text over HTTP: no call, no microphone and no media connection.
+// The server plays the tester and runs the same assistant as a phone call: the same instructions, tools, database and endings (voice/text_chat.py), so it costs no speech-to-text, no text-to-speech and no Twilio minutes.
+// Inbound = you are a customer who phoned in; outbound = you are the lead the assistant is calling. Admin only (the console's session cookie plus its CSRF token). Everything the server sends is shown as text.
 const TEXT_CALL_PHONE_KEY = "text_call_phone";
-const CHAT_TOPIC = "lk.chat";
-const EVENTS_TOPIC_FALLBACK = "test-call-events";
-const TEXT_JOIN_WAIT_MS = 25000;
 
 function TextCall() {
   const [outbound, setOutbound] = useState(false);
   const [phone, setPhone] = useState(() => safeStorageGet(TEXT_CALL_PHONE_KEY) || "");
   const [leadName, setLeadName] = useState("");
   const [interest, setInterest] = useState("");
-  const [running, setRunning] = useState(false);
+  const [sessionId, setSessionId] = useState(null);
   const [startBusy, setStartBusy] = useState(false);
-  const [heard, setHeard] = useState(false);
+  const [waiting, setWaiting] = useState(false);
   const [items, setItems] = useState([]);
   const [events, setEvents] = useState([]);
   const [text, setText] = useState("");
   const [note, setNote] = useState("");
   const [status, setStatus] = useState("");
   const [ended, setEnded] = useState("");
-  const roomRef = useRef(null);
   const csrf = useRef(null);
-  const eventsTopic = useRef(EVENTS_TOPIC_FALLBACK);
-  const joinTimer = useRef(null);
-  const heardRef = useRef(false);
   const counter = useRef(0);
-  const outboundRef = useRef(false);
   const box = useRef(null);
+  const sessionRef = useRef(null);
+  const outboundRef = useRef(false);
 
   useEffect(() => { outboundRef.current = outbound; }, [outbound]);
-  useEffect(() => { if (box.current) box.current.scrollTop = box.current.scrollHeight; }, [items]);
-  // Leaving the tab or the page ends the call.
+  useEffect(() => { if (box.current) box.current.scrollTop = box.current.scrollHeight; }, [items, waiting]);
+  // Leaving the tab or the page closes the test on the server.
   useEffect(() => () => {
-    clearTimeout(joinTimer.current);
-    const room = roomRef.current;
-    roomRef.current = null;
-    if (room) room.disconnect();
+    const id = sessionRef.current;
+    sessionRef.current = null;
+    if (id && csrf.current !== null) fetch(`${API_BASE}/v1/voice/text-chat/${id}`, { method: "DELETE", credentials: "same-origin", headers: { "X-CSRF-Token": csrf.current }, keepalive: true }).catch(() => {});
   }, []);
 
   const addBubble = (mine, message) => setItems((prev) => [...prev, { id: counter.current++, mine, message }]);
 
-  function finished(message) {
-    clearTimeout(joinTimer.current);
-    roomRef.current = null;
-    heardRef.current = false;
-    setHeard(false);
-    setRunning(false);
-    setStatus("");
-    setEnded(message);
+  function apply(result) {
+    (result.replies || []).forEach((reply) => addBubble(false, reply));
+    if ((result.events || []).length) setEvents((prev) => [...prev, ...result.events.map((event) => ({ id: counter.current++, ...event }))]);
+    if (result.ended) {
+      sessionRef.current = null;
+      setSessionId(null);
+      setStatus("");
+      setEnded("The call has ended (the assistant ended it).");
+    }
   }
 
-  async function hangUp(message) {
-    const room = roomRef.current;
-    roomRef.current = null;
-    if (room) await room.disconnect().catch(() => {});
-    finished(message);
+  async function ensureCsrf() {
+    if (csrf.current === null) {                                     // the same console sign-in as the other tabs
+      const me = await smsApi("/v1/auth/me");
+      csrf.current = me.csrf_token;
+    }
+  }
+
+  function explain(error) {
+    return error.status === 403 ? "Only an admin can use the text test." : error.status === 401 ? "Sign in to the console first, then reload this page." : error.message;
   }
 
   async function startCall() {
@@ -236,90 +234,75 @@ function TextCall() {
     setEnded("");
     setItems([]);
     setEvents([]);
-    heardRef.current = false;
-    setHeard(false);
     setStartBusy(true);
-    const room = new Room();
+    setStatus("Starting the assistant...");
     try {
-      if (csrf.current === null) {                                  // the same console sign-in as the other tabs
-        const me = await smsApi("/v1/auth/me");
-        csrf.current = me.csrf_token;
-      }
-      const made = await smsApi("/v1/voice/text-call", {
+      await ensureCsrf();
+      const made = await smsApi("/v1/voice/text-chat", {
         method: "POST",
         csrf: csrf.current,
         body: { direction: outbound ? "outbound" : "inbound", phone: phone.trim(), name: outbound ? leadName.trim() || null : null, interest: outbound ? interest.trim() || null : null },
       });
-      eventsTopic.current = made.events_topic || EVENTS_TOPIC_FALLBACK;
-      roomRef.current = room;
-      room.registerTextStreamHandler(TRANSCRIPTION_TOPIC, async (reader) => {
-        let said = "";
-        for await (const chunk of reader) said += chunk;
-        if (!said.trim() || room !== roomRef.current) return;
-        addBubble(false, said.trim());
-        if (!heardRef.current) {
-          heardRef.current = true;
-          clearTimeout(joinTimer.current);
-          setStatus("Connected. Type as the caller.");
-          setHeard(true);
-        }
-      });
-      room.on(RoomEvent.DataReceived, (payload, participant, kind, topic) => {
-        if (topic !== eventsTopic.current || room !== roomRef.current) return;
-        try {
-          const event = JSON.parse(new TextDecoder().decode(payload));
-          setEvents((prev) => [...prev, { id: counter.current++, ...event }]);
-        } catch { /* a message that is not ours is ignored */ }
-      });
-      room.on(RoomEvent.Disconnected, () => { if (room === roomRef.current) finished("The call has ended (the assistant ended it, or the connection closed)."); });
-      await room.connect(made.url, made.token);
-      setRunning(true);
-      setStatus("Connecting the assistant...");
-      joinTimer.current = setTimeout(() => {
-        if (roomRef.current === room && !heardRef.current) setStatus("The assistant has not joined. Make sure the voice worker is running, then end this call and start again.");
-      }, TEXT_JOIN_WAIT_MS);
+      sessionRef.current = made.session_id;
+      setSessionId(made.session_id);
+      apply(made);
+      if (!made.ended) setStatus("Connected. Type as the caller.");
     } catch (error) {
-      roomRef.current = null;
-      await room.disconnect().catch(() => {});
-      setNote(error.status === 403 ? "Only an admin can start a text call." : error.status === 401 ? "Sign in to the console first, then reload this page." : error.message);
-      setRunning(false);
+      setStatus("");
+      setNote(explain(error));
     } finally {
       setStartBusy(false);
     }
   }
 
+  async function hangUp() {
+    const id = sessionRef.current;
+    sessionRef.current = null;
+    setSessionId(null);
+    setStatus("");
+    setEnded("Call ended by you.");
+    if (id) await smsApi(`/v1/voice/text-chat/${id}`, { method: "DELETE", csrf: csrf.current }).catch(() => {});
+  }
+
   async function send(event) {
     event.preventDefault();
     const message = text.trim();
-    const room = roomRef.current;
-    if (!message || !room || !heard) return;
+    const id = sessionRef.current;
+    if (!message || !id || waiting) return;
     setText("");
+    setNote("");
     addBubble(true, message);
+    setWaiting(true);
     try {
-      await room.localParticipant.sendText(message, { topic: CHAT_TOPIC });
+      apply(await smsApi(`/v1/voice/text-chat/${id}/say`, { method: "POST", csrf: csrf.current, body: { text: message } }));
     } catch (error) {
-      setNote(`Could not send: ${error.message}`);
+      if (error.status === 404) { sessionRef.current = null; setSessionId(null); setEnded("This text test is no longer open. Start a new one."); }
+      else setNote(explain(error));
+    } finally {
+      setWaiting(false);
     }
   }
 
   function chooseDirection(value) {
-    if (running) return;
+    if (sessionId) return;
     setOutbound(value);
     setItems([]);
     setEvents([]);
     setEnded("");
   }
 
+  const running = sessionId !== null;
   const emptyHint = outbound
-    ? "Start the call. The assistant opens the way it does when it phones a lead; answer as the lead, for example \"Yes, this is Jordan\"."
-    : "Start the call. The assistant answers the way it does when a customer phones in; then say what is wrong, for example \"My AC is not cooling\".";
+    ? "Start the test. The assistant opens the way it does when it phones a lead; answer as the lead, for example \"Yes, this is Jordan\"."
+    : "Start the test. The assistant answers the way it does when a customer phones in; then say what is wrong, for example \"My AC is not cooling\".";
 
   return (
     <>
       <section className="card">
-        <h2>Text call: the same phone assistant, typed</h2>
-        <p className="muted small">This is the real phone assistant, with the same instructions, tools and endings as a voice call, but you type instead of speaking, so it costs no speech-to-text or text-to-speech.
-          Like a real call, its tools work on real records for the number you enter, so use a test number. A text call is not billed as a call and saves no memory.</p>
+        <h2>Text test: the same phone assistant, by typing</h2>
+        <p className="muted small">This tests the real phone assistant with plain text, with no call and no microphone. It uses the same instructions, tools, database and endings as a phone call, so it costs no speech-to-text,
+          no text-to-speech and no Twilio minutes. Like a real call, its tools work on real records for the number you enter (it can book a visit and send the confirmation text), so use a test number.
+          It is not billed as a call and saves no memory.</p>
         <div className="mode-tabs direction" role="group" aria-label="Call direction">
           <button type="button" className="mode-tab" aria-pressed={String(!outbound)} disabled={running} onClick={() => chooseDirection(false)}>Inbound: a customer phones us</button>
           <button type="button" className="mode-tab" aria-pressed={String(outbound)} disabled={running} onClick={() => chooseDirection(true)}>Outbound: we phone a lead</button>
@@ -333,7 +316,7 @@ function TextCall() {
           </div>
         ) : null}
         <div className="call-controls">
-          <button className="send-btn" type="button" aria-pressed={String(running)} disabled={startBusy} onClick={() => (roomRef.current ? hangUp("Call ended by you.") : startCall())}>{running ? "End call" : "Start call"}</button>
+          <button className="send-btn" type="button" aria-pressed={String(running)} disabled={startBusy} onClick={() => (running ? hangUp() : startCall())}>{running ? "End test" : "Start test"}</button>
         </div>
         <p className="muted small status-line" role="status">{status}</p>
       </section>
@@ -351,11 +334,12 @@ function TextCall() {
               <span className="body">{item.message}</span>
             </div>
           ))}
+          {waiting ? <p className="muted small">The assistant is answering...</p> : null}
         </div>
         {ended ? <p className="ended-banner" role="status">{ended}</p> : null}
         <form className="sms-form" onSubmit={send}>
-          <input type="text" aria-label="What you say on the call" placeholder="Type what you say on the call" maxLength={1000} autoComplete="off" value={text} disabled={!heard} onChange={(e) => setText(e.target.value)} />
-          <button className="send-btn" type="submit" disabled={!heard || !text.trim()}>Send</button>
+          <input type="text" aria-label="What you say on the call" placeholder="Type what you say on the call" maxLength={1000} autoComplete="off" value={text} disabled={!running || waiting} onChange={(e) => setText(e.target.value)} />
+          <button className="send-btn" type="submit" disabled={!running || waiting || !text.trim()}>Send</button>
         </form>
         <p className="muted small status-line" role="status">{note}</p>
         <h3 className="events-title">What the assistant did</h3>
@@ -568,7 +552,7 @@ function CallPage() {
 
         <div className="mode-tabs" role="group" aria-label="Test mode">
           <button type="button" className="mode-tab" aria-pressed={String(mode === "voice")} onClick={() => setMode("voice")}>Voice call</button>
-          <button type="button" className="mode-tab" aria-pressed={String(mode === "textcall")} onClick={() => setMode("textcall")}>Text call</button>
+          <button type="button" className="mode-tab" aria-pressed={String(mode === "textcall")} onClick={() => setMode("textcall")}>Text test</button>
           <button type="button" className="mode-tab" aria-pressed={String(mode === "sms")} onClick={() => setMode("sms")}>SMS texts</button>
         </div>
 
