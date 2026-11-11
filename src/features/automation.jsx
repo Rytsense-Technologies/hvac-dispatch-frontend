@@ -116,7 +116,8 @@ export default function Automation() {
 
   return (
     <>
-      <PageHeader title="Admin automation" subtitle={needs_review?.text || "What the system wants to send or change, worded for review."}>
+      <p className="row" style={{ marginBottom: 8 }}><a className="link" href="#/settings">← Back to Settings</a></p>
+      <PageHeader eyebrow="Settings" title="Admin automation" subtitle={needs_review?.text || "What the system wants to send or change, worded for review."}>
         {needs_review?.total ? <Badge text={`${needs_review.total} waiting`} tone="warn" /> : null}
       </PageHeader>
       {notAvailableText ? <Note text={notAvailableText} tone="neutral" /> : null}

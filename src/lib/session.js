@@ -9,4 +9,14 @@ export const can = (...roles) => roles.includes(session.role);
 // Roles that may open each section. A viewer can look at the rest. (The console now only ever signs in
 // people with role "admin" - see FRONTEND_LOGIN.md - so these no longer narrow anything in practice; they're
 // left in place in case the backend starts sending finer-grained roles again.)
-export const SECTION_ROLES = { approvals: ['approver', 'admin'], plan: ['dispatcher', 'admin'], leads: ['dispatcher', 'approver', 'admin'], memory: ['dispatcher', 'approver', 'admin'], usage: ['admin'] };
+// Keys follow current routes.js section ids (overview replaces dashboard; numbers/automation remain deep-links).
+export const SECTION_ROLES = {
+  approvals: ['approver', 'admin'],
+  plan: ['dispatcher', 'admin'],
+  leads: ['dispatcher', 'approver', 'admin'],
+  memory: ['dispatcher', 'approver', 'admin'],
+  usage: ['admin'],
+  numbers: ['admin'],
+  automation: ['admin'],
+  settings: ['admin'],
+};
