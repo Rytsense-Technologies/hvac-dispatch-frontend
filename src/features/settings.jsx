@@ -409,7 +409,7 @@ export default function Settings() {
   const { status, data, error } = state;
   return (
     <>
-      <PageHeader title="Settings" subtitle="Your company's profile and hours, notifications, connected systems, billing and integrations." />
+      <PageHeader eyebrow="Company" title="Settings" subtitle="Your company's profile and hours, notifications, connected systems, billing and integrations." />
       {status === 'loading' && !data ? <Spinner /> : status === 'error' ? <ErrorBox error={error} /> : (
         <div className="stack">
           <ProfileCard profile={data.profile} onSaved={(out) => setState((s) => ({ ...s, data: { ...s.data, profile: { ...s.data.profile, ...out } } }))} />
@@ -419,6 +419,16 @@ export default function Settings() {
           <TeamCard team={data.team} />
           <BillingCard billing={data.billing} />
           <IntegrationsCard integrations={data.integrations} />
+          <section className="panel" style={{ marginTop: 4 }}>
+            <div className="panelhead">
+              <div>
+                <h2>Admin automation</h2>
+                <p className="sub">Review office workflows and AI-prepared actions</p>
+              </div>
+              <a className="btn btn--secondary agent-btn" href="#/automation">Manage automation</a>
+            </div>
+            <p className="sub">Invoice reminders, customer updates, documentation, and estimate follow-ups.</p>
+          </section>
         </div>
       )}
     </>

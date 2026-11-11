@@ -47,11 +47,24 @@ const PATHS = {
   automation: (
     <polygon points="11 2 4.5 10.5 9.5 10.5 8.5 18 16 9 11 9 12 2" fill="currentColor" stroke="currentColor" strokeWidth="1" strokeLinejoin="round" />
   ),
-  // WORKSPACE: Tasks (checkbox with checkmark)
+  // WORKSPACE: Work / Tasks (checkbox with checkmark)
+  work: (
+    <>
+      <rect x="3" y="3" width="14" height="14" rx="2" />
+      <polyline points="6.5,10.2 9,12.7 13.8,7.3" />
+    </>
+  ),
   tasks: (
     <>
       <rect x="3" y="3" width="14" height="14" rx="2" />
       <polyline points="6.5,10.2 9,12.7 13.8,7.3" />
+    </>
+  ),
+  more: (
+    <>
+      <circle cx="4" cy="10" r="1.4" fill="currentColor" stroke="none" />
+      <circle cx="10" cy="10" r="1.4" fill="currentColor" stroke="none" />
+      <circle cx="16" cy="10" r="1.4" fill="currentColor" stroke="none" />
     </>
   ),
   // WORKSPACE: Team & dispatch (trefoil / club matching reference)
