@@ -79,39 +79,43 @@ export default function TeamTracking({ onBack, active = true }) {
 
   useEffect(() => () => { if (timer.current) clearInterval(timer.current); }, []);
 
+  const live = state.status === 'ready' ? state.data : null;
+  const technicians = live?.technicians || [];
+  const enabled = Boolean(live?.enabled);
+  const hasLiveFeed = enabled && technicians.some((t) => t.tracking === 'live' || t.tracking_text?.toLowerCase?.().includes('live') || t.position);
+  // Demo layout only after a successful load with no feed rows — never during loading/error.
+  const showDemo = state.status === 'ready' && !technicians.length;
+
   useEffect(() => {
-    if (!playing) {
+    if (!showDemo && playing) setPlaying(false);
+  }, [showDemo, playing]);
+
+  useEffect(() => {
+    if (!playing || !showDemo) {
       if (timer.current) clearInterval(timer.current);
       timer.current = null;
       return undefined;
     }
     timer.current = setInterval(() => setDemoStep((s) => s + 1), 6000);
     return () => { if (timer.current) clearInterval(timer.current); };
-  }, [playing]);
-
-  const live = state.status === 'ready' ? state.data : null;
-  const technicians = live?.technicians || [];
-  const enabled = Boolean(live?.enabled);
-  const hasLiveFeed = enabled && technicians.some((t) => t.tracking === 'live' || t.tracking_text?.toLowerCase?.().includes('live') || t.position);
+  }, [playing, showDemo]);
 
   const demoStates = ['Available', 'En route', 'En route', 'Arrived', 'On site', 'Job complete'];
   const demoState = demoStates[Math.min(demoStep, demoStates.length - 1)];
   const markerIndex = hasLiveFeed
     ? Math.min(MARKER_PATH.length - 1, technicians.filter((t) => t.status?.code === 'on_a_job' || t.status?.code === 'en_route').length ? 3 : 0)
-    : Math.min(MARKER_PATH.length - 1, demoStep);
+    : (showDemo ? Math.min(MARKER_PATH.length - 1, demoStep) : 0);
 
   const statusChip = useMemo(() => {
     if (state.status === 'loading') return { text: 'Loading tracking…', tone: 'neutral' };
+    if (state.status === 'error') return { text: 'Tracking feed unavailable', tone: 'warn' };
     if (hasLiveFeed) return { text: live?.note || 'Live location feed connected', tone: 'good' };
     if (enabled) return { text: live?.note || 'Tracking on · waiting for location updates', tone: 'warn' };
-    // No live GPS: match reference chrome for the illustrative nested view.
-    if (state.status === 'error' || !live || !enabled) {
-      return { text: live?.note || 'Simulated tracking · GPS not connected', tone: 'warn' };
-    }
-    return { text: 'Simulated tracking · GPS not connected', tone: 'warn' };
+    return { text: live?.note || 'Simulated tracking · GPS not connected', tone: 'warn' };
   }, [state.status, live, hasLiveFeed, enabled]);
 
   const listRows = (() => {
+    if (state.status !== 'ready') return [];
     if (technicians.length) {
       return technicians.map((t) => {
         const code = t.status?.code || t.tracking || 'offline';
@@ -133,7 +137,7 @@ export default function TeamTracking({ onBack, active = true }) {
         };
       });
     }
-    // Illustrative fallback only when the API returns an empty/disabled feed — labelled honestly.
+    if (!showDemo) return [];
     return [
       {
         id: 'demo-1',
@@ -159,6 +163,8 @@ export default function TeamTracking({ onBack, active = true }) {
   })();
 
   const activity = (() => {
+    if (state.status === 'loading') return <p className="sub">Loading activity…</p>;
+    if (state.status === 'error') return <p className="sub">Activity updates unavailable until the tracking feed loads.</p>;
     if (live?.events?.length) {
       return live.events.map((e, i) => (
         <p key={i}>
@@ -176,6 +182,7 @@ export default function TeamTracking({ onBack, active = true }) {
         </p>
       );
     }
+    if (!showDemo) return <p className="sub">No activity updates yet.</p>;
     return (
       <p>
         <strong>{`Sample update ${demoStep + 1}`}</strong>
@@ -199,7 +206,7 @@ export default function TeamTracking({ onBack, active = true }) {
 
       <div className="tracking-controls">
         <Badge text={statusChip.text} tone={statusChip.tone === 'neutral' ? 'neutral' : statusChip.tone} />
-        {!hasLiveFeed ? (
+        {showDemo ? (
           <>
             <Button
               className="btn btn--secondary agent-btn"
@@ -220,48 +227,52 @@ export default function TeamTracking({ onBack, active = true }) {
       {state.status === 'loading' ? <Spinner /> : null}
       {state.status === 'error' ? <ErrorBox error={state.error} /> : null}
 
-      <div className="tracking-layout">
-        <Panel>
-          <h2>Sample route overview</h2>
-          <p className="sub">
-            {hasLiveFeed
-              ? 'Schematic overview · Not a geographic map. Live technician status comes from the tracking feed below.'
-              : 'Schematic only · Not a geographic map or actual technician locations'}
-          </p>
-          <RouteMap markerIndex={markerIndex} markerLabel={listRows[0]?.initial || 'M'} />
-        </Panel>
-        <Panel>
-          <h2>Technicians</h2>
-          <div aria-live="polite">
-            {listRows.length ? listRows.map((row) => (
-              <div className="row-item" key={row.id}>
-                <span className="circle">{row.initial}</span>
-                <span className="rowmain">
-                  <strong>{row.name}</strong>
-                  <small className="muted">
-                    {row.subtitle}
-                    <br />
-                    {row.freshness}
-                  </small>
-                </span>
-                <Badge text={row.badge} tone={row.tone} />
+      {state.status === 'ready' ? (
+        <>
+          <div className="tracking-layout">
+            <Panel>
+              <h2>Sample route overview</h2>
+              <p className="sub">
+                {hasLiveFeed
+                  ? 'Schematic overview · Not a geographic map. Live technician status comes from the tracking feed below.'
+                  : 'Schematic only · Not a geographic map or actual technician locations'}
+              </p>
+              <RouteMap markerIndex={markerIndex} markerLabel={listRows[0]?.initial || 'M'} />
+            </Panel>
+            <Panel>
+              <h2>Technicians</h2>
+              <div aria-live="polite">
+                {listRows.length ? listRows.map((row) => (
+                  <div className="row-item" key={row.id}>
+                    <span className="circle">{row.initial}</span>
+                    <span className="rowmain">
+                      <strong>{row.name}</strong>
+                      <small className="muted">
+                        {row.subtitle}
+                        <br />
+                        {row.freshness}
+                      </small>
+                    </span>
+                    <Badge text={row.badge} tone={row.tone} />
+                  </div>
+                )) : <Empty text="No technicians to show." />}
               </div>
-            )) : <Empty text="No technicians to show." />}
+            </Panel>
           </div>
-        </Panel>
-      </div>
 
-      <Panel className="tracking-activity">
-        <h2>Activity updates</h2>
-        <div role="log" aria-live="polite">
-          {activity}
-          <p className="sub">
-            {hasLiveFeed
-              ? 'Status reflects the last known feed update. Confirm critical decisions in the job record.'
-              : 'These updates do not change actual jobs, assignments, or GPS locations.'}
-          </p>
-        </div>
-      </Panel>
+          <Panel className="tracking-activity">
+            <h2>Activity updates</h2>
+            <div role="log" aria-live="polite">
+              {activity}
+              <p className="sub">
+                {hasLiveFeed
+                  ? 'Status reflects the last known feed update. Confirm critical decisions in the job record.'
+                  : 'These updates do not change actual jobs, assignments, or GPS locations.'}
+              </p>
+            </div>
+          </Panel>
+        </>
+      ) : null}
 
       <p className="page-foot">
         Real tracking requires a technician app, location permission, a secure backend, and a location feed.
