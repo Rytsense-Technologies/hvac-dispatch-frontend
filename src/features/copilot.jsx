@@ -55,8 +55,8 @@ const SUGGESTED_ACTIONS = [
   {
     title: 'Explore existing campaigns',
     subtitle: 'Sample outreach',
-    cta: 'Open Campaigns',
-    href: '#/campaigns',
+    cta: 'Open sample campaigns',
+    href: '#/campaigns?demo=1',
   },
 ];
 

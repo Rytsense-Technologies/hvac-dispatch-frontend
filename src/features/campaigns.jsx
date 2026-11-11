@@ -1,6 +1,6 @@
 // Campaigns: Outbound campaigns — reference design chrome with live API flows.
 // Samples appear only when Sample workspace (demo) is explicitly on.
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { api } from '../lib/api.js';
 import { formatDateTime } from '../lib/format.js';
 import { can } from '../lib/session.js';
@@ -11,6 +11,14 @@ import {
 
 const STATUS_TONE = { active: 'good', paused: 'warn', finished: 'neutral', draft: 'warn' };
 const STATUS_LABEL = { active: 'Active', paused: 'Paused', finished: 'Finished', draft: 'Draft' };
+
+/** `#/campaigns?demo=1` (or demo=true) opens Sample workspace explicitly. */
+function demoFromHash(hash = typeof location !== 'undefined' ? location.hash : '') {
+  const q = String(hash).split('?')[1] || '';
+  const params = new URLSearchParams(q);
+  const v = params.get('demo');
+  return v === '1' || v === 'true';
+}
 
 const SAMPLE_CAMPAIGNS = [
   {
@@ -341,26 +349,49 @@ function CampaignDialog({ id, reload, onClose, onSamplePatch, sampleSeed }) {
 
 export default function Campaigns() {
   const [dialog, setDialog] = useState(null);
-  const [demoMode, setDemoMode] = useState(false);
+  const [demoMode, setDemoMode] = useState(() => demoFromHash());
   const [sampleOverrides, setSampleOverrides] = useState({});
   const [list, setList] = useState({ status: 'loading', data: null, error: null });
+  const listLatest = useRef(0);
   const writer = can('admin', 'dispatcher');
 
   const load = useCallback(async () => {
+    listLatest.current += 1;
+    const mine = listLatest.current;
     setList((prev) => ({ ...prev, status: prev.data ? 'refreshing' : 'loading', error: null }));
     try {
       const res = await api('/v1/leads/campaigns');
+      if (mine !== listLatest.current) return;
       setList({ status: 'ready', data: res.campaigns || [], error: null });
     } catch (error) {
+      if (mine !== listLatest.current) return;
       setList((prev) => ({ status: 'error', data: prev.data, error }));
     }
   }, []);
 
   useEffect(() => {
-    if (demoMode) return undefined;
+    if (demoMode) {
+      listLatest.current += 1; // invalidate in-flight live loads while in sample workspace
+      return undefined;
+    }
     load();
-    return undefined;
+    return () => { listLatest.current += 1; };
   }, [load, demoMode]);
+
+  // Honor `#/campaigns?demo=1` (and clear demo when the query is removed).
+  useEffect(() => {
+    const sync = () => setDemoMode(demoFromHash());
+    window.addEventListener('hashchange', sync);
+    return () => window.removeEventListener('hashchange', sync);
+  }, []);
+
+  const setWorkspaceDemo = (on) => {
+    setDemoMode(on);
+    setDialog(null);
+    const path = (location.hash.split('?')[0] || '#/campaigns');
+    const next = on ? `${path}?demo=1` : path;
+    if (location.hash !== next) location.hash = next;
+  };
 
   const close = () => setDialog(null);
 
@@ -385,7 +416,7 @@ export default function Campaigns() {
   const sampleCampaigns = SAMPLE_CAMPAIGNS.map((c) => ({ ...c, ...(sampleOverrides[c.id] || {}) }));
   const campaigns = demoMode ? sampleCampaigns : liveCampaigns;
   const loading = !demoMode && list.status === 'loading' && !list.data;
-  const showError = !demoMode && list.status === 'error' && !list.data?.length;
+  const showError = !demoMode && list.status === 'error' && !!list.error;
 
   const headerMeta = (
     <>
@@ -394,10 +425,7 @@ export default function Campaigns() {
         type="button"
         className={`btn btn--secondary agent-btn${demoMode ? ' filter--on' : ''}`}
         aria-pressed={demoMode}
-        onClick={() => {
-          setDemoMode((v) => !v);
-          setDialog(null);
-        }}
+        onClick={() => setWorkspaceDemo(!demoMode)}
       >
         {demoMode ? 'Exit sample workspace' : 'Sample workspace'}
       </button>
@@ -435,17 +463,20 @@ export default function Campaigns() {
         />
 
         {showError ? <ErrorBox error={list.error} /> : null}
+        {showError && liveCampaigns.length ? (
+          <Note tone="warn" text="Showing the last loaded list. Refresh failed — try again." />
+        ) : null}
         {loading ? <Spinner /> : null}
 
-        {!loading && !showError && !campaigns.length ? (
+        {!loading && !campaigns.length ? (
           <p className="sub empty-inline">
             {demoMode
               ? 'No sample campaigns.'
-              : 'No campaigns yet. Create a draft to get started.'}
+              : (showError ? 'Could not load campaigns.' : 'No campaigns yet. Create a draft to get started.')}
           </p>
         ) : null}
 
-        {!loading && !showError && campaigns.length ? (
+        {!loading && campaigns.length ? (
           <div className="campaign-list">
             {campaigns.map((c) => {
               const subText = formatCampaignSub(c);
