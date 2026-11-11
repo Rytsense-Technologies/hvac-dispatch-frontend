@@ -4316,6 +4316,16 @@ button.row-item { cursor: pointer; }
   border-top: 1px solid #edf1f3;
 }
 .customers-history .row-item:first-child { border-top: 0; }
+.customers-imported {
+  margin-top: 0;
+}
+.customers-imported h2 {
+  margin: 0 0 6px;
+  font-size: 1.05rem;
+}
+.customers-imported .customers-list {
+  margin-top: 8px;
+}
 
 @media print {
   .sidebar, .btn, select, .mobile-nav { display: none !important; }
