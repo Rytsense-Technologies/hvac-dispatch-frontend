@@ -322,3 +322,14 @@ input[type="text"]:focus-visible {
 .direction .mode-tab { padding: 7px 12px; font-size: 0.9rem; }
 .out-row { display: flex; gap: 8px; margin-top: 12px; }
 .out-row select { flex: 1; padding: 10px; font: inherit; border: 1px solid var(--border); border-radius: 10px; background: var(--card); color: var(--text); }
+
+/* Text call tab */
+.lead-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 10px; }
+.lead-row input { width: 100%; box-sizing: border-box; }
+.ended-banner { margin: 10px 0 0; padding: 10px 12px; border-radius: 10px; background: var(--card); border: 1px solid var(--border); font-weight: 600; }
+.events-title { margin: 16px 0 6px; font-size: 0.95rem; }
+.events { list-style: none; margin: 0; padding: 0; max-height: 220px; overflow-y: auto; }
+.events li { padding: 6px 0; border-top: 1px solid var(--border); word-break: break-word; }
+.events li.bad strong { color: #b42318; }
+.events:empty::before { content: "Nothing yet: the tools the assistant uses (saving a request, booking, recording a lead outcome) appear here."; color: var(--muted, #667085); font-size: 0.85rem; }
+@media (max-width: 560px) { .lead-row { grid-template-columns: 1fr; } }
