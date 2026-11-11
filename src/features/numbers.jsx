@@ -396,10 +396,22 @@ export default function Numbers() {
   const data = apiState.data;
   const sip = apiState.sip;
   const liveNumbers = data?.numbers || [];
-  const canBuyLive = !!(data?.enabled && data?.ready && data?.can_buy);
-  const showSipCard = sip?.enabled && sip?.ready && sip.trunks?.length > 0;
+  const numbersLive = !!(data?.enabled && data?.ready);
+  const canBuyLive = !!(numbersLive && data?.can_buy);
+  // Match pre-design: show SIP management whenever the server says SIP is ready (even with zero trunks).
+  const showSipCard = !!(sip?.enabled && sip?.ready);
+  const neitherReady = apiState.status === 'ready' && !numbersLive && !showSipCard;
 
   const openFind = () => setWizard(canBuyLive ? 'find-live' : 'find-sample');
+
+  let foot;
+  if (canBuyLive || showSipCard) {
+    foot = canBuyLive
+      ? 'Live number search and SIP use your provider account. Sample flows never charge a card.'
+      : 'SIP connect is live for this workspace. Platform number purchase is not available yet.';
+  } else {
+    foot = 'Design concept · No real numbers are searched, purchased, transferred, verified, or connected.';
+  }
 
   return (
     <div className="calls-page numbers-page">
@@ -415,12 +427,19 @@ export default function Numbers() {
 
       <div className="calls-body">
         {apiState.status === 'error' && !data ? <ErrorBox error={apiState.error} /> : null}
+        {neitherReady ? (
+          <Note text={data?.note || sip?.note || 'Company phone numbers are not available yet.'} />
+        ) : null}
 
         <div className="phone-options">
           <section className="panel phone-option">
             <div className="phone-icon" aria-hidden="true">＋</div>
             <h2>Get a new number</h2>
-            <p>Search example US numbers by area code, review your selection, and preview checkout.</p>
+            <p>
+              {canBuyLive
+                ? 'Search available numbers by area code, review, and confirm. Monthly fee ends when you release the number.'
+                : 'Search example US numbers by area code, review your selection, and preview checkout.'}
+            </p>
             <Button className="btn btn--primary action" onClick={openFind}>Find a number</Button>
             {canBuyLive ? (
               <button type="button" className="btn btn--link link phone-sample-link" onClick={() => setWizard('find-sample')}>
@@ -432,7 +451,7 @@ export default function Numbers() {
             <div className="phone-icon" aria-hidden="true">↗</div>
             <h2>Use your existing number</h2>
             <p>Keep your current business number and choose how to connect calls to your AI team.</p>
-            <Button className="btn agent-btn" onClick={() => setWizard('existing')}>Connect a number</Button>
+            <Button className="btn agent-btn" onClick={() => setWizard(showSipCard ? 'sip' : 'existing')}>Connect a number</Button>
           </section>
         </div>
 
@@ -487,7 +506,7 @@ export default function Numbers() {
           {!liveNumbers.length && !sessionNumbers.length && apiState.status !== 'loading' ? (
             <p className="sub">No numbers added yet. Select an option above to preview setup.</p>
           ) : null}
-          {data?.enabled && data?.ready && !data.can_buy && liveNumbers.length ? (
+          {numbersLive && !data.can_buy ? (
             <p className="muted">{`A company can have ${data.max_numbers} phone number${data.max_numbers === 1 ? '' : 's'}. Release one to get a different one.`}</p>
           ) : null}
         </Panel>
@@ -498,11 +517,7 @@ export default function Numbers() {
           </div>
         ) : null}
 
-        <p className="page-foot">
-          {canBuyLive
-            ? 'Live number search uses your provider account. Sample flows never charge a card.'
-            : 'Design concept · No real numbers are searched, purchased, transferred, verified, or connected.'}
-        </p>
+        <p className="page-foot">{foot}</p>
       </div>
 
       {wizard === 'find-live' && canBuyLive ? (

@@ -3,7 +3,9 @@
 import { useState } from 'react';
 import { api } from '../lib/api.js';
 import { timeAgo } from '../lib/format.js';
-import { Badge, Note, DataTable, Field, Select, Overlay, Dialog, ActionButton, Button, toast, useRun, Card, Icon } from '../components/index.js';
+import {
+  Badge, Note, Field, Select, Dialog, ActionButton, Button, toast, useRun, Panel, PanelHead, Row,
+} from '../components/index.js';
 
 function CopyField({ label, value }) {
   const copy = async () => {
@@ -75,55 +77,104 @@ export function ConnectDialog({ onClose, onConnected }) {
 
 function Confirm({ title, text, label, tone, action, onClose }) {
   return (
-    <Overlay title={title} onClose={onClose}>
+    <Dialog title={title} onClose={onClose}>
       <div className="stack">
         <p>{text}</p>
-        <div className="right"><ActionButton className={`btn ${tone === 'bad' ? 'btn--danger' : 'btn--primary'}`} action={async () => { if ((await action()) !== 'keep') onClose(); }}>{label}</ActionButton></div>
+        <div className="dialog-actions">
+          <ActionButton className={`btn ${tone === 'bad' ? 'btn--danger' : 'btn--primary'} action`} action={async () => { if ((await action()) !== 'keep') onClose(); }}>{label}</ActionButton>
+          <Button className="btn agent-btn" onClick={onClose}>Cancel</Button>
+        </div>
       </div>
-    </Overlay>
+    </Dialog>
   );
 }
 
-const status = (t) => (t.calls_total > 0
-  ? <span className="row wrap"><Badge text="Receiving calls" tone="good" /><small className="muted">{`last call ${timeAgo(t.last_call_at)}`}</small></span>
-  : <Badge text="Waiting for the first call" tone="warn" />);
+function trunkStatus(t) {
+  if (t.calls_total > 0) {
+    return <Badge text={`Receiving · last ${timeAgo(t.last_call_at)}`} tone="good" />;
+  }
+  return <Badge text="Waiting for first call" tone="warn" />;
+}
 
 export function SipCard({ sip, reload }) {
   const [dialog, setDialog] = useState(null);
   const close = () => setDialog(null);
   return (
-    <Card as="section">
-      <Card.Title><span className="row"><Icon name="phone" /><span>A number you already have</span></span></Card.Title>
+    <Panel className="sip-panel">
+      <PanelHead
+        title="A number you already have"
+        subtitle="Connect a number you keep with your provider over SIP. Password credentials are shown once."
+      />
       {sip.trunks.length ? (
-        <DataTable label="Numbers you connected" head={['Number', 'Provider', 'Protected by', 'Status', '']} rows={sip.trunks.map((t) => [
-          <strong className="mono">{t.phone_number}</strong>,
-          t.provider || '-',
-          t.auth_mode === 'password' ? 'Password' : 'Provider addresses',
-          status(t),
-          <span className="row wrap">
-            <button type="button" className="btn btn--outline btn--small" onClick={() => setDialog({ kind: 'settings', trunk: t })}>Settings</button>
-            {t.auth_mode === 'password' ? <button type="button" className="btn btn--ghost btn--small" onClick={() => setDialog({ kind: 'password', trunk: t })}>New password</button> : null}
-            <button type="button" className="btn btn--ghost btn--small" onClick={() => setDialog({ kind: 'disconnect', trunk: t })}>Disconnect</button>
-          </span>,
-        ])} />
+        <div className="sip-list">
+          {sip.trunks.map((t) => (
+            <Row
+              key={t.id}
+              leading="☎"
+              title={t.phone_number}
+              subtitle={[t.provider || 'Provider', t.auth_mode === 'password' ? 'Password' : 'Provider addresses'].join(' · ')}
+              trailing={(
+                <span className="row wrap sip-actions">
+                  {trunkStatus(t)}
+                  <Button className="btn agent-btn" onClick={() => setDialog({ kind: 'settings', trunk: t })}>Settings</Button>
+                  {t.auth_mode === 'password' ? (
+                    <Button className="btn agent-btn" onClick={() => setDialog({ kind: 'password', trunk: t })}>New password</Button>
+                  ) : null}
+                  <Button className="btn agent-btn" onClick={() => setDialog({ kind: 'disconnect', trunk: t })}>Disconnect</Button>
+                </span>
+              )}
+            />
+          ))}
+        </div>
       ) : <Note text="No number connected yet." />}
       {sip.can_connect ? (
-        <div className="right"><Button className="btn btn--primary" onClick={() => setDialog({ kind: 'connect' })}>Connect a number</Button></div>
-      ) : <p className="muted">{`A company can connect ${sip.max_numbers} number${sip.max_numbers === 1 ? '' : 's'}. Disconnect one to connect a different one.`}</p>}
+        <div className="dialog-actions sip-connect">
+          <Button className="btn btn--primary action" onClick={() => setDialog({ kind: 'connect' })}>Connect a number</Button>
+        </div>
+      ) : (
+        <p className="muted">{`A company can connect ${sip.max_numbers} number${sip.max_numbers === 1 ? '' : 's'}. Disconnect one to connect a different one.`}</p>
+      )}
 
-      {dialog?.kind === 'connect' ? <ConnectDialog onClose={close} onConnected={(made) => { reload(); setDialog({ kind: 'created', trunk: made, title: 'Now enter this at your provider' }); }} /> : null}
+      {dialog?.kind === 'connect' ? (
+        <ConnectDialog
+          onClose={close}
+          onConnected={(made) => {
+            reload();
+            setDialog({ kind: 'created', trunk: made, title: 'Now enter this at your provider' });
+          }}
+        />
+      ) : null}
       {dialog?.kind === 'created' ? <SettingsDialog trunk={dialog.trunk} title={dialog.title} onClose={close} /> : null}
       {dialog?.kind === 'settings' ? <SettingsDialog trunk={dialog.trunk} title="Settings for your provider" onClose={close} /> : null}
       {dialog?.kind === 'password' ? (
-        <Confirm title="Make a new password" label="Make a new password" tone="good" onClose={close}
+        <Confirm
+          title="Make a new password"
+          label="Make a new password"
+          tone="good"
+          onClose={close}
           text="The old password stops working at once, so calls fail until you enter the new one at your provider."
-          action={async () => { const made = await api(`/v1/sip-trunks/${dialog.trunk.id}/new-password`, { method: 'POST' }); reload(); setDialog({ kind: 'created', trunk: made, title: 'Your new password' }); return 'keep'; }} />
+          action={async () => {
+            const made = await api(`/v1/sip-trunks/${dialog.trunk.id}/new-password`, { method: 'POST' });
+            reload();
+            setDialog({ kind: 'created', trunk: made, title: 'Your new password' });
+            return 'keep';
+          }}
+        />
       ) : null}
       {dialog?.kind === 'disconnect' ? (
-        <Confirm title="Disconnect this number" label="Disconnect" tone="bad" onClose={close}
+        <Confirm
+          title="Disconnect this number"
+          label="Disconnect"
+          tone="bad"
+          onClose={close}
           text={`Calls to ${dialog.trunk.phone_number} stop reaching your assistant at once. Your number stays with your provider.`}
-          action={async () => { await api(`/v1/sip-trunks/${dialog.trunk.id}`, { method: 'DELETE' }); toast('Number disconnected.'); reload(); }} />
+          action={async () => {
+            await api(`/v1/sip-trunks/${dialog.trunk.id}`, { method: 'DELETE' });
+            toast('Number disconnected.');
+            reload();
+          }}
+        />
       ) : null}
-    </Card>
+    </Panel>
   );
 }
