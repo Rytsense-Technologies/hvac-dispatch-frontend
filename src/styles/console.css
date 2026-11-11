@@ -1608,6 +1608,16 @@ button.date:hover {
 .numbers-sip {
   margin-top: 18px;
 }
+.sip-panel .sip-list .row-item {
+  flex-wrap: wrap;
+}
+.sip-actions {
+  gap: 6px;
+  justify-content: flex-end;
+}
+.sip-connect {
+  margin-top: 12px;
+}
 @media (max-width: 700px) {
   .phone-options {
     grid-template-columns: 1fr;

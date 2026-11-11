@@ -77,7 +77,8 @@ function callSubtitle(call) {
     return [call.reason, call.outcome?.label, call.started_label].filter(Boolean).join(' · ');
   }
   const when = call.started_at ? (formatDateTime(call.started_at).split(',').pop()?.trim() || timeAgo(call.started_at)) : '';
-  return [call.reason, call.outcome?.label, when].filter(Boolean).join(' · ') || 'No summary yet';
+  // Pre-design table showed phone under the name; keep it in the row subtitle.
+  return [call.customer?.phone, call.reason, call.outcome?.label, when].filter(Boolean).join(' · ') || 'No summary yet';
 }
 
 function SampleCallDialog({ call, onClose }) {
@@ -329,7 +330,11 @@ export default function Calls() {
             </div>
           ) : null}
         </Panel>
-        <p className="page-foot">Sample summaries; recordings and transcripts are illustrative.</p>
+        <p className="page-foot">
+          {usingSample
+            ? 'Sample summaries; recordings and transcripts are illustrative.'
+            : 'Live call history from this workspace. Open a row for request, appointment, and transcript details.'}
+        </p>
       </div>
 
       {open?.sample ? <SampleCallDialog call={open} onClose={() => setOpen(null)} /> : null}
