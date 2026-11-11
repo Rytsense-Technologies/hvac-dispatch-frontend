@@ -34,6 +34,14 @@ function navIsActive(item, sectionId) {
   return (item.match || [item.id]).includes(sectionId);
 }
 
+/** True if any section id this nav entry covers is allowed for the signed-in role. */
+function itemAllowed(item) {
+  return (item.match || [item.id]).some((id) => {
+    const s = findSection(id);
+    return s && allowedIn(s);
+  });
+}
+
 // A section whose code could not be loaded (or that crashed) shows the same message the original console did.
 class SectionBoundary extends Component {
   state = { error: null };
@@ -310,9 +318,15 @@ function Shell({ timezone, onSignOut }) {
 
   const displayName = session.user?.name || session.actor || 'James M.';
   const initials = getInitials(displayName);
-  const workspaceNav = NAV_ITEMS.filter((item) => item.group !== 'manage');
-  const manageNav = NAV_ITEMS.filter((item) => item.group === 'manage');
-  const moreActive = MOBILE_MORE.some((item) => item.id === section.id || (item.id === 'settings' && section.id === 'automation'));
+  const visibleNav = NAV_ITEMS.filter(itemAllowed);
+  const workspaceNav = visibleNav.filter((item) => item.group !== 'manage');
+  const manageNav = visibleNav.filter((item) => item.group === 'manage');
+  const mobilePrimary = MOBILE_PRIMARY.filter(itemAllowed);
+  const mobileMore = MOBILE_MORE.filter(itemAllowed);
+  const moreActive = mobileMore.some((item) => item.id === section.id || (item.id === 'settings' && section.id === 'automation'));
+  const visibleSectionTabs = sectionTabs
+    ? sectionTabs.filter((tab) => allowedIn(findSection(tab.id)))
+    : null;
 
   const navLink = (item) => {
     const on = navIsActive(item, section.id);
@@ -343,8 +357,8 @@ function Shell({ timezone, onSignOut }) {
               <span className="topbar__status-dot" aria-hidden="true" />
               <span>AI team active</span>
             </a>
-            <a href="#/team" className="topbar__icon-btn" title="Notifications" aria-label="Notifications">
-              <Icon name="attention" />
+            <a href="#/team" className="topbar__icon-btn" title="Team & dispatch" aria-label="Team & dispatch">
+              <Icon name="team" />
             </a>
             <div className="identity-wrap" ref={menuRef}>
               <button
@@ -384,9 +398,9 @@ function Shell({ timezone, onSignOut }) {
           </div>
         </header>
         <main id="page" className="page" tabIndex={-1} ref={page}>
-          {sectionTabs ? (
+          {visibleSectionTabs?.length ? (
             <SectionTabs
-              options={sectionTabs.map((tab) => [tab.id, tab.label, tab.href])}
+              options={visibleSectionTabs.map((tab) => [tab.id, tab.label, tab.href])}
               value={section.id}
             />
           ) : null}
@@ -400,7 +414,7 @@ function Shell({ timezone, onSignOut }) {
         </main>
       </div>
       <nav className="mobile-nav" aria-label="Primary">
-        {MOBILE_PRIMARY.map((item) => {
+        {mobilePrimary.map((item) => {
           const on = navIsActive(item, section.id);
           return (
             <a key={item.id} href={item.href} className={`mobile-nav__item ${on ? 'mobile-nav__item--on' : ''}`} aria-current={on ? 'page' : undefined}>
@@ -409,25 +423,27 @@ function Shell({ timezone, onSignOut }) {
             </a>
           );
         })}
-        <div className="mobile-nav__more" ref={moreRef}>
-          <button
-            type="button"
-            className={`mobile-nav__item ${moreActive || moreOpen ? 'mobile-nav__item--on' : ''}`}
-            aria-expanded={moreOpen}
-            aria-haspopup="true"
-            onClick={() => setMoreOpen((o) => !o)}
-          >
-            <Icon name="more" />
-            <span>More</span>
-          </button>
-          {moreOpen ? (
-            <div className="mobile-more" role="menu">
-              {MOBILE_MORE.map((item) => (
-                <a key={item.id} href={item.href} className="mobile-more__item" role="menuitem" onClick={() => setMoreOpen(false)}>{item.label}</a>
-              ))}
-            </div>
-          ) : null}
-        </div>
+        {mobileMore.length ? (
+          <div className="mobile-nav__more" ref={moreRef}>
+            <button
+              type="button"
+              className={`mobile-nav__item ${moreActive || moreOpen ? 'mobile-nav__item--on' : ''}`}
+              aria-expanded={moreOpen}
+              aria-haspopup="true"
+              onClick={() => setMoreOpen((o) => !o)}
+            >
+              <Icon name="more" />
+              <span>More</span>
+            </button>
+            {moreOpen ? (
+              <div className="mobile-more" role="menu">
+                {mobileMore.map((item) => (
+                  <a key={item.id} href={item.href} className="mobile-more__item" role="menuitem" onClick={() => setMoreOpen(false)}>{item.label}</a>
+                ))}
+              </div>
+            ) : null}
+          </div>
+        ) : null}
       </nav>
     </div>
   );

@@ -4275,9 +4275,19 @@ button.row-item { cursor: pointer; }
   border: 0;
   box-shadow: none;
 }
-.toast--good,
-.toast--bad,
-.toast--warn { border-left: 0; }
+.toast--good { border-left: 4px solid #4ade80; }
+.toast--bad { border-left: 4px solid #f87171; }
+.toast--warn { border-left: 4px solid var(--focus-ring); }
+
+@media (max-width: 700px) {
+  /* Sit above fixed mobile-nav (~48px items + pad + safe-area) so taps reach Home/Work/Calls/Team/More */
+  .toasts {
+    bottom: calc(64px + env(safe-area-inset-bottom, 0px));
+    right: 12px;
+    left: 12px;
+    max-width: none;
+  }
+}
 
 @media (max-width: 700px) {
   .call-tabs,
