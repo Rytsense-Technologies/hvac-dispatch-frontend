@@ -1726,188 +1726,74 @@ tr.clickable:hover, tr.clickable:focus { background: #f1f5f9; }
   margin: 24px 0 12px 0;
 }
 
-/* ---------- campaigns (Exact Reference UI) ---------- */
-.campaigns-head {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 16px;
-  margin-bottom: 22px;
-}
-.campaigns-eyebrow {
-  font-size: 0.68rem;
-  font-weight: 600;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: #0d9488;
-  margin: 0 0 6px 0;
-}
-.campaigns-title {
-  font-size: 1.85rem;
-  font-weight: 600;
-  color: #0f172a;
-  letter-spacing: -0.02em;
-  margin: 0 0 4px 0;
-}
-.campaigns-subtitle {
-  font-size: 0.88rem;
-  color: #64748b;
-  margin: 0;
-}
-.campaigns-workspace-btn {
+/* ---------- shared reference chrome (date chip, foot, banners) ---------- */
+.date {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
-  padding: 6px 14px;
-  background: #ffffff;
-  border: 1px solid #cbd5e1;
-  border-radius: 6px;
-  font-size: 0.82rem;
-  font-weight: 500;
-  color: #334155;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.02);
-  cursor: pointer;
-  transition: all 0.15s ease;
+  background: var(--surface);
+  border: 1px solid #dce7f0;
+  border-radius: var(--radius-lg);
+  padding: 11px 14px;
+  color: #4c5d70;
+  font-size: 13px;
+  font-weight: var(--font-weight-semibold);
+  box-shadow: none;
+  white-space: nowrap;
   font-family: inherit;
+  line-height: 1.2;
+  cursor: default;
 }
-.campaigns-workspace-btn:hover {
-  background: #f8fafc;
-  border-color: #94a3b8;
-  color: #0f172a;
+button.date {
+  cursor: pointer;
 }
-
-.campaigns-card {
-  background: #ffffff;
-  border: 1px solid #e2e8f0;
-  border-radius: 12px;
-  padding: 22px 24px;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.02);
+button.date:hover {
+  border-color: #c6d8e2;
+  background: var(--accent-hover-bg);
 }
-.campaigns-card-head {
-  margin-bottom: 16px;
+.foot {
+  color: #526b7b;
+  font-size: 12px;
+  line-height: 1.6;
+  margin: 22px 0 0;
 }
-.campaigns-card-title {
-  font-size: 1.05rem;
-  font-weight: 600;
-  color: #0f172a;
-  margin: 0 0 4px 0;
+.agent-banner {
+  background: #f0f7fa;
+  color: #315e72;
+  border-radius: var(--radius-lg);
+  padding: 18px 21px;
+  line-height: 1.5;
+  box-shadow: none;
+  white-space: pre-line;
 }
-.campaigns-card-sub {
-  font-size: 0.82rem;
-  color: #64748b;
+.dialog-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 4px;
+  align-items: center;
+}
+.sample-label {
+  color: #8c9ca6;
+  font-size: 11px;
+  margin: 0;
+}
+.empty-inline {
+  padding: 8px 0 4px;
   margin: 0;
 }
 
+/* ---------- campaigns (panel + row list; uses shared primitives) ---------- */
 .campaign-list {
   display: flex;
   flex-direction: column;
 }
-.campaign-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 16px 0;
-  border-bottom: 1px solid #f1f5f9;
-  gap: 16px;
+.campaign-list .row-item:first-child {
+  border-top: 1px solid #edf1f3;
 }
-.campaign-row:last-child {
-  border-bottom: none;
-}
-.campaign-row-left {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  flex: 1;
-  min-width: 0;
-}
-.campaign-row-icon {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 32px;
-  height: 32px;
-  border-radius: 50%;
-  background: #f1f5f9;
-  color: #475569;
-  flex-shrink: 0;
-}
-.campaign-row-icon .icon {
-  width: 15px;
-  height: 15px;
-}
-.campaign-row-info {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  min-width: 0;
-}
-.campaign-row-name {
-  font-size: 0.88rem;
-  font-weight: 600;
-  color: #0f172a;
-  margin: 0;
-}
-.campaign-row-sub {
-  font-size: 0.78rem;
-  color: #64748b;
-  margin: 0;
-}
-.campaign-row-actions {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  flex-shrink: 0;
-}
-.campaign-status-pill {
-  display: inline-flex;
-  align-items: center;
-  padding: 3px 9px;
-  border-radius: 9999px;
-  font-size: 0.7rem;
-  font-weight: 600;
-  line-height: 1.2;
-}
-.campaign-status-pill--active {
-  background: #ecfdf5;
-  color: #047857;
-}
-.campaign-status-pill--draft {
-  background: #fff7ed;
-  color: #c2410c;
-}
-.campaign-status-pill--paused {
-  background: #fff7ed;
-  color: #c2410c;
-}
-.campaign-status-pill--finished {
-  background: #f1f5f9;
-  color: #64748b;
-}
-.campaign-view-btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: 6px 14px;
-  background: #ffffff;
-  border: 1px solid #cbd5e1;
-  border-radius: 6px;
-  color: #0284c7;
-  font-size: 0.8rem;
-  font-weight: 500;
-  cursor: pointer;
-  transition: all 0.15s ease;
-  font-family: inherit;
-  text-decoration: none;
-}
-.campaign-view-btn:hover {
-  background: #f0f9ff;
-  border-color: #0284c7;
-  color: #0369a1;
-}
-.campaigns-disclaimer {
-  font-size: 0.72rem;
-  color: #94a3b8;
-  margin: 20px 0 12px 0;
+.campaign-list .agent-btn {
+  min-height: 42px;
+  padding: 10px 14px;
+  font-weight: var(--font-weight-semibold);
 }
 
 /* ---------- Calls (Exact Reference UI) ---------- */
