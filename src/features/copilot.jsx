@@ -1,4 +1,6 @@
-// Co-pilot: ask about jobs and technicians. It recommends, you confirm, a different person approves, and the system checks again.
+// AI Coworker: ask about jobs and technicians. It recommends, you confirm,
+// a different person approves, and the system checks again.
+// Visual layout matches the Rytsense reference AI Coworker screen.
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { api } from '../lib/api.js';
 import { formatDateTime, reasonText, short } from '../lib/format.js';
@@ -15,7 +17,48 @@ import {
   ActionButton,
   Button,
   Icon,
+  Panel,
 } from '../components/index.js';
+
+const SUGGESTION_CHIPS = [
+  { label: 'Who is available for the AC repair?', question: 'Who is available for the AC repair?' },
+  { label: 'Admin actions to review', question: 'What admin actions need review?' },
+  { label: 'Show existing lead campaigns', question: 'Show existing lead campaigns' },
+];
+
+// Illustrative sample rows — CTAs are section navigation (not deep links to named records).
+const SUGGESTED_ACTIONS = [
+  {
+    title: 'Invoice follow-up',
+    subtitle: 'Sarah Mitchell · Needs approval',
+    cta: 'Open automation',
+    href: '#/automation',
+  },
+  {
+    title: 'Customer record update',
+    subtitle: 'David Rodriguez · Needs review',
+    cta: 'Open automation',
+    href: '#/automation',
+  },
+  {
+    title: 'Assign AC repair · Sarah Mitchell',
+    subtitle: 'Unassigned work',
+    cta: 'Open Work',
+    href: '#/work',
+  },
+  {
+    title: 'Assign Plumbing inspection · William Brooks',
+    subtitle: 'Unassigned work',
+    cta: 'Open Work',
+    href: '#/work',
+  },
+  {
+    title: 'Explore existing campaigns',
+    subtitle: 'Sample outreach',
+    cta: 'Open Campaigns',
+    href: '#/campaigns',
+  },
+];
 
 // The preview of a change: confirming sends it to Approvals, where a different person decides it.
 function ConfirmationBox({ confirmation }) {
@@ -27,7 +70,7 @@ function ConfirmationBox({ confirmation }) {
         <div className="row" style={{ alignItems: 'center', gap: '8px' }}>
           <Badge text={submitted.status || 'Waiting'} tone="good" />
           <span style={{ fontWeight: 'var(--font-weight-medium)' }}>
-            Submitted for approval. A different person must review and approve it in the Approvals queue.
+            Live Approvals proposal submitted. A different person must review and approve it before any booking changes.
           </span>
         </div>
         <div>
@@ -47,7 +90,7 @@ function ConfirmationBox({ confirmation }) {
           <span>Action Preview: Confirmation Required</span>
         </h4>
         <p style={{ margin: 0, fontSize: '0.88rem', color: 'var(--text)' }}>
-          This is an automated schedule preview. Confirming will generate a formal proposal in the Approvals queue. No changes are booked without a second person&apos;s approval.
+          This preview is connected to your workspace. Confirming will POST a live Approvals proposal that another person must approve before any schedule change is booked.
         </p>
         <div style={{ marginTop: '4px' }}>
           <ActionButton
@@ -55,10 +98,10 @@ function ConfirmationBox({ confirmation }) {
             action={async () => {
               const r = await api(`/v1/copilot/actions/${confirmation.action_id}/confirm`, { method: 'POST' });
               setSubmitted(r);
-              toast('Submitted for approval. A different person must approve it.');
+              toast('Live Approvals proposal submitted. A different person must approve it.');
             }}
           >
-            Confirm and submit for approval
+            Confirm — submit live Approvals proposal
           </ActionButton>
         </div>
       </div>
@@ -200,6 +243,11 @@ const makeMessage = (role, content, data, names) => {
   return { id: messageCounter, role, content, data, names, time: new Date() };
 };
 
+function applyChip(label, question, setText, submit) {
+  setText(question);
+  submit(question);
+}
+
 export default function Copilot() {
   const [thread, setThreadState] = useState(null);
   const threadRef = useRef(null);
@@ -215,13 +263,6 @@ export default function Copilot() {
   const openSeq = useRef(0);
   const threadsSeq = useRef(0);
 
-  const suggestions = useMemo(() => [
-    { label: 'List technicians', icon: 'technicians', desc: 'Inspect current roster & availability' },
-    { label: "List today's jobs", icon: 'jobs', desc: "Review today's scheduled customer visits" },
-    ...(can('approver', 'admin') ? [{ label: 'Show pending approvals', icon: 'approvals', desc: 'Review proposals waiting for decision' }] : []),
-    { label: 'Show open problems', icon: 'attention', desc: 'Check scheduling and route violations' },
-  ], []);
-
   const setThread = (id) => {
     threadRef.current = id;
     setThreadState(id);
@@ -236,7 +277,7 @@ export default function Copilot() {
     if (logEl.current) {
       logEl.current.scrollTop = logEl.current.scrollHeight;
     }
-  }, [messages, waiting]);
+  }, [messages, waiting, log.kind]);
 
   async function loadThreads() {
     threadsSeq.current += 1;
@@ -313,137 +354,84 @@ export default function Copilot() {
     return threads.filter((t) => (t.title || '').toLowerCase().includes(q));
   }, [threads, threadFilter]);
 
-  let logBody;
+  let conversationBody;
   if (log.kind === 'intro') {
-    logBody = (
-      <div className="chat-intro-hero">
-        <div className="chat-intro-icon">
-          <Icon name="copilot" />
-        </div>
-        <h2>AI Dispatch Co-pilot</h2>
-        <p>
-          Ask questions in natural language about technician availability, customer appointments, route planning, or proposed changes.
-        </p>
-        <div className="chat-suggestions-grid">
-          {suggestions.map((s) => (
-            <button
-              key={s.label}
-              type="button"
-              className="chat-suggestion-card"
-              onClick={() => submit(s.label)}
-            >
-              <Icon name={s.icon} />
-              <div>
-                <span style={{ display: 'block', fontWeight: 'var(--font-weight-medium)' }}>{s.label}</span>
-                <small className="muted" style={{ fontSize: '0.78rem' }}>{s.desc}</small>
-              </div>
-            </button>
-          ))}
-        </div>
+    conversationBody = (
+      <div className="agent-banner">
+        Ask about the AC repair, admin reviews, or existing campaigns.
       </div>
     );
   } else if (log.kind === 'loading') {
-    logBody = <Spinner text="Loading conversation history…" />;
+    conversationBody = <Spinner text="Loading conversation history…" />;
   } else if (log.kind === 'error') {
-    logBody = <ErrorBox error={log.error} />;
+    conversationBody = <ErrorBox error={log.error} />;
   } else {
-    logBody = (
-      <>
+    conversationBody = (
+      <div className="coworker-conversation" aria-live="polite" ref={logEl}>
         {messages.map((m) => (
-          <div key={m.id} className={`chat-bubble-wrap chat-bubble-wrap--${m.role}`}>
-            <div className="chat-bubble-meta">
-              <span>{m.role === 'user' ? 'You' : 'Co-pilot'}</span>
-            </div>
-            <div className={`bubble bubble--${m.role}`}>
-              <div className="bubble__text">{m.content}</div>
-              {m.role === 'assistant' ? <ResultView data={m.data} names={m.names} /> : null}
-            </div>
+          <div key={m.id} className={`agent-banner coworker-turn coworker-turn--${m.role}`}>
+            <strong>{m.role === 'user' ? 'You' : 'Assistant'}: </strong>
+            <span>{m.content}</span>
+            {m.role === 'assistant' ? <ResultView data={m.data} names={m.names} /> : null}
           </div>
         ))}
         {waiting ? (
-          <div className="chat-bubble-wrap chat-bubble-wrap--assistant">
-            <div className="chat-bubble-meta">
-              <span>Co-pilot</span>
-            </div>
-            <div className="bubble bubble--assistant">
-              <div className="bubble__text">
-                <Spinner text="Analyzing schedule & compiling answer…" />
-              </div>
-            </div>
+          <div className="agent-banner coworker-turn coworker-turn--assistant">
+            <Spinner text="Analyzing schedule & compiling answer…" />
           </div>
         ) : null}
-      </>
+      </div>
     );
   }
 
   return (
     <>
       <PageHeader
-        title={
-          <span className="row" style={{ alignItems: 'center', gap: '8px' }}>
-            <Icon name="copilot" />
-            <span>Dispatch Co-pilot</span>
-          </span>
-        }
-        subtitle="AI dispatch assistant: query live schedules, inspect technician rosters, and preview route actions."
+        eyebrow="YOUR AI WORKSPACE"
+        title="AI Coworker"
+        subtitle="Ask questions about the sample workspace."
+        meta={<span className="date">Concept demo</span>}
       />
-      <div className="chat">
-        <aside className="chat-side" aria-label="Conversation history">
-          <div className="chat-side-header">
-            <h2>Conversations</h2>
-            {threads ? <Badge text={String(threads.length)} tone="neutral" /> : null}
-          </div>
 
-          <Button
-            className="btn btn--primary btn--small btn--block"
-            onClick={() => {
-              openSeq.current += 1;
-              setThread(null);
-              intro();
-              loadThreads();
-            }}
-          >
-            ＋ New Conversation
-          </Button>
-
-          {threads && threads.length > 5 ? (
-            <input
-              type="search"
-              className="chat-threads-search"
-              placeholder="Filter conversations…"
-              value={threadFilter}
-              onChange={(e) => setThreadFilter(e.target.value)}
-              aria-label="Filter conversations"
-            />
-          ) : null}
-
-          <div className="chat-side-list">
-            {threads ? (
-              filteredThreads.length ? (
-                filteredThreads.map((t) => (
-                  <button
-                    type="button"
-                    key={t.id}
-                    className={`chat-thread-item ${t.id === thread ? 'chat-thread-item--active' : ''}`}
-                    onClick={() => openThread(t.id).then(loadThreads)}
-                  >
-                    <Icon name="requests" />
-                    <span className="chat-thread-title">{t.title || 'Untitled conversation'}</span>
-                  </button>
-                ))
-              ) : (
-                <Empty text="No matching conversations." />
-              )
+      <div className="layout coworker-layout">
+        <Panel className="coworker-chat-panel" aria-label="AI Coworker chat">
+          <div className="coworker-panel-head">
+            <h2>How can I help?</h2>
+            {thread || log.kind !== 'intro' ? (
+              <Button
+                className="btn btn--ghost btn--small"
+                onClick={() => {
+                  openSeq.current += 1;
+                  setThread(null);
+                  intro();
+                  loadThreads();
+                }}
+              >
+                New chat
+              </Button>
             ) : null}
           </div>
-        </aside>
 
-        <section className="chat-main" aria-label="Chat canvas">
-          <div className="chat-log" aria-live="polite" ref={logEl}>
-            {logBody}
+          <div id="coworker-conversation">
+            {conversationBody}
           </div>
+
+          <div className="filters coworker-filters" role="group" aria-label="Suggested questions">
+            {SUGGESTION_CHIPS.map((chip) => (
+              <button
+                key={chip.label}
+                type="button"
+                className="filter"
+                disabled={waiting}
+                onClick={() => applyChip(chip.label, chip.question, setText, submit)}
+              >
+                {chip.label}
+              </button>
+            ))}
+          </div>
+
           <form
-            className="chat-form"
+            className="coworker-ask"
             onSubmit={(e) => {
               e.preventDefault();
               submit(text);
@@ -451,23 +439,79 @@ export default function Copilot() {
           >
             <input
               type="text"
-              className="chat-input"
-              aria-label="Ask Co-pilot"
-              placeholder="Ask about a job, technician schedule, or request route changes…"
+              id="coworker-ask-input"
+              aria-label="Ask the AI Coworker"
+              placeholder="Ask about sample jobs or campaigns"
               maxLength={4000}
               value={text}
               onChange={(e) => setText(e.target.value)}
+              disabled={waiting}
             />
             <button
               type="submit"
-              className="btn btn--primary chat-send-btn"
+              className="action"
               aria-label="Send message"
               disabled={waiting || !text.trim()}
             >
               Send
             </button>
           </form>
-        </section>
+
+          <p className="sample-label">
+            Suggested chips and action rows are illustrative samples. Chat, threads, and confirmations use connected APIs — confirming a change creates a live Approvals proposal.
+          </p>
+
+          {threads && threads.length ? (
+            <details className="coworker-history">
+              <summary>Past conversations {threads ? `(${threads.length})` : ''}</summary>
+              {threads.length > 5 ? (
+                <input
+                  type="search"
+                  className="chat-threads-search"
+                  placeholder="Filter conversations…"
+                  value={threadFilter}
+                  onChange={(e) => setThreadFilter(e.target.value)}
+                  aria-label="Filter conversations"
+                />
+              ) : null}
+              <div className="coworker-history-list">
+                {filteredThreads.length ? (
+                  filteredThreads.map((t) => (
+                    <button
+                      type="button"
+                      key={t.id}
+                      className={`chat-thread-item ${t.id === thread ? 'chat-thread-item--active' : ''}`}
+                      onClick={() => openThread(t.id).then(loadThreads)}
+                    >
+                      <Icon name="requests" />
+                      <span className="chat-thread-title">{t.title || 'Untitled conversation'}</span>
+                    </button>
+                  ))
+                ) : (
+                  <Empty text="No matching conversations." />
+                )}
+              </div>
+            </details>
+          ) : null}
+        </Panel>
+
+        <Panel className="coworker-actions-panel" aria-label="Suggested actions">
+          <h2>Suggested actions</h2>
+          {SUGGESTED_ACTIONS.map((action) => (
+            <div key={action.title} className="row-item coworker-action-row">
+              <span className="rowmain">
+                <strong>{action.title}</strong>
+                <small className="muted">{action.subtitle}</small>
+              </span>
+              <a href={action.href} className="btn btn--secondary agent-btn coworker-action-btn">
+                {action.cta}
+              </a>
+            </div>
+          ))}
+          <p className="sample-label">
+            Illustrative examples — buttons open the section list, not a specific record.
+          </p>
+        </Panel>
       </div>
     </>
   );

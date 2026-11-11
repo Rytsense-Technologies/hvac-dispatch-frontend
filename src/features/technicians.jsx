@@ -95,6 +95,11 @@ export function ShiftsDialog({ tech, reload, onClose }) {
 }
 
 // First SEE which booked jobs would move and where, then ask for approval.
+// Team People "Time off" uses the same flow (alias keeps the dispatch CTA name clear).
+export function TimeOffDialog(props) {
+  return <UnavailableDialog {...props} />;
+}
+
 export function UnavailableDialog({ tech, reload, onClose }) {
   const [date, setDate] = useState(todayIn);
   const [reason, setReason] = useState('');

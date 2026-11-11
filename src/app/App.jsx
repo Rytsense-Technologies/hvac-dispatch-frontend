@@ -6,15 +6,45 @@ import { Component, Suspense, useCallback, useEffect, useRef, useState } from 'r
 import { api, setCsrf, onSessionExpired } from '../lib/api.js';
 import { setZone } from '../lib/format.js';
 import { session, can, SECTION_ROLES } from '../lib/session.js';
-import { Badge, Icon, Toasts } from '../components/index.js';
-import { SECTIONS } from './routes.js';
+import { Badge, Icon, SectionTabs, Toasts } from '../components/index.js';
+import {
+  MOBILE_MORE,
+  MOBILE_PRIMARY,
+  NAV_ITEMS,
+  SECTION_TABS,
+  findSection,
+  sectionIdFromHash,
+} from './routes.js';
 
 const allowedIn = (section) => !SECTION_ROLES[section.id] || can(...SECTION_ROLES[section.id]);
 
 function currentSection() {
-  const hashVal = (location.hash.replace(/^#\/?/, '') || 'overview').split('?')[0];
-  const id = hashVal === 'dashboard' ? 'overview' : hashVal;
-  return SECTIONS.find((s) => s.id === id) || SECTIONS[0];
+  return findSection(sectionIdFromHash(location.hash));
+}
+
+function crumbFor(section) {
+  const root = section.group === 'manage' ? 'Manage' : 'Workspace';
+  // Reference crumb: "Workspace / Work / Tasks" (or Appointments).
+  if (section.sectionGroup === 'work') return { root, strong: `Work / ${section.label}` };
+  if (section.sectionGroup === 'calls') {
+    if (section.id === 'numbers') return { root, strong: 'Calls / Phone numbers' };
+    return { root, strong: 'Calls' };
+  }
+  if (section.id === 'automation') return { root, strong: 'Settings / Admin automation' };
+  if (section.id === 'usage') return { root, strong: 'Settings / Usage & Billing' };
+  return { root, strong: section.label };
+}
+
+function navIsActive(item, sectionId) {
+  return (item.match || [item.id]).includes(sectionId);
+}
+
+/** True if any section id this nav entry covers is allowed for the signed-in role. */
+function itemAllowed(item) {
+  return (item.match || [item.id]).some((id) => {
+    const s = findSection(id);
+    return s && allowedIn(s);
+  });
 }
 
 // A section whose code could not be loaded (or that crashed) shows the same message the original console did.
@@ -259,66 +289,74 @@ function getInitials(name) {
 
 function Shell({ timezone, onSignOut }) {
   const [hash, setHash] = useState(location.hash);
-  const [agents, setAgents] = useState(null); // {active, total} once /v1/agents answers; stays null (hidden) on any failure
   const [menuOpen, setMenuOpen] = useState(false);
+  const [moreOpen, setMoreOpen] = useState(false);
   const menuRef = useRef(null);
+  const moreRef = useRef(null);
   const page = useRef(null);
   useEffect(() => {
-    const onHash = () => setHash(location.hash);
+    const onHash = () => {
+      setHash(location.hash);
+      setMoreOpen(false);
+    };
     window.addEventListener('hashchange', onHash);
     return () => window.removeEventListener('hashchange', onHash);
   }, []);
 
   useEffect(() => {
-    if (!menuOpen) return;
+    if (!menuOpen && !moreOpen) return;
     const onDocClick = (e) => {
-      if (menuRef.current && !menuRef.current.contains(e.target)) {
-        setMenuOpen(false);
-      }
+      if (menuOpen && menuRef.current && !menuRef.current.contains(e.target)) setMenuOpen(false);
+      if (moreOpen && moreRef.current && !moreRef.current.contains(e.target)) setMoreOpen(false);
     };
     document.addEventListener('click', onDocClick);
     return () => document.removeEventListener('click', onDocClick);
-  }, [menuOpen]);
-
-  // A quiet status pill in the header - real counts from /v1/agents, fetched once per sign-in. Never
-  // invented: if the call fails, the pill just doesn't show rather than guessing a number.
-  useEffect(() => {
-    let live = true;
-    api('/v1/agents').then((data) => { if (live) setAgents({ active: data.active, total: data.total }); }).catch(() => {});
-    return () => { live = false; };
-  }, []);
+  }, [menuOpen, moreOpen]);
 
   const section = currentSection();
   const allowed = allowedIn(section);
   const View = section.view;
+  const crumb = crumbFor(section);
+  const sectionTabs = section.sectionGroup ? SECTION_TABS[section.sectionGroup] : null;
 
   useEffect(() => { page.current?.focus({ preventScroll: true }); }, [hash]);
 
   const displayName = session.user?.name || session.actor || 'James M.';
   const initials = getInitials(displayName);
-  const visible = SECTIONS.filter(allowedIn);
-  const workspace = visible.filter((s) => s.group !== 'manage');
-  const manage = visible.filter((s) => s.group === 'manage');
-  const navLink = (s) => (
-    <a key={s.id} href={`#/${s.id}`} className={`menu-item ${s.id === section.id ? 'menu-item--on' : ''}`} aria-current={s.id === section.id ? 'page' : undefined}>
-      <Icon name={s.icon} /><span>{s.label}</span>
-    </a>
-  );
+  const visibleNav = NAV_ITEMS.filter(itemAllowed);
+  const workspaceNav = visibleNav.filter((item) => item.group !== 'manage');
+  const manageNav = visibleNav.filter((item) => item.group === 'manage');
+  const mobilePrimary = MOBILE_PRIMARY.filter(itemAllowed);
+  const mobileMore = MOBILE_MORE.filter(itemAllowed);
+  const moreActive = mobileMore.some((item) => item.id === section.id || (item.id === 'settings' && (section.id === 'automation' || section.id === 'usage')));
+  const visibleSectionTabs = sectionTabs
+    ? sectionTabs.filter((tab) => allowedIn(findSection(tab.id)))
+    : null;
+
+  const navLink = (item) => {
+    const on = navIsActive(item, section.id);
+    return (
+      <a key={item.id} href={item.href} className={`menu-item ${on ? 'menu-item--on' : ''}`} aria-current={on ? 'page' : undefined}>
+        <span className="menu-item__icon" aria-hidden="true"><Icon name={item.icon} /></span>
+        <span>{item.label}</span>
+      </a>
+    );
+  };
 
   return (
     <div id="shell" className="shell">
       <aside className="sidebar">
-        <div className="brand"><span className="brand__mark" aria-hidden="true">HD</span> HVAC Dispatch</div>
+        <div className="brand"><span className="brand__glyph" aria-hidden="true">◈</span><span className="brand__name">rytsense</span></div>
         <nav id="menu" className="menu" aria-label="Sections">
           <div className="menu-group-label">WORKSPACE</div>
-          {workspace.map(navLink)}
-          {manage.length ? <div className="menu-group-label">MANAGE</div> : null}
-          {manage.map(navLink)}
+          {workspaceNav.map(navLink)}
+          {manageNav.length ? <div className="menu-group-label">MANAGE</div> : null}
+          {manageNav.map(navLink)}
         </nav>
       </aside>
       <div className="main">
         <header className="topbar">
-          <div className="topbar__crumb"><span>{section.group === 'manage' ? 'Manage' : 'Workspace'}</span><span aria-hidden="true">/</span><strong>{section.label}</strong></div>
+          <div className="topbar__crumb"><span>{crumb.root}</span><span aria-hidden="true">/</span><strong>{crumb.strong}</strong></div>
           <div className="topbar__right">
             <a href="#/agents" className="topbar__status-pill" title="AI agents">
               <span className="topbar__status-dot" aria-hidden="true" />
@@ -365,15 +403,54 @@ function Shell({ timezone, onSignOut }) {
           </div>
         </header>
         <main id="page" className="page" tabIndex={-1} ref={page}>
+          {/* Work owns section tabs inside the page (after PageHeader) for reference order. */}
+          {visibleSectionTabs?.length && section.sectionGroup !== 'work' ? (
+            <SectionTabs
+              options={visibleSectionTabs.map((tab) => [tab.id, tab.label, tab.href])}
+              value={section.id}
+            />
+          ) : null}
           {allowed ? (
             <SectionBoundary key={`${section.id}${hash}`}>
               <Suspense fallback={null}><View /></Suspense>
             </SectionBoundary>
           ) : (
-            <div className="card"><h1>Not available for your role</h1><p className="muted">Ask an administrator if you need this section.</p></div>
+            <div className="panel"><h1>Not available for your role</h1><p className="muted">Ask an administrator if you need this section.</p></div>
           )}
         </main>
       </div>
+      <nav className="mobile-nav" aria-label="Primary">
+        {mobilePrimary.map((item) => {
+          const on = navIsActive(item, section.id);
+          return (
+            <a key={item.id} href={item.href} className={`mobile-nav__item ${on ? 'mobile-nav__item--on' : ''}`} aria-current={on ? 'page' : undefined}>
+              <Icon name={item.icon} />
+              <span>{item.label}</span>
+            </a>
+          );
+        })}
+        {mobileMore.length ? (
+          <div className="mobile-nav__more" ref={moreRef}>
+            <button
+              type="button"
+              className={`mobile-nav__item ${moreActive || moreOpen ? 'mobile-nav__item--on' : ''}`}
+              aria-expanded={moreOpen}
+              aria-haspopup="true"
+              onClick={() => setMoreOpen((o) => !o)}
+            >
+              <Icon name="more" />
+              <span>More</span>
+            </button>
+            {moreOpen ? (
+              <div className="mobile-more" role="menu">
+                {mobileMore.map((item) => (
+                  <a key={item.id} href={item.href} className="mobile-more__item" role="menuitem" onClick={() => setMoreOpen(false)}>{item.label}</a>
+                ))}
+              </div>
+            ) : null}
+          </div>
+        ) : null}
+      </nav>
     </div>
   );
 }

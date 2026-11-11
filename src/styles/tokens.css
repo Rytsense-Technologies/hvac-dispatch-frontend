@@ -1,63 +1,91 @@
-/* Design tokens shared by the console, the test-call page and the customer portal.
-   Refined, modern aesthetic with elevated typography, smooth micro-interactions,
-   subtle shadows and crisp contrast.
-   Typography strictly avoids heavy / extra-bold weights (no 700+). */
+/* Design tokens — Phase 0 shell parity with the Rytsense HVAC reference.
+   Source: docs/reference-design/design-system.md (2026-11-11).
+   Font-weight decision: allow 700 for H1 / eyebrow / tags / nav group labels only
+   to match the reference; body and most UI stay at 400–600. */
 :root {
-  /* ---- neutral scale: modern clean slate palette ---- */
+  /* ---- Core (reference) ---- */
+  --ink: #162d42;
+  --muted: #526777;
+  --line: #dfe7ed;
+  --accent: #176b9b;
+  --canvas: #f7f9fb;
+  --surface: #ffffff;
+
+  /* ---- Brand / interactive ---- */
+  --brand: #172f43;
+  --brand-mark: #1776a8;
+  --accent-strong: #125e88;
+  --accent-active-bg: #eaf4fa;
+  --accent-rail: #227dac;
+  --accent-hover-bg: #f1f6f9;
+  --accent-hover-text: #174962;
+  --action: #176b9b;
+  --action-hover: #0b5589;
+  --focus-ring: #e29a39;
+
+  /* ---- Semantic ---- */
+  --good-bg: #f0f7f3;
+  --good-text: #316c50;
+  --good-tag-bg: #e7f5ef;
+  --good-tag-text: #267756;
+  --warn-bg: #fff2e8;
+  --warn-text: #83410c;
+
+  /* ---- Legacy gray scale (kept for feature CSS; mapped toward reference) ---- */
   --gray-0: #ffffff;
-  --gray-50: #f8fafc;
-  --gray-100: #f1f5f9;
-  --gray-150: #e2e8f0;
-  --gray-200: #cbd5e1;
-  --gray-300: #94a3b8;
-  --gray-400: #64748b;
-  --gray-500: #475569;
-  --gray-600: #334155;
-  --gray-700: #1e293b;
-  --gray-800: #0f172a;
-  --gray-900: #020617;
+  --gray-50: #f7f9fb;
+  --gray-100: #f1f6f9;
+  --gray-150: #dfe7ed;
+  --gray-200: #c6d8e2;
+  --gray-300: #9bb2c1;
+  --gray-400: #718694;
+  --gray-500: #526777;
+  --gray-600: #4c6170;
+  --gray-700: #174962;
+  --gray-800: #162d42;
+  --gray-900: #0f1f2c;
 
-  /* ---- brand: deep refined modern navy with clean vibrant accents ---- */
-  --primary-50: #eff6ff;
-  --primary-100: #dbeafe;
-  --primary-200: #bfdbfe;
-  --primary-400: #3b82f6;
-  --primary-500: #1d4ed8;
-  --primary-600: #1e40af;
-  --primary-700: #172554;
+  /* ---- Brand scale mapped to accent (replaces blue #1d4ed8) ---- */
+  --primary-50: #eaf4fa;
+  --primary-100: #d7ebf5;
+  --primary-200: #a5cadc;
+  --primary-400: #227dac;
+  --primary-500: #176b9b;
+  --primary-600: #125e88;
+  --primary-700: #0b5589;
 
-  /* ---- semantic colors: clear, balanced, accessible ---- */
-  --good-500: #059669;
-  --good-600: #047857;
-  --good-50: #ecfdf5;
-  --good-border: #a7f3d0;
+  /* ---- Semantic legacy aliases ---- */
+  --good-500: #267756;
+  --good-600: #316c50;
+  --good-50: #f0f7f3;
+  --good-border: #c5e4d4;
 
-  --warn-500: #d97706;
-  --warn-600: #b45309;
-  --warn-50: #fffbeb;
-  --warn-border: #fde68a;
+  --warn-500: #83410c;
+  --warn-600: #83410c;
+  --warn-50: #fff2e8;
+  --warn-border: #f0d2b4;
 
-  --danger-500: #e11d48;
-  --danger-600: #be123c;
+  --danger-500: #be123c;
+  --danger-600: #9f1239;
   --danger-50: #fff1f2;
   --danger-border: #fecdd3;
 
-  --info-500: #0284c7;
-  --info-600: #0369a1;
-  --info-50: #f0f9ff;
-  --info-border: #bae6fd;
+  --info-500: #176b9b;
+  --info-600: #125e88;
+  --info-50: #eaf4fa;
+  --info-border: #a5cadc;
+  --info-700: #0b5589;
 
-  /* ---- surface tokens ---- */
-  --bg: var(--gray-50);
-  --card: var(--gray-0);
-  --text: var(--gray-800);
-  --muted: var(--gray-500);
-  --border: var(--gray-150);
-  --neutral-soft: var(--gray-100);
+  /* ---- Surface tokens ---- */
+  --bg: var(--canvas);
+  --card: var(--surface);
+  --text: var(--ink);
+  --border: var(--line);
+  --neutral-soft: #f1f6f9;
 
-  --primary: var(--primary-500);
-  --primary-dark: var(--primary-600);
-  --primary-soft: var(--primary-50);
+  --primary: var(--accent);
+  --primary-dark: var(--accent-strong);
+  --primary-soft: var(--accent-active-bg);
   --good: var(--good-500);
   --good-soft: var(--good-50);
   --warn: var(--warn-500);
@@ -67,18 +95,36 @@
   --info: var(--info-500);
   --info-soft: var(--info-50);
 
-  /* ---- shape and elevation: subtle, clean, modern shadows ---- */
+  /* ---- Sidebar (light) ---- */
+  --sidebar-bg: #ffffff;
+  --sidebar-bg-raised: #f7f9fb;
+  --sidebar-width: 232px;
+  --sidebar-text: #4c6170;
+  --sidebar-muted: #718694;
+  --sidebar-label: #647987;
+  --sidebar-border: var(--line);
+  --sidebar-hover: var(--accent-hover-bg);
+  --sidebar-active-bg: var(--accent-active-bg);
+  --sidebar-active-text: var(--accent-strong);
+  --sidebar-accent: var(--accent);
+
+  /* ---- Shape ---- */
   --radius-sm: 6px;
-  --radius-md: 10px;
-  --radius-lg: 12px;
-  --radius: var(--radius-lg);
+  --radius-md: 7px;
+  --radius-lg: 8px;
+  --radius-panel: 10px;
+  --radius-dialog: 12px;
+  --radius: var(--radius-panel);
 
-  --shadow-xs: 0 1px 2px 0 rgba(15, 23, 42, 0.04);
-  --shadow-sm: 0 1px 3px 0 rgba(15, 23, 42, 0.06), 0 1px 2px -1px rgba(15, 23, 42, 0.04);
-  --shadow-md: 0 4px 6px -1px rgba(15, 23, 42, 0.06), 0 2px 4px -2px rgba(15, 23, 42, 0.04);
-  --shadow-lg: 0 10px 15px -3px rgba(15, 23, 42, 0.08), 0 4px 6px -4px rgba(15, 23, 42, 0.03);
+  /* ---- Elevation — borders over shadows for chrome/panels ---- */
+  --shadow-none: none;
+  --shadow-xs: none;
+  --shadow-sm: none;
+  --shadow-md: none;
+  --shadow-lg: none;
+  --shadow-dialog: 0 16px 48px rgba(18, 44, 60, 0.2);
 
-  /* ---- spacing scale ---- */
+  /* ---- Spacing ---- */
   --space-1: 4px;
   --space-2: 8px;
   --space-3: 12px;
@@ -86,25 +132,28 @@
   --space-5: 20px;
   --space-6: 24px;
   --space-8: 32px;
+  --space-9: 38px;
+  --content-pad-x: 38px;
+  --content-pad-y: 32px;
+  --content-max: 1400px;
+  --topbar-height: 64px;
 
-  /* ---- typography: clean sans stack, no extra bold fonts ---- */
-  --font-sans: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+  /* ---- Typography ---- */
+  --font-sans: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-size-body: 14px;
+  --font-size-nav: 13px;
+  --font-size-label: 10px;
+  --font-size-h1: 28px;
+  --font-size-h2: 16px;
+  --font-size-metric: 26px;
   --font-weight-normal: 400;
   --font-weight-medium: 500;
   --font-weight-semibold: 600;
+  --font-weight-bold: 700;
+  --letter-eyebrow: 0.09em;
+  --letter-h1: -0.7px;
 
   color-scheme: light;
-
-  /* ---- sidebar: clean modern white palette matching reference design ---- */
-  --sidebar-bg: #ffffff;
-  --sidebar-bg-raised: #f8fafc;
-  --sidebar-text: #334155;
-  --sidebar-muted: #64748b;
-  --sidebar-border: #e2e8f0;
-  --sidebar-hover: #f1f5f9;
-  --sidebar-active-bg: #e0f2fe;
-  --sidebar-active-text: #0284c7;
-  --sidebar-accent: #0284c7;
 }
 
 html {
@@ -116,12 +165,22 @@ html {
 
 body {
   font-family: var(--font-sans);
+  font-size: var(--font-size-body);
   font-weight: var(--font-weight-normal);
   color: var(--text);
   background: var(--bg);
 }
 
-/* Enforce no extra bold for strong/b elements across entire app */
+/* Default strong stays semibold; bold utility unlocks 700 for reference chrome. */
 b, strong {
   font-weight: var(--font-weight-semibold);
+}
+.font-bold,
+.page-header__eyebrow,
+.page-header h1,
+.badge,
+.menu-group-label,
+.btn--link,
+.link {
+  font-weight: var(--font-weight-bold);
 }

@@ -1,5 +1,6 @@
 // Find a technician for a job: the dispatcher calculates the feasible options, a person picks one and says why, and it goes to
 // Approvals. Nothing is booked here: a DIFFERENT person approves it, and the system checks it again then.
+// Also exports schedule-slot primitives used by Team → Availability for reference visual parity.
 import { useEffect, useState } from 'react';
 import { api } from '../lib/api.js';
 import { formatDateTime, formatTime, reasonText } from '../lib/format.js';
@@ -9,6 +10,63 @@ import { ActionButton, ErrorBox, Field, Note, Spinner, toast } from '../componen
 export async function technicianNames() {
   const { technicians } = await api('/v1/dispatch/technicians');
   return Object.fromEntries(technicians.map((t) => [t.id, t.name]));
+}
+
+/** Infer slot kind from API segment fields or free-text labels. */
+export function slotKind(segment) {
+  const code = String(segment?.kind || segment?.code || segment?.status || '').toLowerCase();
+  if (['available', 'free', 'open'].includes(code)) return 'available';
+  if (['booked', 'busy', 'job', 'assigned'].includes(code)) return 'booked';
+  if (['outside', 'off', 'time_off', 'unavailable', 'weekend'].includes(code)) return 'outside';
+  const text = String(segment?.text || segment?.label || '').toLowerCase();
+  if (text.includes('available') || text.includes('free')) return 'available';
+  if (text.includes('booked') || text.includes('job') || text.includes('assigned')) return 'booked';
+  if (text.includes('outside') || text.includes('time off') || text.includes('weekend') || text.includes('off duty')) return 'outside';
+  return 'outside';
+}
+
+export function Slot({ kind = 'outside', children, onClick, as: Tag = onClick ? 'button' : 'div', ...rest }) {
+  const className = `slot ${kind}`;
+  if (Tag === 'button') {
+    return (
+      <button type="button" className={className} onClick={onClick} {...rest}>
+        {children}
+      </button>
+    );
+  }
+  return (
+    <Tag className={className} {...rest}>
+      {children}
+    </Tag>
+  );
+}
+
+/** One technician block with day columns of available / booked / outside slots. */
+export function ScheduleTech({ name, meta, days = [] }) {
+  return (
+    <section className="schedule-tech">
+      <h3>
+        {name}
+        {meta ? <span className="sub">{` ${meta}`}</span> : null}
+      </h3>
+      <div className="schedule-days">
+        {days.map((day) => (
+          <div className="schedule-day" key={day.key || day.label}>
+            <strong>{day.label}</strong>
+            {(day.segments || []).length ? (
+              day.segments.map((seg, i) => (
+                <Slot key={i} kind={slotKind(seg)}>
+                  {seg.text || seg.label || '—'}
+                </Slot>
+              ))
+            ) : (
+              <Slot kind="outside">No shift this day</Slot>
+            )}
+          </div>
+        ))}
+      </div>
+    </section>
+  );
 }
 
 // <ScheduleFlow jobId onDone /> (was scheduleFlow(jobId, onDone), which returned a DOM node)
