@@ -396,7 +396,11 @@ export default function Appointments() {
           },
         });
         if (n !== seq.current) return;
-        setData({ items: Array.isArray(out?.visits) ? out.visits : [], offset: o, hasMore: Boolean(out?.has_more) });
+        // Live schedule returns `appointments`; keep `visits` as a fallback for older payloads.
+        const rows = Array.isArray(out?.appointments)
+          ? out.appointments
+          : (Array.isArray(out?.visits) ? out.visits : []);
+        setData({ items: rows, offset: o, hasMore: Boolean(out?.has_more) });
         setLoading(false);
       } catch (e) {
         if (n !== seq.current) return;

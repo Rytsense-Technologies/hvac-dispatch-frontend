@@ -298,11 +298,8 @@ export default function Calls() {
         eyebrow="Conversations"
         title="Calls"
         subtitle="Review calls and follow up on customer needs."
-      >
-        <button type="button" className="btn date-chip" onClick={() => {}}>
-          Sample workspace
-        </button>
-      </PageHeader>
+        meta={<span className="date">{usingSample ? 'Sample workspace' : 'Live workspace'}</span>}
+      />
 
       <div className="calls-body">
         <div className="toolbar calls-toolbar">

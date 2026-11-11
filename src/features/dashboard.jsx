@@ -184,8 +184,36 @@ function MetricCard({ href, label, value, hint, icon }) {
   );
 }
 
+function agentIcon(id) {
+  const key = String(id || '').toLowerCase();
+  if (key.includes('schedul') || key.includes('appoint')) return 'appointments';
+  if (key.includes('lead') || key.includes('campaign')) return 'campaigns';
+  if (key.includes('coworker') || key.includes('office')) return 'tasks';
+  if (key.includes('monitor') || key.includes('alert')) return 'attention';
+  if (key.includes('text')) return 'calls';
+  return 'agents';
+}
+
+function agentsForStrip(overviewData) {
+  const items = overviewData?.agents?.items;
+  if (Array.isArray(items) && items.length) {
+    return items.map((a) => ({
+      id: a.id,
+      name: a.name || a.id,
+      icon: agentIcon(a.id),
+      status: String(a.status || 'active').toLowerCase(),
+      summary: a.summary || a.description || '',
+    }));
+  }
+  return AI_TEAM;
+}
+
 function AgentStripCard({ agent }) {
-  const review = agent.status === 'review';
+  const status = String(agent.status || 'active').toLowerCase();
+  const review = status === 'review';
+  const off = status === 'off' || status === 'inactive' || status === 'disabled';
+  const badge = off ? 'Off' : review ? 'Review' : 'Active';
+  const tone = off ? 'neutral' : review ? 'warn' : 'good';
   return (
     <div className="agent-strip-card">
       <div className="agent-strip-card__top">
@@ -193,7 +221,7 @@ function AgentStripCard({ agent }) {
           <span className="symbol-tile" aria-hidden="true"><Icon name={agent.icon} /></span>
           <h3>{agent.name}</h3>
         </span>
-        <Badge text={review ? 'Review' : 'Active'} tone={review ? 'warn' : 'good'} />
+        <Badge text={badge} tone={tone} />
       </div>
       <p className="muted">{agent.summary}</p>
     </div>
@@ -508,10 +536,22 @@ export default function Dashboard() {
             <h2>Your AI team</h2>
             <a className="link sectionhead__meta" href="#/agents">View agents →</a>
           </div>
-          <p className="overview-agents-meta muted">Example agents · Proposed capabilities</p>
-          <div className="agent-strip">
-            {AI_TEAM.map((agent) => <AgentStripCard key={agent.id} agent={agent} />)}
-          </div>
+          {(() => {
+            const strip = agentsForStrip(o);
+            const live = Array.isArray(o?.agents?.items) && o.agents.items.length > 0;
+            return (
+              <>
+                <p className="overview-agents-meta muted">
+                  {live
+                    ? `${o.agents.active ?? strip.filter((a) => a.status === 'active').length} of ${o.agents.total ?? strip.length} agents active`
+                    : 'Example agents · Proposed capabilities'}
+                </p>
+                <div className="agent-strip">
+                  {strip.map((agent) => <AgentStripCard key={agent.id} agent={agent} />)}
+                </div>
+              </>
+            );
+          })()}
 
           <div className="overview-layout">
             <Panel>

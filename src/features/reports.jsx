@@ -111,15 +111,15 @@ function normalizeReportsPayload(data, periodLabel) {
       periodLabel: data.period_label || data.periodLabel || periodLabel,
       metrics: [
         metricFromUnknown(typeof appointments === 'object' ? appointments : { value: appointments }, {
-          title: 'Appointments in sample workspace',
-          definition: 'Count of non-canceled sample appointments; not actual business bookings.',
+          title: 'Appointments',
+          definition: 'Non-canceled appointments scheduled in this period (by visit start time).',
           value: typeof appointments === 'number' ? appointments : 0,
           cta: 'View appointments',
           href: APPOINTMENTS_HREF,
         }),
         metricFromUnknown(typeof reviews === 'object' ? reviews : { value: reviews }, {
           title: 'AI actions awaiting review',
-          definition: 'Sample items with a needs-review or needs-approval status.',
+          definition: 'Dispatch or office items still waiting for a decision (current queue).',
           value: typeof reviews === 'number' ? reviews : 0,
           cta: 'View review queue',
           href: REVIEW_HREF,
@@ -216,10 +216,10 @@ async function loadComposed(periodId, summaryResPreload = null) {
     summaryError: summaryRes.ok ? null : summaryRes.error,
     metrics: [
       {
-        title: 'Appointments in sample workspace',
+        title: 'Appointments',
         definition: appointmentUnavailable
           ? 'Appointments could not be loaded for this period.'
-          : 'Count of non-canceled sample appointments; not actual business bookings.',
+          : 'Non-canceled appointments scheduled in this period (by visit start time).',
         value: appointmentValue,
         unavailable: appointmentUnavailable,
         cta: 'View appointments',
@@ -229,7 +229,7 @@ async function loadComposed(periodId, summaryResPreload = null) {
         title: 'AI actions awaiting review',
         definition: reviewUnavailable
           ? 'Review queue could not be loaded.'
-          : 'Sample items with a needs-review or needs-approval status.',
+          : 'Dispatch or office items still waiting for a decision (current queue).',
         value: reviewValue,
         unavailable: reviewUnavailable,
         cta: 'View review queue',
@@ -390,7 +390,7 @@ export default function Reports() {
       <PageHeader
         eyebrow="PERFORMANCE"
         title="Reports"
-        subtitle="Sample operational metrics and definitions."
+        subtitle="Operational metrics and definitions for the selected period."
         meta={(
           <div className="reports-actions">
             <label className="reports-period">
