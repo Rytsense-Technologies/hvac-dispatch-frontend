@@ -4,12 +4,13 @@
 import { useCallback, useEffect, useState } from 'react';
 import { api } from '../lib/api.js';
 import { can } from '../lib/session.js';
-import { Badge, Card, Empty, ErrorBox, Field, Overlay, PageHeader, Select, Spinner, Tabs, toast, useRun } from '../components/index.js';
+import { Badge, Card, Empty, ErrorBox, Field, Icon, Overlay, Select, Spinner, Tabs, toast, useRun } from '../components/index.js';
 
 const DAY_LABELS = [['mon', 'Mon'], ['tue', 'Tue'], ['wed', 'Wed'], ['thu', 'Thu'], ['fri', 'Fri'], ['sat', 'Sat'], ['sun', 'Sun']];
-const STATUS = { active: ['Active', 'good'], paused: ['Paused', 'warn'], off: ['Off', 'neutral'] };
+const STATUS = { active: ['Active', 'good'], paused: ['Paused', 'warn'], off: ['Off', 'neutral'], needs_review: ['Needs review', 'warn'] };
 const TABS = [['all', 'All agents'], ['service', 'Customer service'], ['office', 'Office operations'], ['growth', 'Growth']];
 const TAB_OF = { 'Customer service': 'service', Growth: 'growth', Operations: 'office', Office: 'office' };
+const GROUP_ICON = { service: 'phone', office: 'tasks', growth: 'campaigns' };
 
 const visible = (field, values) => !field.show_when || Object.entries(field.show_when).every(([key, wanted]) => values[key] === wanted);
 
@@ -120,25 +121,40 @@ export default function Agents() {
   const shown = data ? data.agents.filter((agent) => tab === 'all' || TAB_OF[agent.group] === tab) : [];
   return (
     <>
-      <PageHeader
-        title="Meet your AI team"
-        subtitle={data ? `${data.total} AI agents, ${data.active} active. Open one to see what it does and how it works for your company.` : 'What each AI agent does for your business.'}
-      />
-      <Tabs options={TABS} value={tab} onChange={setTab} label="Agent groups" />
+      <div className="hero-head">
+        <p className="eyebrow">Your AI workforce</p>
+        <h1>Meet your AI team</h1>
+        <p className="muted">
+          {data ? `${data.total} AI agents, ${data.active} active. Open one to see what it does and how it works for your company.` : 'What each AI agent does for your business.'}
+        </p>
+      </div>
+
+      <div className="hero-banner">
+        <span className="hero-banner__icon" aria-hidden="true"><Icon name="automation" /></span>
+        <div className="hero-banner__body">
+          <h2>More time for the work that matters.</h2>
+          <p className="muted">See what each agent can help with, then review the work that needs your team's attention.</p>
+        </div>
+      </div>
+
+      <Tabs options={TABS} value={tab} onChange={setTab} label="Agent groups" variant="pill" />
       {error ? <ErrorBox error={error} /> : !data ? <Spinner /> : !shown.length ? <Empty text="No agents in this group." /> : (
-        <div className="grid">
+        <div className="agent-grid">
           {shown.map((agent) => {
             const [label, tone] = STATUS[agent.status] || [agent.status, 'neutral'];
+            const stat = agent.choices || (agent.editable ? '' : 'Set by the server');
             return (
-              <Card as="section" key={agent.id}>
+              <Card as="section" key={agent.id} className="agent-card">
                 <div className="between">
-                  <h2>{agent.name}</h2>
+                  <span className="agent-card__icon" aria-hidden="true"><Icon name={GROUP_ICON[TAB_OF[agent.group]] || 'automation'} /></span>
                   <Badge text={label} tone={tone} />
                 </div>
-                <p className="muted small">{agent.group}</p>
-                <p>{agent.summary}</p>
-                <p className="small"><strong>{agent.choices || (agent.editable ? '' : 'Set by the server')}</strong></p>
-                <button type="button" className="btn btn--outline" onClick={() => setOpen(agent.id)}>View agent</button>
+                <h2>{agent.name}</h2>
+                <p className="agent-card__desc">{agent.summary}</p>
+                <div className="agent-card__foot">
+                  {stat ? <p className="agent-card__stat"><strong>{stat}</strong></p> : null}
+                  <button type="button" className="btn btn--outline btn--block" onClick={() => setOpen(agent.id)}>View agent →</button>
+                </div>
               </Card>
             );
           })}

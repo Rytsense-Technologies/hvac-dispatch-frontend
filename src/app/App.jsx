@@ -244,11 +244,20 @@ function AuthScreen({ message, onSignedIn }) {
 
 function Shell({ timezone, onSignOut }) {
   const [hash, setHash] = useState(location.hash);
+  const [agents, setAgents] = useState(null); // {active, total} once /v1/agents answers; stays null (hidden) on any failure
   const page = useRef(null);
   useEffect(() => {
     const onHash = () => setHash(location.hash);
     window.addEventListener('hashchange', onHash);
     return () => window.removeEventListener('hashchange', onHash);
+  }, []);
+
+  // A quiet status pill in the header - real counts from /v1/agents, fetched once per sign-in. Never
+  // invented: if the call fails, the pill just doesn't show rather than guessing a number.
+  useEffect(() => {
+    let live = true;
+    api('/v1/agents').then((data) => { if (live) setAgents({ active: data.active, total: data.total }); }).catch(() => {});
+    return () => { live = false; };
   }, []);
 
   const section = currentSection();
@@ -282,13 +291,16 @@ function Shell({ timezone, onSignOut }) {
       <div className="main">
         <header className="topbar">
           <div className="topbar__crumb"><span>Workspace</span><span aria-hidden="true">/</span><strong>{section.label}</strong></div>
-          <div id="who" className="identity" data-testid="identity">
-            <span className="identity__avatar" aria-hidden="true">{(displayName || '?').slice(0, 1).toUpperCase()}</span>
-            <span className="identity__body">
-              <strong>{displayName}</strong> <Badge text={session.role} tone="info" />
-              <small className="block muted">{`${session.actor} · ${timezone}`}</small>
-            </span>
-            <button id="signout" className="btn btn--ghost btn--small" type="button" onClick={onSignOut} aria-label="Sign out" title="Sign out"><Icon name="signOut" /></button>
+          <div className="topbar__right">
+            {agents ? <a href="#/agents" className="topbar__agents"><Badge text={`${agents.active} of ${agents.total} AI agents active`} tone={agents.active ? 'good' : 'neutral'} /></a> : null}
+            <div id="who" className="identity" data-testid="identity">
+              <span className="identity__avatar" aria-hidden="true">{(displayName || '?').slice(0, 1).toUpperCase()}</span>
+              <span className="identity__body">
+                <strong>{displayName}</strong> <Badge text={session.role} tone="info" />
+                <small className="block muted">{`${session.actor} · ${timezone}`}</small>
+              </span>
+              <button id="signout" className="btn btn--ghost btn--small" type="button" onClick={onSignOut} aria-label="Sign out" title="Sign out"><Icon name="signOut" /></button>
+            </div>
           </div>
         </header>
         <main id="page" className="page" tabIndex={-1} ref={page}>

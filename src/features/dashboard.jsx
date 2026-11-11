@@ -1,15 +1,14 @@
-// Dashboard: how dispatch is doing over a period, as a few big numbers and one table per technician -
-// plus a short greeting, what needs the signed-in person's attention right now, and the latest activity.
+// Dashboard: a quick read of today (or this week) from /v1/overview - what needs the signed-in person
+// right now, the headline numbers, the AI team, the latest calls and the open approvals - plus, further
+// down, the fuller period breakdown (every stat, every technician) from /v1/dispatch/reports/summary.
 import { useEffect, useRef, useState } from 'react';
 import { api } from '../lib/api.js';
-import { percent, hours, addDays, todayIn, reasonText } from '../lib/format.js';
+import { percent, hours, addDays, todayIn, reasonText, timeAgo } from '../lib/format.js';
 import { session } from '../lib/session.js';
-import { Spinner, ErrorBox, DataTable, Card, StatGrid, StatusBadge, Empty, Icon } from '../components/index.js';
-import { proposalText } from './attention.jsx';
+import { Spinner, ErrorBox, DataTable, Card, StatGrid, Badge, Empty, Icon, Tabs } from '../components/index.js';
 
+const fetchOverview = (period) => api('/v1/overview', { params: { period } });
 export const fetchSummary = (from, to) => api('/v1/dispatch/reports/summary', { params: { from, to } });
-const fetchRecentRequests = () => api('/v1/service-requests', { params: { limit: 5 } });
-const fetchOpenAttention = () => api('/v1/dispatch/violations', { params: { status: 'open' } });
 
 export function cards(summary) {
   const waiting = Object.values(summary.proposals || {}).reduce((sum, p) => sum + (p.pending || 0), 0);
@@ -34,46 +33,46 @@ function greetingWord() {
   return h < 12 ? 'Good morning' : h < 18 ? 'Good afternoon' : 'Good evening';
 }
 
-// A row linking straight to a section that needs the person's attention, shown only while its count is above zero.
-function QuickAction({ icon, tone, count, label, href }) {
-  if (!count) return null;
+// One of the three "what needs you" cards - always shown, so "nothing waiting" is still an honest answer, not a gap.
+function ActionCard({ icon, title, text, href }) {
   return (
     <a className="quick-action" href={href}>
-      <span className={`quick-action__icon quick-action__icon--${tone}`} aria-hidden="true"><Icon name={icon} /></span>
-      <span className="quick-action__body"><strong>{count}</strong> {label}</span>
+      <span className="quick-action__icon quick-action__icon--info" aria-hidden="true"><Icon name={icon} /></span>
+      <span className="quick-action__body"><strong>{title}</strong><small className="block muted">{text}</small></span>
       <span className="quick-action__go" aria-hidden="true">→</span>
     </a>
   );
 }
 
-function RecentRequests({ items }) {
-  if (!items.length) return <Empty text="No requests yet." />;
+const OUTCOME_TONE = { booked: 'good', completed: 'good', escalated: 'bad', follow_up: 'warn', cancelled: 'neutral', no_request: 'neutral' };
+
+function RecentCalls({ calls }) {
+  if (!calls.length) return <Empty text="No calls yet." />;
   return (
     <ul className="activity-list">
-      {items.map((item) => {
-        const r = item.service_request;
-        const name = item.customer.name || 'Unknown';
-        return (
-          <li key={r.id} className="activity-row">
-            <span className="activity-avatar" aria-hidden="true">{name.slice(0, 1).toUpperCase()}</span>
-            <span className="activity-body"><strong>{name}</strong><small className="block muted">{r.service_type || r.category || 'Request'}</small></span>
-            <StatusBadge status={r.status} />
-          </li>
-        );
-      })}
+      {calls.map((c) => (
+        <li key={c.id} className="activity-row">
+          <span className="activity-avatar" aria-hidden="true">{(c.customer?.name || '?').slice(0, 1).toUpperCase()}</span>
+          <span className="activity-body"><strong>{c.customer?.name || 'Unknown'}</strong><small className="block muted">{c.reason}</small></span>
+          <span className="right">
+            <Badge text={c.outcome?.label || c.outcome?.code} tone={OUTCOME_TONE[c.outcome?.code] || 'neutral'} />
+            <small className="block muted">{timeAgo(c.started_at)}</small>
+          </span>
+        </li>
+      ))}
     </ul>
   );
 }
 
-function AttentionList({ items }) {
-  if (!items.length) return <Empty text="Nothing needs attention. Every booked job fits its technician." />;
+function TodoList({ items }) {
+  if (!items.length) return <Empty text="Nothing waiting for approval." />;
   return (
     <ul className="activity-list">
-      {items.map((v, i) => (
-        <li key={v.job_id || i} className="activity-row">
-          <span className="activity-avatar activity-avatar--warn" aria-hidden="true"><Icon name="attention" /></span>
-          <span className="activity-body"><strong>{v.summary?.service_type || 'Job'}</strong><small className="block muted">{proposalText(v)}</small></span>
-          {v.technician_name ? <small className="muted">{v.technician_name}</small> : null}
+      {items.map((t) => (
+        <li key={t.id} className="activity-row">
+          <span className="activity-avatar activity-avatar--warn" aria-hidden="true"><Icon name="approvals" /></span>
+          <span className="activity-body"><strong>{t.title}</strong><small className="block muted">{t.reason}</small></span>
+          <small className="muted">{timeAgo(t.created_at)}</small>
         </li>
       ))}
     </ul>
@@ -81,11 +80,23 @@ function AttentionList({ items }) {
 }
 
 export default function Dashboard() {
+  const [period, setPeriod] = useState('today');
+  const [overview, setOverview] = useState({ status: 'loading' });
+
   // A week back to a week ahead: visits are booked ahead, so a range that stops at today would hide them.
   const [range, setRange] = useState(() => ({ from: addDays(todayIn(), -7), to: addDays(todayIn(), 7) }));
   const [state, setState] = useState({ status: 'loading' });
-  const [extra, setExtra] = useState({ status: 'loading' });
   const latest = useRef(0);
+
+  useEffect(() => {
+    let live = true;
+    setOverview({ status: 'loading' });
+    fetchOverview(period).then(
+      (data) => { if (live) setOverview({ status: 'ready', data }); },
+      (error) => { if (live) setOverview({ status: 'error', error }); },
+    );
+    return () => { live = false; };
+  }, [period]);
 
   useEffect(() => {
     latest.current += 1;
@@ -97,14 +108,6 @@ export default function Dashboard() {
     );
     return () => { latest.current += 1; };
   }, [range]);
-
-  useEffect(() => {
-    let live = true;
-    Promise.all([fetchRecentRequests(), fetchOpenAttention()]).then(([requests, violations]) => {
-      if (live) setExtra({ status: 'ready', requests: requests.service_requests.slice(0, 5), violations: violations.violations });
-    }, (error) => { if (live) setExtra({ status: 'error', error }); });
-    return () => { live = false; };
-  }, []);
 
   const change = (key) => (e) => {
     const value = e.target.value;
@@ -133,55 +136,70 @@ export default function Dashboard() {
   }
 
   const firstName = (session.user?.name || session.actor || '').split(' ')[0];
-  const waitingApprovals = state.status === 'ready' ? Object.values(state.data.proposals || {}).reduce((sum, p) => sum + (p.pending || 0), 0) : 0;
+  const o = overview.status === 'ready' ? overview.data : null;
 
   return (
     <>
       <div className="hero-head">
-        <p className="eyebrow">Your dispatch workspace</p>
+        <p className="eyebrow">Your operations center</p>
         <h1>{firstName ? `${greetingWord()}, ${firstName}` : greetingWord()}</h1>
-        <p className="muted">Here's what's happening with requests, jobs and your team.</p>
+        <p className="muted">Your team's day, in one clear view.</p>
       </div>
 
       <div className="hero-banner">
         <span className="hero-banner__icon" aria-hidden="true"><Icon name="requests" /></span>
         <div className="hero-banner__body">
-          <h2>Requests, jobs and technicians in one place</h2>
-          <p className="muted">Review what needs you, and let the planner handle the rest.</p>
+          <h2>Your business is moving</h2>
+          <p className="muted">Your AI team is handling the routine work. Here's where your team can help.</p>
         </div>
-        <a className="btn btn--primary" href="#/requests">Review requests →</a>
+        <a className="btn btn--primary" href="#/calls">Review recent calls →</a>
       </div>
 
-      {state.status === 'ready' ? (
+      {o ? (
         <div className="quick-actions">
-          <QuickAction icon="attention" tone="warn" count={state.data.problems.still_open} label="jobs need attention" href="#/attention" />
-          <QuickAction icon="approvals" tone="info" count={waitingApprovals} label="replacements waiting for approval" href="#/approvals" />
-          <QuickAction icon="requests" tone="bad" count={state.data.requests.emergencies} label="emergencies need a person" href="#/requests" />
+          <ActionCard icon="tasks" title="Assign open work" text={`${o.queues.unassigned_jobs} job${o.queues.unassigned_jobs === 1 ? '' : 's'} need a technician`} href="#/tasks" />
+          <ActionCard icon="approvals" title="Review AI actions" text={`${o.follow_ups ? o.follow_ups.total : o.queues.office_follow_ups} item${(o.follow_ups ? o.follow_ups.total : o.queues.office_follow_ups) === 1 ? '' : 's'} need review`} href="#/automation" />
+          <ActionCard icon="technicians" title="Check your team" text={`${o.queues.technicians.available} of ${o.queues.technicians.total} technicians available`} href="#/team" />
         </div>
       ) : null}
 
       <div className="between">
         <h2>Today's overview</h2>
+        <Tabs options={[['today', 'Today'], ['week', 'This week']]} value={period} onChange={setPeriod} label="Period" />
+      </div>
+      {overview.status === 'loading' ? <Spinner text="Loading the overview…" /> : overview.status === 'error' ? <ErrorBox error={overview.error} /> : (
+        <>
+          <p className="muted small">{`Updated ${timeAgo(o.generated_at)}`}</p>
+          <StatGrid items={[
+            ['Calls answered', o.counters.calls_answered, null, 'phone'],
+            ['Appointments booked', o.counters.appointments_booked, null, 'appointments'],
+            ['New customers', o.counters.customers.new, `${o.counters.customers.total} total`, 'customers'],
+            ['AI actions to review', o.follow_ups ? o.follow_ups.total : null, null, 'automation'],
+          ].filter(([, value]) => value !== null)} />
+
+          <div className="grid2">
+            <Card as="section">
+              <Card.Title>Recent calls</Card.Title>
+              <RecentCalls calls={o.recent_calls} />
+              <p className="right"><a href="#/calls">View all →</a></p>
+            </Card>
+            <Card as="section">
+              <Card.Title>Your to-do list</Card.Title>
+              <TodoList items={o.todo} />
+              <p className="right"><a href="#/approvals">View tasks →</a></p>
+            </Card>
+          </div>
+        </>
+      )}
+
+      <div className="between">
+        <h2>Operations detail</h2>
         <div className="page-actions">
           <label className="inline">From<input type="date" aria-label="From" value={range.from} onChange={change('from')} /></label>
           <label className="inline">To<input type="date" aria-label="To" value={range.to} onChange={change('to')} /></label>
         </div>
       </div>
-      <div className="stack">
-        {body}
-        <div className="grid2">
-          <Card as="section">
-            <Card.Title>Recent requests</Card.Title>
-            {extra.status === 'ready' ? <RecentRequests items={extra.requests} /> : extra.status === 'error' ? <ErrorBox error={extra.error} /> : <Spinner />}
-            <p className="right"><a href="#/requests">See all requests →</a></p>
-          </Card>
-          <Card as="section">
-            <Card.Title>Needs attention</Card.Title>
-            {extra.status === 'ready' ? <AttentionList items={extra.violations.slice(0, 5)} /> : extra.status === 'error' ? <ErrorBox error={extra.error} /> : <Spinner />}
-            <p className="right"><a href="#/attention">See all →</a></p>
-          </Card>
-        </div>
-      </div>
+      <div className="stack">{body}</div>
     </>
   );
 }

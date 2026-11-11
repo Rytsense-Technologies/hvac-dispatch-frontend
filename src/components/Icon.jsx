@@ -110,6 +110,52 @@ const PATHS = {
       <path d="M17.6 10.5 18.6 11.5" />
     </>
   ),
+  // A contact card: a person's record, distinct from "users" (who can sign in) and "technicians" (the roster).
+  customers: (
+    <>
+      <rect x="2.5" y="3" width="15" height="14" rx="1.6" />
+      <circle cx="8" cy="8.3" r="2.2" />
+      <path d="M4.8 14c0-1.9 1.6-3 3.2-3s3.2 1.1 3.2 3" />
+      <line x1="13" y1="7" x2="15.5" y2="7" />
+      <line x1="13" y1="10" x2="15.5" y2="10" />
+    </>
+  ),
+  // A clock face - a booked visit at a time - distinct from "plan"'s calendar grid.
+  appointments: (
+    <>
+      <circle cx="10" cy="10.5" r="7" />
+      <path d="M10 6.5v4l3 2" />
+      <line x1="7" y1="2.3" x2="7" y2="4.3" />
+      <line x1="13" y1="2.3" x2="13" y2="4.3" />
+    </>
+  ),
+  campaigns: (
+    <>
+      <path d="M3 8.5v3a1 1 0 0 0 1 1h1.2l1.1 3.4a1 1 0 0 0 1.9-.3l-.6-3.1H9l6 3V5.5l-6 3H4a1 1 0 0 0-1 1z" />
+      <path d="M15.5 8a3 3 0 0 1 0 4" />
+    </>
+  ),
+  tasks: (
+    <>
+      <rect x="3" y="3" width="14" height="14" rx="1.6" />
+      <polyline points="6,9.3 7.6,11 10.5,7.5" />
+      <line x1="12" y1="9" x2="14.5" y2="9" />
+      <line x1="6" y1="14" x2="14.5" y2="14" />
+    </>
+  ),
+  // A verified shield - automated actions a person reviews and approves, distinct from "copilot"'s sparkle.
+  automation: (
+    <>
+      <path d="M10 2.8 16.5 6v8L10 17.2 3.5 14V6z" />
+      <polyline points="7,10 9,12 13,7.5" />
+    </>
+  ),
+  settings: (
+    <>
+      <circle cx="10" cy="10" r="2.6" />
+      <path d="M10 3.2v2M10 14.8v2M16.8 10h-2M5.2 10h-2M15.1 4.9l-1.4 1.4M6.3 13.7l-1.4 1.4M15.1 15.1l-1.4-1.4M6.3 6.3 4.9 4.9" />
+    </>
+  ),
 };
 
 export function Icon({ name, className = '' }) {
