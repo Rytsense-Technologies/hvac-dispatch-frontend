@@ -1,45 +1,101 @@
 // Customers: the people the AI has taken calls and texts from - who they are, what they have asked for,
 // and (for staff who may see it) the calls and open work tied to them. Also where leads/customers are
 // imported from a spreadsheet, for the roles allowed to bring in a list.
+// Live API only: empty list/detail/leads stay empty — never replaced with sample rows.
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { api } from '../lib/api.js';
-import { CHANNELS, formatDateTime, short, timeAgo } from '../lib/format.js';
+import { CHANNELS, formatDateTime, short } from '../lib/format.js';
 import { useEvery } from '../lib/hooks.js';
 import { can } from '../lib/session.js';
 import {
-  ActionButton, Badge, Button, DataTable, Details, Empty, ErrorBox, Field, Note, Overlay, PageHeader,
-  ProgressBadge, Select, Spinner, StatusBadge, toast,
+  ActionButton, Badge, Button, DataTable, Details, Dialog, Empty, ErrorBox, Field, Icon, Note, Panel,
+  PageHeader, ProgressBadge, Row, Select, Spinner, StatusBadge, toast,
 } from '../components/index.js';
 
 const PAGE = 50;
 const MAX_IMPORT_BYTES = 2 * 1024 * 1024;
+const LEADS_PREVIEW = 20;
 
 const priorityTone = (p, emergency) => (emergency ? 'bad' : p === 'high' ? 'warn' : 'neutral');
 
+function asList(value) {
+  return Array.isArray(value) ? value : [];
+}
+
+function customerSubtitle(c) {
+  const place = c.location || c.city || c.address || '';
+  const service = c.latest_service || c.service || '';
+  if (place && service) return `${place} · ${service}`;
+  return place || service || (c.phone ? c.phone : 'No service history yet');
+}
+
+function leadSubtitle(l) {
+  const contact = l.email || l.phone || l.city || l.address || '';
+  const interest = l.interest || l.status || '';
+  if (contact && interest) return `${contact} · ${interest}`;
+  return contact || interest || 'Lead';
+}
+
 // ---------- the list ----------
 
-function CustomerTable({ customers, open }) {
-  const rows = customers.map((c) => [
-    c.name || 'Unknown',
-    c.phone || '-',
-    c.location || '-',
-    c.latest_service || '-',
-    String(c.requests ?? 0),
-    c.last_request_at ? timeAgo(c.last_request_at) : 'Never',
-  ]);
+function CustomerList({ customers, open }) {
   return (
-    <DataTable
-      head={['Name', 'Phone', 'Location', 'Latest service', 'Requests', 'Last activity']}
-      rows={rows}
-      onRow={(_cells, i) => open(customers[i])}
-      label="Customers"
-    />
+    <ul className="customers-list" aria-label="Customers">
+      {customers.map((c) => (
+        <li key={c.id}>
+          <Row
+            leading={<Icon name="customers" />}
+            title={c.name || 'Unknown'}
+            subtitle={customerSubtitle(c)}
+            trailing={(
+              <Button
+                className="btn agent-btn"
+                type="button"
+                aria-label={`View customer ${c.name || ''}`.trim()}
+                onClick={() => open(c)}
+              >
+                View customer
+              </Button>
+            )}
+          />
+        </li>
+      ))}
+    </ul>
   );
 }
 
-// ---------- the drawer for one customer ----------
+function RecentLeadsPanel({ leads, loading, error }) {
+  let body;
+  if (loading && !leads) body = <Spinner text="Loading leads…" />;
+  else if (error) body = <ErrorBox error={error} />;
+  else if (!leads?.length) body = <Empty text="No leads yet." />;
+  else {
+    body = (
+      <ul className="customers-list" aria-label="Recent leads">
+        {leads.map((l) => (
+          <li key={l.id}>
+            <Row
+              leading={<Icon name="leads" />}
+              title={l.name || 'Lead'}
+              subtitle={leadSubtitle(l)}
+            />
+          </li>
+        ))}
+      </ul>
+    );
+  }
+  return (
+    <Panel className="customers-imported" aria-label="Recent leads">
+      <h2>{`Recent leads${leads?.length ? ` · ${leads.length}` : ''}`}</h2>
+      <p className="muted small">From the live leads API after import or refresh. Empty means none on the server.</p>
+      {body}
+    </Panel>
+  );
+}
 
-function CustomerDrawer({ id, onClose }) {
+// ---------- the dialog for one customer ----------
+
+function CustomerDetail({ id, onClose }) {
   const [state, setState] = useState({});
   const seq = useRef(0);
 
@@ -65,6 +121,10 @@ function CustomerDrawer({ id, onClose }) {
     const showCalls = can('admin', 'dispatcher', 'approver') && Array.isArray(c.calls);
     content = (
       <div className="stack">
+        <p className="muted">
+          {[c.address || c.location, c.latest_service].filter(Boolean).join(' · ') || 'No contact details on file.'}
+        </p>
+
         <h3>Contact</h3>
         <Details rows={[
           ['Phone', c.phone],
@@ -78,32 +138,44 @@ function CustomerDrawer({ id, onClose }) {
 
         <h3>Service history</h3>
         {c.history?.length ? (
-          <DataTable
-            head={['#', 'Service', 'Priority', 'Status', 'Requested', 'Appointment']}
-            rows={c.history.map((h) => [
-              `#${short(h.id)}`,
-              [h.service, h.category].filter(Boolean).join(' · ') || '-',
-              <span key="p"><Badge text={h.priority} tone={priorityTone(h.priority, h.is_emergency)} />{h.is_emergency ? <Badge text="Emergency" tone="bad" /> : null}</span>,
-              <StatusBadge key="s" status={h.status} />,
-              formatDateTime(h.created_at),
-              h.appointment ? `${h.appointment.status}, ${formatDateTime(h.appointment.start_at)} – ${formatDateTime(h.appointment.end_at)}` : 'Not booked',
-            ])}
-            label="Service history"
-          />
+          <div className="customers-history">
+            {c.history.map((h) => (
+              <Row
+                key={h.id}
+                title={`#${short(h.id)} · ${[h.service, h.category].filter(Boolean).join(' · ') || 'Service request'}`}
+                subtitle={[
+                  h.created_at ? formatDateTime(h.created_at) : null,
+                  h.appointment
+                    ? `${h.appointment.status}, ${formatDateTime(h.appointment.start_at)} – ${formatDateTime(h.appointment.end_at)}`
+                    : 'Not booked',
+                ].filter(Boolean).join(' · ')}
+                trailing={(
+                  <span className="row wrap" style={{ gap: 6, justifyContent: 'flex-end' }}>
+                    <Badge text={h.priority || 'normal'} tone={priorityTone(h.priority, h.is_emergency)} />
+                    {h.is_emergency ? <Badge text="Emergency" tone="bad" /> : null}
+                    <StatusBadge status={h.status} />
+                  </span>
+                )}
+              />
+            ))}
+          </div>
         ) : <Empty text="No service requests yet." />}
 
         <h3>Open work</h3>
         {c.tasks?.length ? (
-          <DataTable
-            head={['Service', 'Status', 'Technician', 'Window']}
-            rows={c.tasks.map((t) => [
-              t.service || '-',
-              <ProgressBadge key="st" progress={t.status} />,
-              t.technician || 'Unassigned',
-              t.window_start ? `${formatDateTime(t.window_start)} – ${formatDateTime(t.window_end)}` : '-',
-            ])}
-            label="Open tasks"
-          />
+          <div className="customers-history">
+            {c.tasks.map((t) => (
+              <Row
+                key={t.id || `${t.service}-${t.window_start}`}
+                title={t.service || 'Open task'}
+                subtitle={[
+                  t.technician || 'Unassigned',
+                  t.window_start ? `${formatDateTime(t.window_start)} – ${formatDateTime(t.window_end)}` : null,
+                ].filter(Boolean).join(' · ')}
+                trailing={<ProgressBadge progress={t.status} />}
+              />
+            ))}
+          </div>
         ) : <Empty text="No open work." />}
 
         {/* Calls are personal data: only shown when the server actually sends them (admin, dispatcher, approver). */}
@@ -129,7 +201,11 @@ function CustomerDrawer({ id, onClose }) {
     );
   }
 
-  return <Overlay title={c?.name || 'Customer'} wide onClose={onClose}>{content}</Overlay>;
+  return (
+    <Dialog title={c?.name ? `Customer · ${c.name}` : 'Customer'} wide onClose={onClose}>
+      {content}
+    </Dialog>
+  );
 }
 
 // ---------- import leads/customers (admin, dispatcher only) ----------
@@ -171,7 +247,7 @@ function ProblemsList({ problems, total }) {
   );
 }
 
-function ImportWizard({ onClose, reload }) {
+function ImportWizard({ onClose, reload, onImported }) {
   const [step, setStep] = useState(1);
   const [meta, setMeta] = useState(null);
   const [metaError, setMetaError] = useState(null);
@@ -210,8 +286,9 @@ function ImportWizard({ onClose, reload }) {
   const fieldLabel = (fieldId) => fields.find((f) => f.id === fieldId)?.label || fieldId.replaceAll('_', ' ');
 
   return (
-    <Overlay title="Import leads or customers" wide onClose={onClose}>
+    <Dialog title="Import leads or customers" wide onClose={onClose}>
       <div className="stack">
+        <p className="muted">Upload a CSV, map your columns, and review valid records before importing.</p>
         <p className="muted small">{`Step ${step} of 3`}</p>
 
         {step === 1 && (
@@ -222,8 +299,9 @@ function ImportWizard({ onClose, reload }) {
             ) : (
               <Note tone="neutral" text="At most 2 MB and 1,000 rows. The first row must be the column names." />
             )}
-            <Field label="What are these rows?"><Select options={recordTypeOptions(meta)} value={recordType} onChange={(e) => { setRecordType(e.target.value); setPreview(null); setMapping({}); }} /></Field>
+            <Field label="Record type"><Select options={recordTypeOptions(meta)} value={recordType} onChange={(e) => { setRecordType(e.target.value); setPreview(null); setMapping({}); }} /></Field>
             <Field label="CSV file" hint={fileName || 'No file chosen yet.'}><input type="file" accept=".csv,text/csv" onChange={onFile} /></Field>
+            <p className="sub">Suggested columns: name, email, phone, city, service.</p>
             <div className="right">
               <ActionButton
                 className="btn btn--primary"
@@ -233,7 +311,7 @@ function ImportWizard({ onClose, reload }) {
                   await runPreview(null);
                   setStep(2);
                 }}
-              >Continue</ActionButton>
+              >Continue to mapping</ActionButton>
             </div>
           </div>
         )}
@@ -298,6 +376,8 @@ function ImportWizard({ onClose, reload }) {
                     const out = await api('/v1/imports', { method: 'POST', body: { record_type: recordType, csv, mapping } });
                     setResult(out);
                     reload();
+                    // Refresh leads from the live API after a leads import — never use preview.sample.
+                    if (recordType === 'leads') onImported?.(out);
                     toast(`Imported ${out.imported ?? 0}.`);
                   }}
                 >Confirm import</ActionButton>
@@ -322,7 +402,7 @@ function ImportWizard({ onClose, reload }) {
           </div>
         )}
       </div>
-    </Overlay>
+    </Dialog>
   );
 }
 
@@ -336,8 +416,12 @@ export default function Customers() {
   const [error, setError] = useState(null);
   const [openId, setOpenId] = useState(null);
   const [importOpen, setImportOpen] = useState(false);
+  const [leads, setLeads] = useState(null);
+  const [leadsLoading, setLeadsLoading] = useState(false);
+  const [leadsError, setLeadsError] = useState(null);
   const canImport = can('admin', 'dispatcher');
   const seq = useRef(0);
+  const leadsSeq = useRef(0);
   const latest = useRef({});
   latest.current = { search, offset };
 
@@ -348,7 +432,8 @@ export default function Customers() {
     try {
       const out = await api('/v1/customers', { params: { search: s, limit: PAGE, offset: o } });
       if (n !== seq.current) return;
-      setData({ customers: out.customers, offset: o });
+      // Live empties stay empty — never inject illustrative customers.
+      setData({ customers: asList(out?.customers), offset: o });
       setError(null);
       setLoading(false);
     } catch (e) {
@@ -358,34 +443,95 @@ export default function Customers() {
     }
   }, []);
 
+  const loadLeads = useCallback(async (quiet) => {
+    if (!canImport) return;
+    const n = ++leadsSeq.current;
+    if (!quiet) setLeadsLoading(true);
+    try {
+      const out = await api('/v1/leads', { params: { limit: LEADS_PREVIEW } });
+      if (n !== leadsSeq.current) return;
+      setLeads(asList(out?.leads));
+      setLeadsError(null);
+      setLeadsLoading(false);
+    } catch (e) {
+      if (n !== leadsSeq.current) return;
+      setLeadsError(e);
+      setLeadsLoading(false);
+    }
+  }, [canImport]);
+
   useEffect(() => {
     const id = setTimeout(load, 250);
     return () => clearTimeout(id);
   }, [search, offset, load]);
   useEvery(() => load(true), 30000);
 
+  useEffect(() => {
+    if (!canImport) return undefined;
+    loadLeads();
+    return undefined;
+  }, [canImport, loadLeads]);
+  useEvery(() => { if (canImport) loadLeads(true); }, 30000);
+
   const customers = data ? data.customers : [];
   let list;
   if (loading) list = <Spinner />;
   else if (error) list = <ErrorBox error={error} />;
-  else if (!customers.length) list = <Empty text={search ? 'No customer matches that search.' : 'No customers yet.'} />;
-  else list = <CustomerTable customers={customers} open={(c) => setOpenId(c.id)} />;
+  else if (!customers.length) list = <Empty text={search ? 'No matching customers.' : 'No customers yet.'} />;
+  else list = <CustomerList customers={customers} open={(c) => setOpenId(c.id)} />;
+
+  // Same pagination surface as pre-design main: always available once a live page has loaded.
+  const showPager = Boolean(data);
 
   return (
     <>
-      <PageHeader title="Customers" subtitle="People the AI has taken calls and texts from.">
-        {canImport && <Button className="btn btn--outline" onClick={() => setImportOpen(true)}>Import leads or customers</Button>}
+      <PageHeader
+        eyebrow="CUSTOMERS"
+        title="Customers"
+        subtitle="Find a customer and review their service history."
+      >
+        {canImport && (
+          <Button className="btn btn--primary" onClick={() => setImportOpen(true)}>
+            Import leads or customers
+          </Button>
+        )}
       </PageHeader>
-      <div className="toolbar">
-        <input type="text" aria-label="Search" placeholder="Search name, address, or service…" className="search" value={search} onChange={(e) => { setSearch(e.target.value); setOffset(0); }} />
-        <span className="spacer" />
-        <Button className="btn btn--ghost" aria-label="Previous page" disabled={!data || data.offset === 0} onClick={() => setOffset((o) => Math.max(0, o - PAGE))}>‹</Button>
-        <span className="muted">{data ? (data.customers.length ? `${data.offset + 1}–${data.offset + data.customers.length}` : '0') : ''}</span>
-        <Button className="btn btn--ghost" aria-label="Next page" disabled={!data || data.customers.length < PAGE} onClick={() => setOffset((o) => o + PAGE)}>›</Button>
-      </div>
-      <div>{list}</div>
-      {openId && <CustomerDrawer id={openId} onClose={() => setOpenId(null)} />}
-      {importOpen && canImport && <ImportWizard onClose={() => setImportOpen(false)} reload={() => load(true)} />}
+
+      <Panel className="customers-panel" aria-label="Customer search">
+        <Field label="Search customers">
+          <input
+            type="search"
+            className="customers-search"
+            placeholder="Name, city, or service"
+            value={search}
+            onChange={(e) => { setSearch(e.target.value); setOffset(0); }}
+            autoComplete="off"
+          />
+        </Field>
+        {list}
+        {showPager ? (
+          <div className="customers-pager row between">
+            <Button className="btn btn--ghost" aria-label="Previous page" disabled={data.offset === 0} onClick={() => setOffset((o) => Math.max(0, o - PAGE))}>‹ Previous</Button>
+            <span className="muted small">{data.customers.length ? `${data.offset + 1}–${data.offset + data.customers.length}` : '0'}</span>
+            <Button className="btn btn--ghost" aria-label="Next page" disabled={data.customers.length < PAGE} onClick={() => setOffset((o) => o + PAGE)}>Next ›</Button>
+          </div>
+        ) : null}
+      </Panel>
+
+      {canImport ? (
+        <div style={{ marginTop: 18 }}>
+          <RecentLeadsPanel leads={leads} loading={leadsLoading} error={leadsError} />
+        </div>
+      ) : null}
+
+      {openId && <CustomerDetail id={openId} onClose={() => setOpenId(null)} />}
+      {importOpen && canImport && (
+        <ImportWizard
+          onClose={() => setImportOpen(false)}
+          reload={() => load(true)}
+          onImported={() => loadLeads()}
+        />
+      )}
     </>
   );
 }

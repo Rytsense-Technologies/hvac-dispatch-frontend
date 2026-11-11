@@ -4294,6 +4294,49 @@ button.row-item { cursor: pointer; }
   .section-tabs { margin-bottom: 18px; gap: 20px; }
 }
 
+/* ---------- Customers (reference parity) ---------- */
+.customers-panel .field {
+  gap: 0;
+}
+.customers-panel .field label {
+  font-weight: var(--font-weight-semibold);
+  color: var(--muted);
+}
+.customers-search {
+  width: 100%;
+  padding: 12px;
+  margin: 8px 0 16px;
+  height: auto;
+  border: 1px solid #9bb2c1;
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  font: inherit;
+}
+.customers-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.customers-list > li { margin: 0; padding: 0; }
+.customers-list .row-item:first-child,
+.customers-list > li:first-child .row-item { border-top: 1px solid #edf1f3; }
+.customers-pager {
+  margin-top: 8px;
+  padding-top: 12px;
+  border-top: 1px solid #edf1f3;
+}
+.customers-history .row-item:first-child { border-top: 0; }
+.customers-imported {
+  margin-top: 0;
+}
+.customers-imported h2 {
+  margin: 0 0 6px;
+  font-size: 1.05rem;
+}
+.customers-imported .customers-list {
+  margin-top: 8px;
+}
+
 @media print {
   .sidebar, .btn, select, .mobile-nav { display: none !important; }
   body { background: #fff; }
