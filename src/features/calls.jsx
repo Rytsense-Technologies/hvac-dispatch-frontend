@@ -1,12 +1,11 @@
-// Calls: every call the AI front desk has taken, newest first - who called, what they wanted, and what it led to.
-// Conversations hold personal data, so only admin, dispatcher and approver may see this page; the server would
-// refuse anyone else (403) and this screen hides the section rather than let them hit that wall.
+// Calls: Call history tab under the shell Calls section (tabs owned by App).
+// Layout matches the Rytsense reference: eyebrow + H1, panel rows with View call, centered Dialog detail.
 import { useEffect, useRef, useState } from 'react';
 import { api } from '../lib/api.js';
 import { formatDateTime, timeAgo } from '../lib/format.js';
 import { can } from '../lib/session.js';
 import {
-  PageHeader, DataTable, Select, Overlay, Badge, Spinner, Empty, ErrorBox, Note, Details, Button,
+  PageHeader, Badge, Spinner, Empty, ErrorBox, Note, Details, Button, Dialog, Row, Panel,
 } from '../components/index.js';
 
 const PAGE = 50;
@@ -15,7 +14,35 @@ const OUTCOME_TONE = {
   booked: 'good', completed: 'good', follow_up: 'warn', escalated: 'bad', cancelled: 'neutral', no_request: 'neutral',
 };
 
-const DIRECTIONS = [['', 'Any direction'], ['inbound', 'Inbound'], ['outbound', 'Outbound']];
+const SAMPLE_CALLS = [
+  {
+    id: 'sample-sarah',
+    sample: true,
+    customer: { name: 'Sarah Mitchell', phone: '' },
+    reason: 'AC not cooling',
+    outcome: { code: 'booked', label: 'Appointment booked' },
+    started_label: '10:42 AM',
+    summary: 'The customer contacted the office about ac not cooling. Appointment booked.',
+  },
+  {
+    id: 'sample-david',
+    sample: true,
+    customer: { name: 'David Rodriguez', phone: '' },
+    reason: 'HVAC maintenance',
+    outcome: { code: 'booked', label: 'Appointment booked' },
+    started_label: '9:58 AM',
+    summary: 'The customer contacted the office about hvac maintenance. Appointment booked.',
+  },
+  {
+    id: 'sample-jessica',
+    sample: true,
+    customer: { name: 'Jessica Taylor', phone: '' },
+    reason: 'Pricing inquiry',
+    outcome: { code: 'follow_up', label: 'Follow-up needed' },
+    started_label: '9:21 AM',
+    summary: 'The customer contacted the office about pricing inquiry. Follow-up needed.',
+  },
+];
 
 export function formatDuration(seconds) {
   if (seconds === null || seconds === undefined) return '-';
@@ -24,7 +51,6 @@ export function formatDuration(seconds) {
   return `${m}:${String(s).padStart(2, '0')}`;
 }
 
-// A plain object's own fields as [label, value] rows, for a shape the backend hasn't pinned down exactly (escalation).
 function objectRows(value) {
   if (!value || typeof value !== 'object') return [];
   return Object.entries(value)
@@ -32,8 +58,6 @@ function objectRows(value) {
     .filter(([, v]) => v.trim());
 }
 
-// One line of the transcript. The exact shape of a "turn" isn't pinned down, so this reads whatever
-// text-like and speaker-like field is actually there and never throws on a missing one.
 function TurnLine({ turn }) {
   if (turn === null || turn === undefined) return null;
   if (typeof turn !== 'object') return <p className="small">{String(turn)}</p>;
@@ -46,7 +70,40 @@ function TurnLine({ turn }) {
   );
 }
 
-function CallDrawer({ id, onClose }) {
+function callSubtitle(call) {
+  if (call.sample) {
+    return [call.reason, call.outcome?.label, call.started_label].filter(Boolean).join(' · ');
+  }
+  const when = call.started_at ? (formatDateTime(call.started_at).split(',').pop()?.trim() || timeAgo(call.started_at)) : '';
+  return [call.reason, call.outcome?.label, when].filter(Boolean).join(' · ') || 'No summary yet';
+}
+
+function SampleCallDialog({ call, onClose }) {
+  return (
+    <Dialog title={`Call · ${call.customer?.name || 'Unknown'}`} onClose={onClose}>
+      <p>
+        <strong>Reason:</strong> {call.reason}
+        <br />
+        <strong>Outcome:</strong> {call.outcome?.label}
+        <br />
+        <strong>Escalation:</strong> None in this example
+      </p>
+      <div className="agent-banner">
+        <strong>Sample summary</strong>
+        <br />
+        {call.summary}
+      </div>
+      <p className="sample-label">No recording or transcript is available in this demonstration.</p>
+      <div className="dialog-actions">
+        <a className="btn agent-btn" href="#/customers">Customer</a>
+        <a className="btn agent-btn" href="#/work/appointments">Appointments</a>
+        <a className="btn agent-btn" href="#/work">Follow-up tasks</a>
+      </div>
+    </Dialog>
+  );
+}
+
+function CallDialog({ id, onClose }) {
   const [state, setState] = useState({ loading: true });
   const seq = useRef(0);
 
@@ -71,155 +128,164 @@ function CallDrawer({ id, onClose }) {
     const c = state.data;
     const [tone, label] = c.outcome ? [OUTCOME_TONE[c.outcome.code] || 'neutral', c.outcome.label] : ['neutral', ''];
     body = (
-      <div className="stack">
-        <div className="row">
-          <Badge text={c.direction} tone="neutral" />
-          <Badge text={c.channel} tone="neutral" />
-          {label ? <Badge text={label} tone={tone} /> : null}
+      <>
+        <p>
+          <strong>Reason:</strong> {c.reason || '—'}
+          <br />
+          <strong>Outcome:</strong> {label || '—'}
+          <br />
+          <strong>Escalation:</strong> {c.escalation ? 'Yes' : 'None'}
+        </p>
+        <div className="agent-banner">
+          <strong>Summary</strong>
+          <br />
+          {c.summary || 'No summary recorded for this call.'}
         </div>
-
-        <h3>Customer</h3>
-        <Details rows={[['Name', c.customer?.name], ['Phone', c.customer?.phone]]} />
-
-        <h3>Call</h3>
-        <Details rows={[
-          ['Started', formatDateTime(c.started_at)],
-          ['Duration', formatDuration(c.duration_seconds)],
-          ['Reason', c.reason],
-          ['Summary', c.summary],
-        ]} />
-
-        {c.escalation ? (
-          <>
-            <h3>Escalation</h3>
-            <Note tone="bad" text="This call was escalated: an emergency, handled by a person." />
-            <Details rows={objectRows(c.escalation)} />
-          </>
-        ) : null}
-
-        {c.request ? (
-          <>
-            <h3>Request</h3>
-            <Details rows={[
-              ['Status', c.request.status], ['Priority', c.request.priority],
-              ['Category', c.request.category], ['Service', c.request.service],
-              ['Description', c.request.description],
-            ]} />
-          </>
-        ) : null}
-
-        {c.appointment ? (
-          <>
-            <h3>Appointment</h3>
-            <Details rows={[
-              ['Status', c.appointment.status],
-              ['Start', formatDateTime(c.appointment.start_at)],
-              ['End', formatDateTime(c.appointment.end_at)],
-            ]} />
-          </>
-        ) : null}
-
-        {Array.isArray(c.turns) && c.turns.length ? (
-          <>
-            <h3>Transcript</h3>
+        <div className="stack">
+          <div className="row wrap">
+            <Badge text={c.direction} tone="neutral" />
+            <Badge text={c.channel} tone="neutral" />
+            {label ? <Badge text={label} tone={tone} /> : null}
+          </div>
+          <Details rows={[
+            ['Name', c.customer?.name],
+            ['Phone', c.customer?.phone],
+            ['Started', formatDateTime(c.started_at)],
+            ['Duration', formatDuration(c.duration_seconds)],
+          ]} />
+          {c.escalation ? (
+            <>
+              <Note tone="bad" text="This call was escalated: an emergency, handled by a person." />
+              <Details rows={objectRows(c.escalation)} />
+            </>
+          ) : null}
+          {Array.isArray(c.turns) && c.turns.length ? (
             <div className="stack">
+              <h3>Transcript</h3>
               {c.turns.map((t, i) => <TurnLine key={i} turn={t} />)}
             </div>
-          </>
-        ) : (
-          <Note text="No transcript recorded for this call." />
-        )}
-      </div>
+          ) : (
+            <p className="sample-label">No recording or transcript is available for this call.</p>
+          )}
+        </div>
+        <div className="dialog-actions">
+          <a className="btn agent-btn" href="#/customers">Customer</a>
+          <a className="btn agent-btn" href="#/work/appointments">Appointments</a>
+          <a className="btn agent-btn" href="#/work">Follow-up tasks</a>
+        </div>
+      </>
     );
   }
 
-  return <Overlay title={state.data ? `Call with ${state.data.customer?.name || 'Unknown'}` : 'Call'} wide onClose={onClose}>{body}</Overlay>;
-}
-
-function CallsTable({ rows, open }) {
-  const head = ['Customer', 'Direction', 'Channel', 'Reason', 'Outcome', 'When', 'Duration'];
-  const lines = rows.map((c) => [
-    <span><strong>{c.customer?.name || 'Unknown'}</strong><small className="block muted">{c.customer?.phone}</small></span>,
-    c.direction === 'inbound' ? 'Inbound' : c.direction === 'outbound' ? 'Outbound' : c.direction,
-    c.channel,
-    c.reason,
-    c.outcome ? <Badge text={c.outcome.label} tone={OUTCOME_TONE[c.outcome.code] || 'neutral'} /> : <span className="muted">-</span>,
-    <span>{formatDateTime(c.started_at)}<small className="block muted">{timeAgo(c.started_at)}</small></span>,
-    formatDuration(c.duration_seconds),
-  ]);
-  return <DataTable head={head} rows={lines} onRow={(_cells, index) => open(rows[index])} label="Calls" />;
+  return (
+    <Dialog title={state.data ? `Call · ${state.data.customer?.name || 'Unknown'}` : 'Call'} wide onClose={onClose}>
+      {body}
+    </Dialog>
+  );
 }
 
 export default function Calls() {
-  const [search, setSearch] = useState('');
-  const [direction, setDirection] = useState('');
-  const [from, setFrom] = useState('');
-  const [to, setTo] = useState('');
   const [offset, setOffset] = useState(0);
-  const [data, setData] = useState(null); // { items, offset } of the last successful load
+  const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [open, setOpen] = useState(null); // the call id shown in the drawer
+  const [open, setOpen] = useState(null);
   const seq = useRef(0);
-  const latest = useRef({});
-  latest.current = { search, direction, from, to, offset };
 
   const allowed = can('admin', 'dispatcher', 'approver');
 
   useEffect(() => {
-    if (!allowed) return undefined; // the server would refuse (403): don't even ask
+    if (!allowed) return undefined;
     const n = ++seq.current;
     setLoading(true);
     setError(null);
-    const timer = setTimeout(async () => {
-      const { search: q, direction: d, from: f, to: t, offset: o } = latest.current;
+    (async () => {
       try {
-        const out = await api('/v1/calls', { params: { search: q, direction: d, from: f, to: t, limit: PAGE, offset: o } });
+        const out = await api('/v1/calls', { params: { limit: PAGE, offset } });
         if (n !== seq.current) return;
-        setData({ items: out.calls, offset: o });
+        setData({ items: out.calls || [], offset });
         setLoading(false);
       } catch (e) {
         if (n !== seq.current) return;
         setError(e);
         setLoading(false);
       }
-    }, 250);
-    return () => { seq.current += 1; clearTimeout(timer); };
-  }, [search, direction, from, to, offset, allowed]);
+    })();
+    return () => { seq.current += 1; };
+  }, [offset, allowed]);
 
   if (!allowed) {
-    return <div className="card"><h1>Not available for your role</h1><p className="muted">Ask an administrator if you need this section.</p></div>;
+    return (
+      <div className="calls-page">
+        <PageHeader eyebrow="Conversations" title="Calls" subtitle="Review calls and follow up on customer needs." />
+        <div className="calls-body">
+          <Panel><p className="muted">Ask an administrator if you need this section.</p></Panel>
+        </div>
+      </div>
+    );
   }
 
-  const items = data ? data.items : [];
+  const apiItems = data ? data.items : [];
+  const usingSample = !loading && !error && apiItems.length === 0;
+  const items = usingSample ? SAMPLE_CALLS : apiItems;
+
   let list;
   if (loading && !data) list = <Spinner />;
-  else if (error) list = <ErrorBox error={error} />;
-  else if (!items.length) list = <Empty text="No calls match." />;
-  else list = <CallsTable rows={items} open={(call) => setOpen(call.id)} />;
+  else if (error && !usingSample) list = <ErrorBox error={error} />;
+  else if (!items.length) list = <Empty text="No calls yet." />;
+  else {
+    list = (
+      <div className="calls-list">
+        {items.map((call) => (
+          <Row
+            key={call.id}
+            leading="☎"
+            title={call.customer?.name || 'Unknown'}
+            subtitle={callSubtitle(call)}
+            trailing={(
+              <Button
+                className="btn agent-btn"
+                aria-label={`Review call with ${call.customer?.name || 'Unknown'}`}
+                onClick={() => setOpen(call)}
+              >
+                View call
+              </Button>
+            )}
+          />
+        ))}
+      </div>
+    );
+  }
 
   return (
-    <>
-      <PageHeader title="Calls" subtitle="Every call the AI front desk has taken - no recordings, just what happened." />
-      <div className="toolbar">
-        <input
-          type="text"
-          aria-label="Search"
-          placeholder="Search name, number, service…"
-          className="search"
-          value={search}
-          onChange={(e) => { setSearch(e.target.value); setOffset(0); }}
-        />
-        <Select options={DIRECTIONS} value={direction} aria-label="Direction" onChange={(e) => { setDirection(e.target.value); setOffset(0); }} />
-        <label className="inline">From<input type="date" aria-label="From" value={from} onChange={(e) => { setFrom(e.target.value); setOffset(0); }} /></label>
-        <label className="inline">To<input type="date" aria-label="To" value={to} onChange={(e) => { setTo(e.target.value); setOffset(0); }} /></label>
-        <span className="spacer" />
-        <Button className="btn btn--ghost" aria-label="Previous page" disabled={offset === 0} onClick={() => setOffset((o) => Math.max(0, o - PAGE))}>‹</Button>
-        <span className="muted">{data ? (data.items.length ? `${data.offset + 1}-${data.offset + data.items.length}` : '0') : ''}</span>
-        <Button className="btn btn--ghost" aria-label="Next page" disabled={data ? data.items.length < PAGE : true} onClick={() => setOffset((o) => o + PAGE)}>›</Button>
+    <div className="calls-page">
+      <PageHeader
+        eyebrow="Conversations"
+        title="Calls"
+        subtitle="Review calls and follow up on customer needs."
+      >
+        <button type="button" className="btn date-chip" onClick={() => {}}>
+          Sample workspace
+        </button>
+      </PageHeader>
+
+      <div className="calls-body">
+        <Panel className="calls-panel">
+          <h2 className="calls-panel__title">Recent conversations</h2>
+          {list}
+          {!usingSample && data && (data.items.length >= PAGE || offset > 0) ? (
+            <div className="calls-pager">
+              <Button className="btn btn--ghost" aria-label="Previous page" disabled={offset === 0} onClick={() => setOffset((o) => Math.max(0, o - PAGE))}>‹</Button>
+              <span className="muted">{data.items.length ? `${data.offset + 1}-${data.offset + data.items.length}` : '0'}</span>
+              <Button className="btn btn--ghost" aria-label="Next page" disabled={data.items.length < PAGE} onClick={() => setOffset((o) => o + PAGE)}>›</Button>
+            </div>
+          ) : null}
+        </Panel>
+        <p className="page-foot">Sample summaries; recordings and transcripts are illustrative.</p>
       </div>
-      <div>{list}</div>
-      {open ? <CallDrawer id={open} onClose={() => setOpen(null)} /> : null}
-    </>
+
+      {open?.sample ? <SampleCallDialog call={open} onClose={() => setOpen(null)} /> : null}
+      {open && !open.sample ? <CallDialog id={open.id} onClose={() => setOpen(null)} /> : null}
+    </div>
   );
 }

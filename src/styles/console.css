@@ -1910,319 +1910,179 @@ tr.clickable:hover, tr.clickable:focus { background: #f1f5f9; }
   margin: 20px 0 12px 0;
 }
 
-/* ---------- Calls (Exact Reference UI) ---------- */
-.calls-head {
+/* ---------- Calls + Phone numbers (reference parity) ---------- */
+/* Shell renders section tabs before the view; reorder so header → tabs → body. */
+.page:has(.calls-page) {
   display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 16px;
-  margin-bottom: 20px;
+  flex-direction: column;
 }
-.calls-eyebrow {
-  font-size: 0.68rem;
-  font-weight: 600;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: #0d9488;
-  margin: 0 0 6px 0;
+.page:has(.calls-page) > .call-tabs,
+.page:has(.calls-page) > .section-tabs {
+  order: 2;
+  margin: 0 0 22px;
 }
-.calls-title {
-  font-size: 1.85rem;
-  font-weight: 600;
-  color: #0f172a;
-  letter-spacing: -0.02em;
-  margin: 0 0 4px 0;
+.calls-page {
+  display: contents;
 }
-.calls-subtitle {
-  font-size: 0.88rem;
-  color: #64748b;
-  margin: 0;
+.calls-page > .page-header {
+  order: 1;
 }
-.calls-workspace-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  padding: 6px 14px;
-  background: #ffffff;
-  border: 1px solid #cbd5e1;
-  border-radius: 6px;
-  font-size: 0.82rem;
-  font-weight: 500;
-  color: #334155;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.02);
-  cursor: pointer;
-  transition: all 0.15s ease;
-  font-family: inherit;
-}
-.calls-workspace-btn:hover {
-  background: #f8fafc;
-  border-color: #94a3b8;
-  color: #0f172a;
+.calls-page > .calls-body {
+  order: 3;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  min-width: 0;
 }
 
-/* Underline Tab Bar */
-.calls-tabs-bar {
-  display: flex;
-  align-items: center;
-  gap: 24px;
-  border-bottom: 1px solid #e2e8f0;
-  margin-bottom: 24px;
+.date-chip,
+.btn.date-chip {
+  white-space: nowrap;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--muted);
+  font-weight: var(--font-weight-medium);
+  border-radius: var(--radius-md);
+  box-shadow: none;
+  min-height: 36px;
+  padding: 8px 14px;
 }
-.calls-tab-item {
-  position: relative;
-  padding: 8px 0 10px 0;
-  font-size: 0.88rem;
-  font-weight: 500;
-  color: #64748b;
-  background: transparent;
-  border: none;
-  cursor: pointer;
-  transition: color 0.15s ease;
-  font-family: inherit;
-}
-.calls-tab-item:hover {
-  color: #0f172a;
-}
-.calls-tab-item--active {
-  color: #0284c7;
-  font-weight: 600;
-}
-.calls-tab-item--active::after {
-  content: '';
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: -1px;
-  height: 2px;
-  background: #0284c7;
-  border-radius: 2px;
+.btn.date-chip:hover:not(:disabled) {
+  background: var(--accent-hover-bg);
+  border-color: #c6d8e2;
+  color: var(--ink);
 }
 
-/* Call History Card */
-.calls-card {
-  background: #ffffff;
-  border: 1px solid #e2e8f0;
-  border-radius: 12px;
-  padding: 22px 24px;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.02);
-}
-.calls-card-title {
-  font-size: 1.05rem;
-  font-weight: 600;
-  color: #0f172a;
-  margin: 0 0 16px 0;
+.calls-panel__title {
+  margin: 0 0 4px;
+  font-size: var(--font-size-h2);
+  font-weight: var(--font-weight-semibold);
+  color: var(--brand);
 }
 .calls-list {
   display: flex;
   flex-direction: column;
 }
-.calls-row {
+.calls-pager {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  padding: 16px 0;
-  border-bottom: 1px solid #f1f5f9;
-  gap: 16px;
-}
-.calls-row:last-child {
-  border-bottom: none;
-}
-.calls-row-left {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  flex: 1;
-  min-width: 0;
-}
-.calls-row-icon {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 36px;
-  height: 36px;
-  border-radius: 50%;
-  background: #e0f2fe;
-  color: #0284c7;
-  flex-shrink: 0;
-}
-.calls-row-icon .icon {
-  width: 17px;
-  height: 17px;
-}
-.calls-row-info {
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-  min-width: 0;
-}
-.calls-row-name {
-  font-size: 0.92rem;
-  font-weight: 600;
-  color: #0f172a;
-  margin: 0;
-}
-.calls-row-sub {
-  font-size: 0.8rem;
-  color: #64748b;
-  margin: 0;
-}
-.calls-view-btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: 6px 14px;
-  background: #ffffff;
-  border: 1px solid #cbd5e1;
-  border-radius: 6px;
-  color: #0284c7;
-  font-size: 0.8rem;
-  font-weight: 500;
-  cursor: pointer;
-  transition: all 0.15s ease;
-  font-family: inherit;
-  white-space: nowrap;
-}
-.calls-view-btn:hover {
-  background: #f0f9ff;
-  border-color: #0284c7;
-  color: #0369a1;
-}
-.calls-disclaimer {
-  font-size: 0.72rem;
-  color: #94a3b8;
-  margin: 20px 0 12px 0;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid #edf1f3;
 }
 
-/* Phone Numbers Tab */
-.phone-numbers-grid {
+.page-foot {
+  margin: 18px 0 0;
+  font-size: 12px;
+  color: #526b7b;
+}
+
+.agent-banner {
+  background: #f0f7fa;
+  color: #315e72;
+  border-radius: 8px;
+  padding: 14px 16px;
+  line-height: 1.5;
+}
+.sample-label {
+  margin: 0;
+  font-size: 12px;
+  color: #526b7b;
+}
+.dialog-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+.dialog-actions .btn,
+.dialog-actions a.btn {
+  text-decoration: none;
+}
+
+/* Phone numbers option panels */
+.phone-options {
   display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 16px;
-  margin-bottom: 20px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+  margin-bottom: 18px;
 }
-@media (max-width: 768px) {
-  .phone-numbers-grid {
-    grid-template-columns: 1fr;
-  }
-}
-.phone-option-card {
-  background: #ffffff;
-  border: 1px solid #e2e8f0;
-  border-radius: 12px;
-  padding: 22px 24px;
+.phone-option {
   display: flex;
   flex-direction: column;
   align-items: flex-start;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.02);
 }
-.phone-option-icon {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
+.phone-option h2 {
+  margin: 14px 0 8px;
+  font-size: 18px;
+  font-weight: var(--font-weight-semibold);
+  color: var(--brand);
+}
+.phone-option p {
+  color: #526777;
+  line-height: 1.55;
+  margin: 0 0 18px;
+  flex: 1;
+}
+.phone-icon {
+  display: grid;
+  place-items: center;
   width: 36px;
   height: 36px;
   border-radius: 8px;
-  margin-bottom: 14px;
+  background: #edf6fa;
+  color: #176b9b;
+  font-size: 22px;
+  line-height: 1;
 }
-.phone-option-icon--blue {
-  background: #e0f2fe;
-  color: #0284c7;
+.phone-option .btn {
+  min-height: 44px;
 }
-.phone-option-icon--gray {
-  background: #f1f5f9;
-  color: #475569;
+.your-numbers-panel .row-item {
+  flex-wrap: wrap;
 }
-.phone-option-icon .icon {
-  width: 17px;
-  height: 17px;
+.your-numbers-panel .row-item .badge {
+  margin-right: 4px;
 }
-.phone-option-title {
-  font-size: 1.05rem;
-  font-weight: 600;
-  color: #0f172a;
-  margin: 0 0 6px 0;
+.phone-choice {
+  border-top: 1px solid #e2e9ed;
+  padding: 12px 0;
 }
-.phone-option-desc {
-  font-size: 0.82rem;
-  color: #64748b;
-  line-height: 1.45;
-  margin: 0 0 20px 0;
-  flex: 1;
+.phone-choice:first-of-type {
+  border-top: 0;
+  padding-top: 0;
 }
-.phone-btn-primary {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: 7px 16px;
-  background: #176b9b;
-  color: #ffffff;
-  border: 1px solid #176b9b;
-  border-radius: 6px;
-  font-size: 0.82rem;
-  font-weight: 500;
-  cursor: pointer;
-  transition: all 0.15s ease;
-  font-family: inherit;
-}
-.phone-btn-primary:hover {
-  background: #12557c;
-  border-color: #12557c;
-}
-.phone-btn-outline {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: 7px 16px;
-  background: #ffffff;
-  color: #0f172a;
-  border: 1px solid #cbd5e1;
-  border-radius: 6px;
-  font-size: 0.82rem;
-  font-weight: 500;
-  cursor: pointer;
-  transition: all 0.15s ease;
-  font-family: inherit;
-}
-.phone-btn-outline:hover {
-  background: #f8fafc;
-  border-color: #94a3b8;
-}
-
-/* Your numbers card */
-.your-numbers-card {
-  background: #ffffff;
-  border: 1px solid #e2e8f0;
-  border-radius: 12px;
-  padding: 22px 24px;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.02);
-}
-.your-numbers-title {
-  font-size: 0.95rem;
-  font-weight: 600;
-  color: #0f172a;
-  margin: 0 0 4px 0;
-}
-.your-numbers-sub {
-  font-size: 0.8rem;
-  color: #64748b;
-  margin: 0 0 16px 0;
-}
-.your-numbers-empty {
-  font-size: 0.84rem;
-  color: #64748b;
+.phone-choice h3 {
   margin: 0;
+  font-size: 15px;
+  color: var(--ink);
 }
-.your-number-active-badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  padding: 10px 14px;
-  background: #f0fdf4;
-  border: 1px solid #bbf7d0;
-  border-radius: 8px;
-  color: #166534;
-  font-size: 0.88rem;
-  font-weight: 500;
+.phone-choice p {
+  margin: 6px 0 12px;
+  color: #526777;
+  line-height: 1.55;
+}
+.phone-choice .btn {
+  min-height: 44px;
+}
+.phone-steps {
+  margin: 0;
+  padding-left: 1.2rem;
+  color: var(--ink);
+  line-height: 1.55;
+}
+.numbers-sip {
+  margin-top: 18px;
+}
+@media (max-width: 700px) {
+  .phone-options {
+    grid-template-columns: 1fr;
+  }
+  .phone-option .btn {
+    width: 100%;
+  }
 }
 
 /* ---------- Appointments (Exact Reference UI) ---------- */

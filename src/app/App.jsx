@@ -25,7 +25,10 @@ function currentSection() {
 function crumbFor(section) {
   const root = section.group === 'manage' ? 'Manage' : 'Workspace';
   if (section.sectionGroup === 'work') return { root, strong: 'Work' };
-  if (section.sectionGroup === 'calls') return { root, strong: 'Calls' };
+  if (section.sectionGroup === 'calls') {
+    if (section.id === 'numbers') return { root, strong: 'Calls / Phone numbers' };
+    return { root, strong: 'Calls' };
+  }
   if (section.id === 'automation') return { root, strong: 'Settings / Admin automation' };
   return { root, strong: section.label };
 }
