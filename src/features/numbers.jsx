@@ -1,12 +1,14 @@
 // Phone numbers tab under Calls (shell owns Call history | Phone numbers tabs).
-// Visual parity with the Rytsense reference: 2-up option panels, Your numbers list, Dialog wizards.
-// No payment card UI — new-number flow is sample-only; existing-number "provider" path can open SIP connect.
+// Reference chrome: 2-up option panels + Your numbers list + Dialog wizards.
+// Live purchase/release when the workspace is eligible; sample wizards remain for preview when not.
 import { useEffect, useRef, useState } from 'react';
 import { api } from '../lib/api.js';
 import {
-  Badge, Spinner, ErrorBox, Note, PageHeader, Field, Button, Dialog, toast, Panel, PanelHead, Row,
+  Badge, Spinner, ErrorBox, Note, PageHeader, Field, Select, Button, Dialog, ActionButton, toast, useRun, Panel, PanelHead, Row,
 } from '../components/index.js';
 import { ConnectDialog, SettingsDialog, SipCard } from './sipTrunks.jsx';
+
+const KIND_LABEL = { local: 'Local', mobile: 'Mobile', toll_free: 'Toll-free' };
 
 function formatUs(digits) {
   return `+1 (${digits.slice(0, 3)}) ${digits.slice(3, 6)}-${digits.slice(6)}`;
@@ -18,7 +20,105 @@ function parseUsDigits(raw) {
   return digits;
 }
 
-function FindNumberWizard({ onClose, onAdd }) {
+function ConfirmDialog({ title, text, label, tone, action, onClose }) {
+  return (
+    <Dialog title={title} onClose={onClose}>
+      <div className="stack">
+        <p>{text}</p>
+        <div className="dialog-actions">
+          <ActionButton className={`btn ${tone === 'bad' ? 'btn--danger' : 'btn--primary'} action`} action={async () => { await action(); onClose(); }}>{label}</ActionButton>
+          <Button className="btn agent-btn" onClick={onClose}>Cancel</Button>
+        </div>
+      </div>
+    </Dialog>
+  );
+}
+
+/** Live provider search + purchase when the workspace can buy numbers. No card UI — confirm-only. */
+function LiveFindNumberWizard({ state, onClose, onPurchased }) {
+  const [f, setF] = useState({ country: state.countries?.[0] || 'US', kind: 'local', area: '' });
+  const [found, setFound] = useState(null);
+  const [busy, run] = useRun();
+  const [pick, setPick] = useState(null);
+  const kinds = state.kinds?.[f.country] || ['local'];
+  const changeCountry = (e) => setF({ ...f, country: e.target.value, kind: (state.kinds?.[e.target.value] || ['local'])[0] });
+  const bind = (key) => ({ value: f[key], onChange: (e) => setF({ ...f, [key]: e.target.value }) });
+
+  const search = (event) => {
+    event.preventDefault();
+    run(async () => {
+      setFound({ status: 'loading' });
+      try {
+        const { numbers } = await api('/v1/numbers/available', { params: { country: f.country, kind: f.kind, area_code: f.area.trim() } });
+        setFound({ status: 'ready', list: numbers || [] });
+      } catch (error) {
+        setFound({ status: 'error', error });
+      }
+    });
+  };
+
+  const buy = (number) => async () => {
+    await api('/v1/numbers', { method: 'POST', body: { phone_number: number.phone_number, country: f.country, confirm: true } });
+    toast(`${number.phone_number} is now your company's number.`);
+    onPurchased();
+    onClose();
+  };
+
+  if (pick) {
+    return (
+      <ConfirmDialog
+        title="Get this number"
+        label="Get this number"
+        tone="good"
+        onClose={() => setPick(null)}
+        action={buy(pick)}
+        text={`${pick.phone_number} will be your company's phone number, for calls and texts. It has a monthly fee that is charged by the platform. You can release it later. No payment card is collected here.`}
+      />
+    );
+  }
+
+  let results = null;
+  if (found?.status === 'loading') results = <Spinner />;
+  else if (found?.status === 'error') results = <ErrorBox error={found.error} />;
+  else if (found?.status === 'ready') {
+    results = found.list.length ? (
+      <div>
+        {found.list.map((n) => (
+          <Row
+            key={n.phone_number}
+            title={n.phone_number}
+            subtitle={[n.locality, n.region].filter(Boolean).join(', ') || 'Available'}
+            trailing={<Button className="btn agent-btn" onClick={() => setPick(n)}>Get this number</Button>}
+          />
+        ))}
+      </div>
+    ) : <Emptyish text="No numbers found. Try another area code or type." />;
+  }
+
+  return (
+    <Dialog title="Find a new number" wide onClose={onClose}>
+      <p>Search available numbers by country, type, and area code. Confirm to provision — no payment card is collected in this console.</p>
+      <form className="stack" noValidate onSubmit={search}>
+        <div className="grid2">
+          <Field label="Country"><Select options={(state.countries || ['US']).map((c) => [c, c])} value={f.country} onChange={changeCountry} /></Field>
+          <Field label="Type"><Select options={kinds.map((k) => [k, KIND_LABEL[k] || k])} {...bind('kind')} /></Field>
+          <Field label="Area code" hint="Optional"><input type="text" inputMode="numeric" maxLength={6} placeholder="e.g. 803" {...bind('area')} /></Field>
+        </div>
+        <div className="dialog-actions">
+          <button type="submit" className="btn btn--primary action" disabled={busy}>Search numbers</button>
+        </div>
+      </form>
+      {results}
+    </Dialog>
+  );
+}
+
+function Emptyish({ text }) {
+  return <p className="sub">{text}</p>;
+}
+
+/** Illustrative sample wizard when live purchase is not available. */
+function SampleFindNumberWizard({ onClose, onAdd }) {
   const [step, setStep] = useState({ kind: 'search' });
   const [area, setArea] = useState('');
   const [error, setError] = useState('');
@@ -87,7 +187,6 @@ function FindNumberWizard({ onClose, onAdd }) {
     );
   }
 
-  // checkout
   return (
     <Dialog title="Review number selection" onClose={onClose}>
       <p>
@@ -206,7 +305,6 @@ function ExistingNumberWizard({ onClose, onAdd, onProviderConnect }) {
     );
   }
 
-  // review
   const steps = step.method === 'Forward calls'
     ? ['Confirm your business number.', 'Get an AI destination number from a supported provider.', 'Configure forwarding with your current carrier.', 'Place a test call and verify the routing.']
     : step.method === 'Transfer number'
@@ -270,7 +368,8 @@ function NumberDetailDialog({ entry, onClose, onRestart }) {
 export default function Numbers() {
   const [apiState, setApiState] = useState({ status: 'loading' });
   const [sessionNumbers, setSessionNumbers] = useState([]);
-  const [wizard, setWizard] = useState(null); // 'find' | 'existing' | 'sip' | { detail: index }
+  const [wizard, setWizard] = useState(null);
+  const [releasing, setReleasing] = useState(null);
   const seq = useRef(0);
 
   const load = async () => {
@@ -288,9 +387,19 @@ export default function Numbers() {
 
   const addSession = (entry) => setSessionNumbers((list) => [...list, entry]);
 
-  const liveNumbers = apiState.data?.numbers || [];
+  const release = (number) => async () => {
+    await api(`/v1/numbers/${encodeURIComponent(number.phone_number)}`, { method: 'DELETE' });
+    toast('Number released.');
+    load();
+  };
+
+  const data = apiState.data;
   const sip = apiState.sip;
+  const liveNumbers = data?.numbers || [];
+  const canBuyLive = !!(data?.enabled && data?.ready && data?.can_buy);
   const showSipCard = sip?.enabled && sip?.ready && sip.trunks?.length > 0;
+
+  const openFind = () => setWizard(canBuyLive ? 'find-live' : 'find-sample');
 
   return (
     <div className="calls-page numbers-page">
@@ -305,14 +414,19 @@ export default function Numbers() {
       </PageHeader>
 
       <div className="calls-body">
-        {apiState.status === 'error' && !apiState.data ? <ErrorBox error={apiState.error} /> : null}
+        {apiState.status === 'error' && !data ? <ErrorBox error={apiState.error} /> : null}
 
         <div className="phone-options">
           <section className="panel phone-option">
             <div className="phone-icon" aria-hidden="true">＋</div>
             <h2>Get a new number</h2>
             <p>Search example US numbers by area code, review your selection, and preview checkout.</p>
-            <Button className="btn btn--primary action" onClick={() => setWizard('find')}>Find a number</Button>
+            <Button className="btn btn--primary action" onClick={openFind}>Find a number</Button>
+            {canBuyLive ? (
+              <button type="button" className="btn btn--link link phone-sample-link" onClick={() => setWizard('find-sample')}>
+                Preview sample flow instead
+              </button>
+            ) : null}
           </section>
           <section className="panel phone-option">
             <div className="phone-icon" aria-hidden="true">↗</div>
@@ -323,8 +437,11 @@ export default function Numbers() {
         </div>
 
         <Panel className="your-numbers-panel">
-          <PanelHead title="Your numbers" subtitle="Sample status for this browser session" />
-          {apiState.status === 'loading' && !apiState.data && !sessionNumbers.length ? <Spinner /> : null}
+          <PanelHead
+            title="Your numbers"
+            subtitle={liveNumbers.length ? 'Live numbers for this workspace' : 'Sample status for this browser session'}
+          />
+          {apiState.status === 'loading' && !data && !sessionNumbers.length ? <Spinner /> : null}
           {liveNumbers.length ? (
             <div>
               {liveNumbers.map((n) => (
@@ -333,7 +450,12 @@ export default function Numbers() {
                   leading="☎"
                   title={n.phone_number}
                   subtitle={`${n.country || 'US'} · ${n.status === 'active' ? 'Active' : 'Setting up'}`}
-                  trailing={<Badge text={n.status === 'active' ? 'Active' : 'Setting up'} tone={n.status === 'active' ? 'good' : 'warn'} />}
+                  trailing={(
+                    <>
+                      <Badge text={n.status === 'active' ? 'Active' : 'Setting up'} tone={n.status === 'active' ? 'good' : 'warn'} />
+                      <Button className="btn agent-btn" onClick={() => setReleasing(n)}>Release</Button>
+                    </>
+                  )}
                 />
               ))}
             </div>
@@ -365,6 +487,9 @@ export default function Numbers() {
           {!liveNumbers.length && !sessionNumbers.length && apiState.status !== 'loading' ? (
             <p className="sub">No numbers added yet. Select an option above to preview setup.</p>
           ) : null}
+          {data?.enabled && data?.ready && !data.can_buy && liveNumbers.length ? (
+            <p className="muted">{`A company can have ${data.max_numbers} phone number${data.max_numbers === 1 ? '' : 's'}. Release one to get a different one.`}</p>
+          ) : null}
         </Panel>
 
         {showSipCard ? (
@@ -373,11 +498,18 @@ export default function Numbers() {
           </div>
         ) : null}
 
-        <p className="page-foot">Design concept · No real numbers are searched, purchased, transferred, verified, or connected.</p>
+        <p className="page-foot">
+          {canBuyLive
+            ? 'Live number search uses your provider account. Sample flows never charge a card.'
+            : 'Design concept · No real numbers are searched, purchased, transferred, verified, or connected.'}
+        </p>
       </div>
 
-      {wizard === 'find' ? (
-        <FindNumberWizard onClose={() => setWizard(null)} onAdd={addSession} />
+      {wizard === 'find-live' && canBuyLive ? (
+        <LiveFindNumberWizard state={data} onClose={() => setWizard(null)} onPurchased={load} />
+      ) : null}
+      {wizard === 'find-sample' ? (
+        <SampleFindNumberWizard onClose={() => setWizard(null)} onAdd={addSession} />
       ) : null}
       {wizard === 'existing' ? (
         <ExistingNumberWizard
@@ -397,7 +529,7 @@ export default function Numbers() {
           />
         ) : (
           <Dialog title="Provider connection" onClose={() => setWizard(null)}>
-            <Note text={sip?.note || apiState.data?.note || 'Provider connection is not available yet for this workspace.'} />
+            <Note text={sip?.note || data?.note || 'Provider connection is not available yet for this workspace.'} />
             <div className="dialog-actions">
               <Button className="btn agent-btn" onClick={() => setWizard('existing')}>Back</Button>
             </div>
@@ -417,8 +549,18 @@ export default function Numbers() {
           onClose={() => setWizard(null)}
           onRestart={() => {
             const entry = sessionNumbers[wizard.detail];
-            setWizard(entry.kind === 'new' ? 'find' : 'existing');
+            setWizard(entry.kind === 'new' ? 'find-sample' : 'existing');
           }}
+        />
+      ) : null}
+      {releasing ? (
+        <ConfirmDialog
+          title="Release this number"
+          label="Release"
+          tone="bad"
+          onClose={() => setReleasing(null)}
+          action={release(releasing)}
+          text={`${releasing.phone_number} will stop ringing and texting your company, and the monthly fee ends. You may not be able to get the same number again.`}
         />
       ) : null}
     </div>

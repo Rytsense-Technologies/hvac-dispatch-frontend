@@ -2040,6 +2040,13 @@ tr.clickable:hover, tr.clickable:focus { background: #f1f5f9; }
 .phone-option .btn {
   min-height: 44px;
 }
+.phone-sample-link {
+  margin-top: 10px;
+}
+.calls-toolbar {
+  margin-bottom: 14px;
+  flex-wrap: wrap;
+}
 .your-numbers-panel .row-item {
   flex-wrap: wrap;
 }

@@ -5,7 +5,7 @@ import { api } from '../lib/api.js';
 import { formatDateTime, timeAgo } from '../lib/format.js';
 import { can } from '../lib/session.js';
 import {
-  PageHeader, Badge, Spinner, Empty, ErrorBox, Note, Details, Button, Dialog, Row, Panel,
+  PageHeader, Badge, Spinner, Empty, ErrorBox, Note, Details, Button, Dialog, Row, Panel, Select,
 } from '../components/index.js';
 
 const PAGE = 50;
@@ -13,6 +13,8 @@ const PAGE = 50;
 const OUTCOME_TONE = {
   booked: 'good', completed: 'good', follow_up: 'warn', escalated: 'bad', cancelled: 'neutral', no_request: 'neutral',
 };
+
+const DIRECTIONS = [['', 'Any direction'], ['inbound', 'Inbound'], ['outbound', 'Outbound']];
 
 const SAMPLE_CALLS = [
   {
@@ -159,6 +161,28 @@ function CallDialog({ id, onClose }) {
               <Details rows={objectRows(c.escalation)} />
             </>
           ) : null}
+          {c.request ? (
+            <>
+              <h3>Request</h3>
+              <Details rows={[
+                ['Status', c.request.status],
+                ['Priority', c.request.priority],
+                ['Category', c.request.category],
+                ['Service', c.request.service],
+                ['Description', c.request.description],
+              ]} />
+            </>
+          ) : null}
+          {c.appointment ? (
+            <>
+              <h3>Appointment</h3>
+              <Details rows={[
+                ['Status', c.appointment.status],
+                ['Start', formatDateTime(c.appointment.start_at)],
+                ['End', formatDateTime(c.appointment.end_at)],
+              ]} />
+            </>
+          ) : null}
           {Array.isArray(c.turns) && c.turns.length ? (
             <div className="stack">
               <h3>Transcript</h3>
@@ -185,12 +209,18 @@ function CallDialog({ id, onClose }) {
 }
 
 export default function Calls() {
+  const [search, setSearch] = useState('');
+  const [direction, setDirection] = useState('');
+  const [from, setFrom] = useState('');
+  const [to, setTo] = useState('');
   const [offset, setOffset] = useState(0);
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [open, setOpen] = useState(null);
   const seq = useRef(0);
+  const latest = useRef({});
+  latest.current = { search, direction, from, to, offset };
 
   const allowed = can('admin', 'dispatcher', 'approver');
 
@@ -199,20 +229,21 @@ export default function Calls() {
     const n = ++seq.current;
     setLoading(true);
     setError(null);
-    (async () => {
+    const timer = setTimeout(async () => {
+      const { search: q, direction: d, from: f, to: t, offset: o } = latest.current;
       try {
-        const out = await api('/v1/calls', { params: { limit: PAGE, offset } });
+        const out = await api('/v1/calls', { params: { search: q, direction: d, from: f, to: t, limit: PAGE, offset: o } });
         if (n !== seq.current) return;
-        setData({ items: out.calls || [], offset });
+        setData({ items: out.calls || [], offset: o });
         setLoading(false);
       } catch (e) {
         if (n !== seq.current) return;
         setError(e);
         setLoading(false);
       }
-    })();
-    return () => { seq.current += 1; };
-  }, [offset, allowed]);
+    }, 250);
+    return () => { seq.current += 1; clearTimeout(timer); };
+  }, [search, direction, from, to, offset, allowed]);
 
   if (!allowed) {
     return (
@@ -226,13 +257,16 @@ export default function Calls() {
   }
 
   const apiItems = data ? data.items : [];
-  const usingSample = !loading && !error && apiItems.length === 0;
+  const filtersIdle = !search && !direction && !from && !to;
+  // Samples only for a successful empty first page with no filters — never on later pager pages.
+  const usingSample = !loading && !error && apiItems.length === 0 && offset === 0 && filtersIdle;
   const items = usingSample ? SAMPLE_CALLS : apiItems;
+  const showPager = !usingSample && data && (data.items.length >= PAGE || offset > 0);
 
   let list;
   if (loading && !data) list = <Spinner />;
-  else if (error && !usingSample) list = <ErrorBox error={error} />;
-  else if (!items.length) list = <Empty text="No calls yet." />;
+  else if (error) list = <ErrorBox error={error} />;
+  else if (!items.length) list = <Empty text={offset > 0 ? 'No more calls on this page.' : 'No calls match.'} />;
   else {
     list = (
       <div className="calls-list">
@@ -270,13 +304,27 @@ export default function Calls() {
       </PageHeader>
 
       <div className="calls-body">
+        <div className="toolbar calls-toolbar">
+          <input
+            type="text"
+            aria-label="Search"
+            placeholder="Search name, number, service…"
+            className="search"
+            value={search}
+            onChange={(e) => { setSearch(e.target.value); setOffset(0); }}
+          />
+          <Select options={DIRECTIONS} value={direction} aria-label="Direction" onChange={(e) => { setDirection(e.target.value); setOffset(0); }} />
+          <label className="inline">From<input type="date" aria-label="From" value={from} onChange={(e) => { setFrom(e.target.value); setOffset(0); }} /></label>
+          <label className="inline">To<input type="date" aria-label="To" value={to} onChange={(e) => { setTo(e.target.value); setOffset(0); }} /></label>
+        </div>
+
         <Panel className="calls-panel">
           <h2 className="calls-panel__title">Recent conversations</h2>
           {list}
-          {!usingSample && data && (data.items.length >= PAGE || offset > 0) ? (
+          {showPager ? (
             <div className="calls-pager">
               <Button className="btn btn--ghost" aria-label="Previous page" disabled={offset === 0} onClick={() => setOffset((o) => Math.max(0, o - PAGE))}>‹</Button>
-              <span className="muted">{data.items.length ? `${data.offset + 1}-${data.offset + data.items.length}` : '0'}</span>
+              <span className="muted">{data.items.length ? `${data.offset + 1}-${data.offset + data.items.length}` : `${offset + 1}+`}</span>
               <Button className="btn btn--ghost" aria-label="Next page" disabled={data.items.length < PAGE} onClick={() => setOffset((o) => o + PAGE)}>›</Button>
             </div>
           ) : null}
