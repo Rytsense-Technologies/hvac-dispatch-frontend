@@ -76,9 +76,6 @@ async function fetchVoiceToken(userId) {
 // Type a text as the customer and see what the SMS assistant would answer. Signed in as an admin (the console's session cookie);
 // nothing is sent to anyone and staff are not alerted.
 const SMS_PHONE_STORAGE_KEY = "sms_test_phone";
-// The texts WE send on our own (the same ones the real system sends); picking one shows it, nothing is actually sent.
-const OUTBOUND_KINDS = [["confirmation", "Appointment confirmation"], ["reminder", "Appointment reminder"], ["on_the_way", "Technician on the way"]];
-
 async function smsApi(path, { method = "GET", body, csrf } = {}) {
   const res = await fetch(`${API_BASE}${path}`, {
     method,
@@ -103,8 +100,6 @@ function SmsTest() {
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState("");
   const [signedIn, setSignedIn] = useState(null);
-  const [direction, setDirection] = useState("in");
-  const [kind, setKind] = useState(OUTBOUND_KINDS[0][0]);
   const csrf = useRef(null);
   const box = useRef(null);
   const counter = useRef(0);
@@ -138,25 +133,6 @@ function SmsTest() {
     }
   }
 
-  // The other direction: the system texts the customer first (confirmation, reminder, "on the way"). Shown, not sent.
-  async function sendOutbound(event) {
-    event.preventDefault();
-    if (busy) return;
-    if (phone.replace(/\D/g, "").length < 7) { setNote("Enter the customer's phone number, with the country code."); return; }
-    safeStorageSet(SMS_PHONE_STORAGE_KEY, phone.trim());
-    setBusy(true);
-    setNote("");
-    try {
-      const out = await smsApi("/v1/sms-bot/test-outbound", { method: "POST", body: { phone: phone.trim(), kind }, csrf: csrf.current });
-      add(false, out.text, `Outbound text: ${out.label}. Shown here, not actually sent. Switch to "Inbound" to reply.`);
-    } catch (error) {
-      if (error.status === 401) setSignedIn(false);
-      setNote(error.message);
-    } finally {
-      setBusy(false);
-    }
-  }
-
   return (
     <>
       <section className="card">
@@ -180,23 +156,10 @@ function SmsTest() {
             </div>
           ))}
         </div>
-        <div className="mode-tabs direction" role="group" aria-label="Direction">
-          <button type="button" className="mode-tab" aria-pressed={String(direction === "in")} onClick={() => setDirection("in")}>Inbound: customer texts us</button>
-          <button type="button" className="mode-tab" aria-pressed={String(direction === "out")} onClick={() => setDirection("out")}>Outbound: we text the customer</button>
-        </div>
-        {direction === "in" ? (
-          <form className="sms-form" onSubmit={send}>
-            <input type="text" aria-label="Text message" placeholder="Type a text message" maxLength={1000} autoComplete="off" value={text} onChange={(e) => setText(e.target.value)} disabled={signedIn === false} />
-            <button className="send-btn" type="submit" disabled={busy || signedIn === false || !text.trim()}>Send</button>
-          </form>
-        ) : (
-          <form className="out-row" onSubmit={sendOutbound}>
-            <select aria-label="Which text we send" value={kind} onChange={(e) => setKind(e.target.value)} disabled={signedIn === false}>
-              {OUTBOUND_KINDS.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
-            </select>
-            <button className="send-btn" type="submit" disabled={busy || signedIn === false}>Show the text</button>
-          </form>
-        )}
+        <form className="sms-form" onSubmit={send}>
+          <input type="text" aria-label="Text message" placeholder="Type a text message" maxLength={1000} autoComplete="off" value={text} onChange={(e) => setText(e.target.value)} disabled={signedIn === false} />
+          <button className="send-btn" type="submit" disabled={busy || signedIn === false || !text.trim()}>Send</button>
+        </form>
         {signedIn === false ? <p className="muted small">Sign in to the console first, then reload this page. <a href="index.html">Open the console</a></p> : null}
         <p className="muted small status-line" role="status">{note}</p>
       </section>
