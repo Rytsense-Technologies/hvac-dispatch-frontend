@@ -32,7 +32,7 @@ function LinkResult({ emailSent, link, onDone }) {
   );
 }
 
-function AddAdminDialog({ onClose, reload }) {
+export function AddAdminDialog({ onClose, reload }) {
   const [f, setF] = useState({ name: '', email: '', phone: '' });
   const [result, setResult] = useState(null);
   const [busy, run] = useRun();
@@ -62,7 +62,7 @@ function AddAdminDialog({ onClose, reload }) {
 const EMAIL_OK = /^[^@\s]+@[^@\s]+\.[^@\s]{2,}$/;
 
 // One form: the technician's details AND their sign-in. The technician is saved first; if the sign-in step then fails, pressing the button again only retries the sign-in.
-function AddTechnicianDialog({ onClose, reload }) {
+export function AddTechnicianDialog({ onClose, reload }) {
   const [f, setF] = useState({ name: '', phone: '', email: '', lat: '', lon: '', skills: 'hvac', areas: '' });
   const [withLogin, setWithLogin] = useState(true);
   const [shifts, setShifts] = useState(newShifts);
@@ -159,7 +159,7 @@ function TechnicianLoginDialog({ tech, onClose, reload }) {
   );
 }
 
-function EditDialog({ user, onClose, reload }) {
+export function EditDialog({ user, onClose, reload }) {
   const [f, setF] = useState({ name: user.name || '', phone: user.phone || '', role: user.role });
   const [busy, run] = useRun();
   const bind = (key) => ({ value: f[key], onChange: (e) => setF({ ...f, [key]: e.target.value }) });
