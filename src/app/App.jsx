@@ -116,7 +116,7 @@ function LoginForm({ message, setupOpen, signupOpen, onSignedIn, onRegister, onS
         {setupOpen ? <a href="#" onClick={(e) => { e.preventDefault(); onRegister(); }}>Register the first admin</a> : null}
       </p>
       {signupOpen ? <p className="muted small">New company? <a href="#" onClick={(e) => { e.preventDefault(); onSignup(); }}>Create your company</a></p> : null}
-      <p className="muted small">Test the phone assistant: <a href="call.html">test call page</a></p>
+      <p className="muted small">Test the phone assistant: <a href="#/test">Test</a> (or <a href="call.html">call.html</a>)</p>
     </form>
   );
 }

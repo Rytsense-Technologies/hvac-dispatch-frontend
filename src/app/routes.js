@@ -1,9 +1,10 @@
 // Console sections + sidebar IA for the Rytsense reference shell (Phase 0).
 // Hash routing stays location.hash (e.g. #/work, #/calls/numbers).
-// WORKSPACE nav: Overview, AI agents, Campaigns, Calls, Work, Team & dispatch, Customers
+// WORKSPACE nav: Overview, AI agents, Campaigns, Calls, Work, Team & dispatch, Customers, Test
 // MANAGE nav: AI Coworker, Reports, Settings
 // Work → Tasks | Appointments (section tabs). Calls → history | phone numbers.
 // Automation is reachable via #/automation (Settings deep-link), not top-level nav.
+// Test restores the pre-design call.html voice + SMS text-chat flows inside the shell.
 import { lazy } from 'react';
 
 export const SECTIONS = [
@@ -17,6 +18,7 @@ export const SECTIONS = [
   { id: 'appointments', label: 'Appointments', icon: 'work', view: lazy(() => import('../features/appointments.jsx')), hideNav: true, sectionGroup: 'work', crumbParent: 'Work' },
   { id: 'team', label: 'Team & dispatch', icon: 'team', view: lazy(() => import('../features/team.jsx')) },
   { id: 'customers', label: 'Customers', icon: 'customers', view: lazy(() => import('../features/customers.jsx')) },
+  { id: 'test', label: 'Test', icon: 'test', view: lazy(() => import('../features/test.jsx')) },
 
   // MANAGE
   { id: 'copilot', label: 'AI Coworker', icon: 'copilot', group: 'manage', view: lazy(() => import('../features/copilot.jsx')) },
@@ -35,6 +37,7 @@ export const NAV_ITEMS = [
   { id: 'work', label: 'Work', icon: 'work', href: '#/work', match: ['tasks', 'appointments'] },
   { id: 'team', label: 'Team & dispatch', icon: 'team', href: '#/team', match: ['team'] },
   { id: 'customers', label: 'Customers', icon: 'customers', href: '#/customers', match: ['customers'] },
+  { id: 'test', label: 'Test', icon: 'test', href: '#/test', match: ['test'] },
   { id: 'copilot', label: 'AI Coworker', icon: 'copilot', href: '#/copilot', group: 'manage', match: ['copilot'] },
   { id: 'reports', label: 'Reports', icon: 'reports', href: '#/reports', group: 'manage', match: ['reports'] },
   { id: 'settings', label: 'Settings', icon: 'settings', href: '#/settings', group: 'manage', match: ['settings', 'automation', 'usage'] },
@@ -62,6 +65,7 @@ export const MOBILE_MORE = [
   { id: 'agents', label: 'AI agents', href: '#/agents' },
   { id: 'campaigns', label: 'Campaigns', href: '#/campaigns' },
   { id: 'customers', label: 'Customers', href: '#/customers' },
+  { id: 'test', label: 'Test', href: '#/test' },
   { id: 'copilot', label: 'AI Coworker', href: '#/copilot' },
   { id: 'reports', label: 'Reports', href: '#/reports' },
   { id: 'settings', label: 'Settings', href: '#/settings' },

@@ -19,4 +19,6 @@ export const SECTION_ROLES = {
   numbers: ['admin'],
   automation: ['admin'],
   settings: ['admin'],
+  // Text (voice + text-chat) matches the prior call.html admin-only gate.
+  test: ['admin'],
 };
