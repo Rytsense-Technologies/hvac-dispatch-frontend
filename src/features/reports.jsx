@@ -1,11 +1,13 @@
 // Reports: sparse operational metrics matching the reference Reports screen.
 // Period (Today / This week) drives live counts; CTAs deep-link to Appointments and Admin automation.
+// Also restores pre-design dispatch report flows: /v1/dispatch/reports/summary + jobs.csv for the period.
 import { useEffect, useRef, useState } from 'react';
 import { api } from '../lib/api.js';
 import { addDays, dayOf, todayIn, weekdayOf } from '../lib/format.js';
 import {
   Empty, ErrorBox, PageHeader, Panel, Row, Spinner,
 } from '../components/index.js';
+import { fetchSummary } from './dashboard.jsx';
 
 const PERIODS = [
   { id: 'week', label: 'This week', api: 'week' },
@@ -54,6 +56,23 @@ function calendarWeekBounds(dayIso = todayIn()) {
   const weekStart = addDays(dayIso, -weekdayOf(dayIso));
   const weekEnd = addDays(weekStart, 6);
   return { weekStart, weekEnd };
+}
+
+/** Map UI period → inclusive from/to dates for dispatch summary + CSV. */
+function periodRange(periodId) {
+  const today = todayIn();
+  if (periodId === 'today') return { from: today, to: today };
+  const { weekStart, weekEnd } = calendarWeekBounds(today);
+  return { from: weekStart, to: weekEnd };
+}
+
+function jobsCsvHref(range) {
+  return `/v1/dispatch/reports/jobs.csv?from=${encodeURIComponent(range.from)}&to=${encodeURIComponent(range.to)}`;
+}
+
+function pendingProposals(summary) {
+  if (!summary?.proposals || typeof summary.proposals !== 'object') return undefined;
+  return Object.values(summary.proposals).reduce((sum, p) => sum + (p?.pending || 0), 0);
 }
 
 function metricFromUnknown(entry, fallback) {
@@ -120,11 +139,20 @@ function settled(promise) {
   );
 }
 
-async function loadComposed(periodId) {
+function withProductLinks(metrics) {
+  return metrics.map((m, i) => ({
+    ...m,
+    href: m.href || (i === 0 ? APPOINTMENTS_HREF : REVIEW_HREF),
+    cta: m.cta || (i === 0 ? 'View appointments' : 'View review queue'),
+  }));
+}
+
+async function loadComposed(periodId, summaryResPreload = null) {
   const today = todayIn();
+  const range = periodRange(periodId);
   const { weekStart, weekEnd } = calendarWeekBounds(today);
 
-  const [appointmentsRes, automationRes] = await Promise.all([
+  const [appointmentsRes, automationRes, summaryRes] = await Promise.all([
     settled(api('/v1/appointments/schedule', {
       params: {
         // Need past + upcoming days of the calendar week, not only upcoming.
@@ -133,13 +161,15 @@ async function loadComposed(periodId) {
       },
     })),
     settled(api('/v1/automation', { params: { limit: 100 } })),
+    // Reuse summary already fetched by loadReports when present.
+    summaryResPreload
+      ? Promise.resolve(summaryResPreload)
+      : settled(fetchSummary(range.from, range.to)),
   ]);
 
   let appointmentValue = '—';
   let appointmentUnavailable = false;
-  if (!appointmentsRes.ok) {
-    appointmentUnavailable = true;
-  } else {
+  if (appointmentsRes.ok) {
     let items = asVisits(appointmentsRes.data).filter((a) => !isCanceled(a));
     if (periodId === 'today') {
       items = items.filter((a) => {
@@ -153,13 +183,16 @@ async function loadComposed(periodId) {
       });
     }
     appointmentValue = items.length;
+  } else if (summaryRes.ok && summaryRes.data?.jobs?.total != null) {
+    // Fallback to dispatch summary booked jobs when schedule is unavailable.
+    appointmentValue = summaryRes.data.jobs.total;
+  } else {
+    appointmentUnavailable = true;
   }
 
   let reviewValue = '—';
   let reviewUnavailable = false;
-  if (!automationRes.ok) {
-    reviewUnavailable = true;
-  } else {
+  if (automationRes.ok) {
     const auto = automationRes.data;
     reviewValue = firstDefined(
       auto?.needs_review?.total,
@@ -167,10 +200,20 @@ async function loadComposed(periodId) {
       auto?.pending,
       0,
     );
+  } else if (summaryRes.ok) {
+    const pending = pendingProposals(summaryRes.data);
+    if (pending !== undefined) reviewValue = pending;
+    else reviewUnavailable = true;
+  } else {
+    reviewUnavailable = true;
   }
 
   return {
     periodLabel: periodId === 'today' ? 'Today' : 'This week',
+    range,
+    csvHref: jobsCsvHref(range),
+    summary: summaryRes.ok ? summaryRes.data : null,
+    summaryError: summaryRes.ok ? null : summaryRes.error,
     metrics: [
       {
         title: 'Appointments in sample workspace',
@@ -199,21 +242,30 @@ async function loadComposed(periodId) {
 
 async function loadReports(periodId) {
   const period = PERIODS.find((p) => p.id === periodId) || PERIODS[0];
+  const range = periodRange(periodId);
+  const csvHref = jobsCsvHref(range);
+
+  // Always warm the dispatch summary for this period (pre-design Reports contract).
+  const summaryRes = await settled(fetchSummary(range.from, range.to));
+
   try {
     const data = await api('/v1/reports', { params: { period: period.api } });
     const normalized = normalizeReportsPayload(data, period.label);
     if (normalized?.metrics?.length) {
-      const metrics = normalized.metrics.map((m, i) => ({
-        ...m,
-        href: m.href || (i === 0 ? APPOINTMENTS_HREF : REVIEW_HREF),
-        cta: m.cta || (i === 0 ? 'View appointments' : 'View review queue'),
-      }));
-      return { ...normalized, metrics, periodLabel: normalized.periodLabel || period.label };
+      return {
+        ...normalized,
+        metrics: withProductLinks(normalized.metrics),
+        periodLabel: normalized.periodLabel || period.label,
+        range,
+        csvHref,
+        summary: summaryRes.ok ? summaryRes.data : null,
+        summaryError: summaryRes.ok ? null : summaryRes.error,
+      };
     }
   } catch {
     // Fall through to composed live sources.
   }
-  return loadComposed(periodId);
+  return loadComposed(periodId, summaryRes);
 }
 
 function MetricRows({ metrics }) {
@@ -259,6 +311,7 @@ export default function Reports() {
   }, [periodId]);
 
   const periodLabel = PERIODS.find((p) => p.id === periodId)?.label || 'This week';
+  const csvHref = state.data?.csvHref || jobsCsvHref(periodRange(periodId));
 
   let body;
   if (state.status === 'loading') body = <Spinner />;
@@ -311,12 +364,27 @@ export default function Reports() {
           font-weight: var(--font-weight-semibold);
           color: var(--muted);
         }
+        .reports-actions {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          flex-wrap: wrap;
+        }
         .reports-foot {
           margin: 18px 0 0;
           color: #526b7b;
           font-size: 12px;
           font-style: italic;
         }
+        .reports-foot-row {
+          display: flex;
+          align-items: baseline;
+          justify-content: space-between;
+          gap: 16px;
+          flex-wrap: wrap;
+          margin-top: 18px;
+        }
+        .reports-foot-row .reports-foot { margin: 0; }
       `}</style>
 
       <PageHeader
@@ -324,28 +392,45 @@ export default function Reports() {
         title="Reports"
         subtitle="Sample operational metrics and definitions."
         meta={(
-          <label className="reports-period">
-            Period
-            <select
-              aria-label="Period"
-              value={periodId}
-              onChange={(e) => setPeriodId(e.target.value)}
+          <div className="reports-actions">
+            <label className="reports-period">
+              Period
+              <select
+                aria-label="Period"
+                value={periodId}
+                onChange={(e) => setPeriodId(e.target.value)}
+              >
+                {PERIODS.map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}
+              </select>
+            </label>
+            <a
+              className="btn agent-btn"
+              download=""
+              href={csvHref}
+              title={`Download CSV of booked jobs from ${periodRange(periodId).from} to ${periodRange(periodId).to}`}
             >
-              {PERIODS.map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}
-            </select>
-          </label>
+              Download jobs (CSV)
+            </a>
+          </div>
         )}
       />
 
       <Panel className="reports-panel" aria-label="Report metrics">
         <h2>{state.data?.periodLabel || periodLabel}</h2>
         {body}
+        {state.status === 'ready' && state.data?.summaryError ? (
+          <p className="muted small" role="status" style={{ marginTop: 12 }}>
+            Dispatch summary unavailable for this period; metric counts use live appointments and review sources when possible.
+          </p>
+        ) : null}
       </Panel>
 
-      <p className="reports-foot">
-        {state.data?.foot
-          || 'Illustrative workspace data. Appointments are filtered by the selected period; review items show the current queue. No historical dataset is connected.'}
-      </p>
+      <div className="reports-foot-row">
+        <p className="reports-foot">
+          {state.data?.foot
+            || 'Illustrative workspace data. Appointments are filtered by the selected period; review items show the current queue. No historical dataset is connected.'}
+        </p>
+      </div>
     </>
   );
 }
