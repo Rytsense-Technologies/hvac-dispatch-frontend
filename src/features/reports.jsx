@@ -2,7 +2,7 @@
 // Period (Today / This week) drives live counts; CTAs deep-link to Appointments and Admin automation.
 import { useEffect, useRef, useState } from 'react';
 import { api } from '../lib/api.js';
-import { addDays, todayIn } from '../lib/format.js';
+import { addDays, dayOf, todayIn, weekdayOf } from '../lib/format.js';
 import {
   Empty, ErrorBox, PageHeader, Panel, Row, Spinner,
 } from '../components/index.js';
@@ -15,35 +15,55 @@ const PERIODS = [
 const APPOINTMENTS_HREF = '#/work/appointments';
 const REVIEW_HREF = '#/automation';
 
-function asList(payload) {
+function firstDefined(...vals) {
+  for (const v of vals) {
+    if (v !== undefined && v !== null) return v;
+  }
+  return undefined;
+}
+
+function asVisits(payload) {
   if (!payload) return [];
   if (Array.isArray(payload)) return payload;
-  return payload.appointments || payload.items || payload.visits || payload.rows || [];
+  // Appointments screen uses /v1/appointments/schedule → visits.
+  return payload.visits || payload.appointments || payload.items || payload.rows || [];
 }
 
 function isCanceled(item) {
-  const status = String(item.status?.label || item.status || item.confirmation?.label || item.confirmation || '').toLowerCase();
+  const status = String(
+    item.status?.label || item.status || item.confirmation?.label || item.confirmation || '',
+  ).toLowerCase();
   return status.includes('cancel');
 }
 
-function startsOnDay(item, dayIso) {
-  const raw = item.start_at || item.starts_at || item.when || item.scheduled_at || item.day || null;
-  if (!raw) return true;
-  const iso = String(raw);
-  if (/^\d{4}-\d{2}-\d{2}/.test(iso)) return iso.slice(0, 10) === dayIso;
-  const parsed = new Date(iso);
-  if (Number.isNaN(parsed.getTime())) return true;
-  return parsed.toISOString().slice(0, 10) === dayIso;
+/** Company-local calendar day (YYYY-MM-DD) for a visit start, or null if unknown. */
+function visitLocalDay(item) {
+  const raw = firstDefined(item.start_at, item.starts_at, item.scheduled_at, item.when, item.day);
+  if (raw == null || raw === '') return null;
+  const text = String(raw);
+  if (/^\d{4}-\d{2}-\d{2}$/.test(text)) return text;
+  try {
+    return dayOf(text);
+  } catch {
+    return null;
+  }
+}
+
+/** Calendar week [start, end] in company TZ (Sunday–Saturday, matching en-US weekdayOf). */
+function calendarWeekBounds(dayIso = todayIn()) {
+  const weekStart = addDays(dayIso, -weekdayOf(dayIso));
+  const weekEnd = addDays(weekStart, 6);
+  return { weekStart, weekEnd };
 }
 
 function metricFromUnknown(entry, fallback) {
-  if (!entry || typeof entry !== 'object') return fallback;
+  if (!entry || typeof entry !== 'object') return { ...fallback };
   const title = entry.title || entry.label || entry.name || fallback.title;
   const definition = entry.definition || entry.description || entry.text || entry.sub || fallback.definition;
-  const value = entry.value ?? entry.count ?? entry.total ?? entry.number ?? fallback.value;
+  const value = firstDefined(entry.value, entry.count, entry.total, entry.number, fallback.value);
   const action = entry.action || entry.cta || {};
   const cta = action.label || entry.cta_label || entry.button || fallback.cta;
-  const href = action.href || action.url || entry.href || fallback.href;
+  const href = firstDefined(action.href, action.url, entry.href, fallback.href);
   return { title, definition, value, cta, href };
 }
 
@@ -58,15 +78,16 @@ function normalizeReportsPayload(data, periodLabel) {
         definition: '',
         value: '—',
         cta: 'View',
-        href: '#/reports',
+        // Leave href unset so loadReports can apply product destinations.
       })),
       foot: data.foot || data.footnote || data.note || null,
     };
   }
 
-  const appointments = data.appointments || data.appointment || data.bookings;
-  const reviews = data.reviews || data.review || data.automation || data.needs_review || data.ai_actions;
-  if (appointments != null || reviews != null) {
+  // Nullish selection: valid numeric 0 must not fall through to composed data.
+  const appointments = firstDefined(data.appointments, data.appointment, data.bookings);
+  const reviews = firstDefined(data.reviews, data.review, data.automation, data.needs_review, data.ai_actions);
+  if (appointments !== undefined || reviews !== undefined) {
     return {
       periodLabel: data.period_label || data.periodLabel || periodLabel,
       metrics: [
@@ -92,46 +113,82 @@ function normalizeReportsPayload(data, periodLabel) {
   return null;
 }
 
+function settled(promise) {
+  return promise.then(
+    (data) => ({ ok: true, data }),
+    (error) => ({ ok: false, error }),
+  );
+}
+
 async function loadComposed(periodId) {
   const today = todayIn();
-  const weekEnd = addDays(today, 6);
+  const { weekStart, weekEnd } = calendarWeekBounds(today);
+
   const [appointmentsRes, automationRes] = await Promise.all([
-    api('/v1/appointments', { params: { days_ahead: periodId === 'today' ? 1 : 7, limit: 500 } }).catch(() => null),
-    api('/v1/automation', { params: { limit: 100 } }).catch(() => null),
+    settled(api('/v1/appointments/schedule', {
+      params: {
+        // Need past + upcoming days of the calendar week, not only upcoming.
+        scope: periodId === 'today' ? 'upcoming' : 'all',
+        limit: 500,
+      },
+    })),
+    settled(api('/v1/automation', { params: { limit: 100 } })),
   ]);
 
-  let items = asList(appointmentsRes).filter((a) => !isCanceled(a));
-  if (periodId === 'today') {
-    items = items.filter((a) => startsOnDay(a, today));
+  let appointmentValue = '—';
+  let appointmentUnavailable = false;
+  if (!appointmentsRes.ok) {
+    appointmentUnavailable = true;
   } else {
-    // Keep items that fall in the coming week when a start date is present.
-    items = items.filter((a) => {
-      const raw = a.start_at || a.starts_at || null;
-      if (!raw) return true;
-      const day = String(raw).slice(0, 10);
-      return day >= today && day <= weekEnd;
-    });
+    let items = asVisits(appointmentsRes.data).filter((a) => !isCanceled(a));
+    if (periodId === 'today') {
+      items = items.filter((a) => {
+        const day = visitLocalDay(a);
+        return day == null ? false : day === today;
+      });
+    } else {
+      items = items.filter((a) => {
+        const day = visitLocalDay(a);
+        return day != null && day >= weekStart && day <= weekEnd;
+      });
+    }
+    appointmentValue = items.length;
   }
 
-  const reviewTotal = automationRes?.needs_review?.total
-    ?? automationRes?.needs_review?.items?.length
-    ?? automationRes?.pending
-    ?? 0;
+  let reviewValue = '—';
+  let reviewUnavailable = false;
+  if (!automationRes.ok) {
+    reviewUnavailable = true;
+  } else {
+    const auto = automationRes.data;
+    reviewValue = firstDefined(
+      auto?.needs_review?.total,
+      Array.isArray(auto?.needs_review?.items) ? auto.needs_review.items.length : undefined,
+      auto?.pending,
+      0,
+    );
+  }
 
   return {
     periodLabel: periodId === 'today' ? 'Today' : 'This week',
     metrics: [
       {
         title: 'Appointments in sample workspace',
-        definition: 'Count of non-canceled sample appointments; not actual business bookings.',
-        value: items.length,
+        definition: appointmentUnavailable
+          ? 'Appointments could not be loaded for this period.'
+          : 'Count of non-canceled sample appointments; not actual business bookings.',
+        value: appointmentValue,
+        unavailable: appointmentUnavailable,
         cta: 'View appointments',
         href: APPOINTMENTS_HREF,
       },
       {
         title: 'AI actions awaiting review',
-        definition: 'Sample items with a needs-review or needs-approval status.',
-        value: reviewTotal,
+        definition: reviewUnavailable
+          ? 'Review queue could not be loaded.'
+          : 'Sample items with a needs-review or needs-approval status.',
+        value: reviewValue,
+        unavailable: reviewUnavailable,
         cta: 'View review queue',
         href: REVIEW_HREF,
       },
@@ -146,7 +203,6 @@ async function loadReports(periodId) {
     const data = await api('/v1/reports', { params: { period: period.api } });
     const normalized = normalizeReportsPayload(data, period.label);
     if (normalized?.metrics?.length) {
-      // Ensure deep-links always point at product routes even if API omits them.
       const metrics = normalized.metrics.map((m, i) => ({
         ...m,
         href: m.href || (i === 0 ? APPOINTMENTS_HREF : REVIEW_HREF),
@@ -164,22 +220,25 @@ function MetricRows({ metrics }) {
   if (!metrics?.length) return <Empty text="No metrics for this period." />;
   return (
     <ul className="reports-metric-list">
-      {metrics.map((m) => (
-        <li key={`${m.title}-${m.href}`}>
-          <Row
-            title={m.title}
-            subtitle={m.definition}
-            trailing={(
-              <>
-                <strong className="reports-metric-value">{m.value ?? '—'}</strong>
-                <a className="btn agent-btn" href={m.href.startsWith('#') ? m.href : `#${m.href}`}>
-                  {m.cta}
-                </a>
-              </>
-            )}
-          />
-        </li>
-      ))}
+      {metrics.map((m) => {
+        const href = m.href ? (m.href.startsWith('#') ? m.href : `#${m.href}`) : null;
+        return (
+          <li key={`${m.title}-${href || 'none'}`}>
+            <Row
+              title={m.title}
+              subtitle={m.definition}
+              trailing={(
+                <>
+                  <strong className={`reports-metric-value${m.unavailable ? ' reports-metric-value--unavailable' : ''}`}>
+                    {m.unavailable ? 'Unavailable' : (m.value ?? '—')}
+                  </strong>
+                  {href ? <a className="btn agent-btn" href={href}>{m.cta}</a> : null}
+                </>
+              )}
+            />
+          </li>
+        );
+      })}
     </ul>
   );
 }
@@ -246,6 +305,11 @@ export default function Reports() {
           font-size: 16px;
           font-weight: var(--font-weight-semibold);
           color: var(--ink);
+        }
+        .reports-metric-value--unavailable {
+          font-size: 12px;
+          font-weight: var(--font-weight-semibold);
+          color: var(--muted);
         }
         .reports-foot {
           margin: 18px 0 0;
