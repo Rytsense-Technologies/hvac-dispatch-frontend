@@ -375,7 +375,7 @@ export default function Calls() {
         <button
           type="button"
           className="calls-workspace-btn"
-          onClick={() => { }}
+          onClick={() => {}}
         >
           Sample workspace
         </button>
