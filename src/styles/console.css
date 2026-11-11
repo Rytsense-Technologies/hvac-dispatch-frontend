@@ -4302,22 +4302,20 @@ button.row-item { cursor: pointer; }
   background: var(--surface);
   font: inherit;
 }
-.customers-list .row-item:first-child { border-top: 1px solid #edf1f3; }
+.customers-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.customers-list > li { margin: 0; padding: 0; }
+.customers-list .row-item:first-child,
+.customers-list > li:first-child .row-item { border-top: 1px solid #edf1f3; }
 .customers-pager {
   margin-top: 8px;
   padding-top: 12px;
   border-top: 1px solid #edf1f3;
 }
-.customers-imported h2 {
-  margin: 0 0 4px;
-  font-size: var(--font-size-h2);
-}
 .customers-history .row-item:first-child { border-top: 0; }
-.foot {
-  margin: 18px 0 0;
-  color: #526b7b;
-  font-size: 12px;
-}
 
 @media print {
   .sidebar, .btn, select, .mobile-nav { display: none !important; }

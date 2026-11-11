@@ -27,26 +27,27 @@ function customerSubtitle(c) {
 
 function CustomerList({ customers, open }) {
   return (
-    <div className="customers-list" role="list" aria-label="Customers">
+    <ul className="customers-list" aria-label="Customers">
       {customers.map((c) => (
-        <Row
-          key={c.id}
-          leading={<Icon name="customers" />}
-          title={c.name || 'Unknown'}
-          subtitle={customerSubtitle(c)}
-          trailing={(
-            <Button
-              className="btn agent-btn"
-              type="button"
-              aria-label={`View customer ${c.name || ''}`.trim()}
-              onClick={() => open(c)}
-            >
-              View customer
-            </Button>
-          )}
-        />
+        <li key={c.id}>
+          <Row
+            leading={<Icon name="customers" />}
+            title={c.name || 'Unknown'}
+            subtitle={customerSubtitle(c)}
+            trailing={(
+              <Button
+                className="btn agent-btn"
+                type="button"
+                aria-label={`View customer ${c.name || ''}`.trim()}
+                onClick={() => open(c)}
+              >
+                View customer
+              </Button>
+            )}
+          />
+        </li>
       ))}
-    </div>
+    </ul>
   );
 }
 
@@ -201,7 +202,7 @@ function ProblemsList({ problems, total }) {
   );
 }
 
-function ImportWizard({ onClose, reload, onImported }) {
+function ImportWizard({ onClose, reload }) {
   const [step, setStep] = useState(1);
   const [meta, setMeta] = useState(null);
   const [metaError, setMetaError] = useState(null);
@@ -329,7 +330,6 @@ function ImportWizard({ onClose, reload, onImported }) {
                   action={async () => {
                     const out = await api('/v1/imports', { method: 'POST', body: { record_type: recordType, csv, mapping } });
                     setResult(out);
-                    onImported?.({ recordType, result: out, sample: preview?.sample || [] });
                     reload();
                     toast(`Imported ${out.imported ?? 0}.`);
                   }}
@@ -369,7 +369,6 @@ export default function Customers() {
   const [error, setError] = useState(null);
   const [openId, setOpenId] = useState(null);
   const [importOpen, setImportOpen] = useState(false);
-  const [importedLeads, setImportedLeads] = useState([]);
   const canImport = can('admin', 'dispatcher');
   const seq = useRef(0);
   const latest = useRef({});
@@ -442,37 +441,9 @@ export default function Customers() {
         ) : null}
       </Panel>
 
-      {importedLeads.length ? (
-        <Panel className="customers-imported" style={{ marginTop: 18 }}>
-          <h2>{`Imported leads · ${importedLeads.length}`}</h2>
-          {importedLeads.map((l, i) => (
-            <Row
-              key={`${l.email || l.phone || l.name || i}-${i}`}
-              title={l.name || 'Imported lead'}
-              subtitle={[l.email || l.phone || l.city || 'No contact details', 'Imported lead'].filter(Boolean).join(' · ')}
-            />
-          ))}
-        </Panel>
-      ) : null}
-
-      <p className="foot">Illustrative customer information only.</p>
-
       {openId && <CustomerDetail id={openId} onClose={() => setOpenId(null)} />}
       {importOpen && canImport && (
-        <ImportWizard
-          onClose={() => setImportOpen(false)}
-          reload={() => load(true)}
-          onImported={({ recordType, sample }) => {
-            if (recordType !== 'leads') return;
-            const rows = (sample || []).map((row) => ({
-              name: row.name || row.Name || 'Imported lead',
-              email: row.email || row.Email || '',
-              phone: row.phone || row.Phone || '',
-              city: row.city || row.City || '',
-            }));
-            if (rows.length) setImportedLeads((prev) => [...rows, ...prev].slice(0, 50));
-          }}
-        />
+        <ImportWizard onClose={() => setImportOpen(false)} reload={() => load(true)} />
       )}
     </>
   );
