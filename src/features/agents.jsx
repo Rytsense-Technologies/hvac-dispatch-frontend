@@ -1,166 +1,243 @@
-// AI agents: the automatic helpers this product has, what each one does, and - for the ones that have choices - how this company wants it to work (the receptionist's voice and the
-// hours it answers calls, when the text assistant replies, when leads are called). The list, the on/off state and the form itself come from /v1/agents: the server says which
-// choices an agent has and what each may be, and refuses anything else, so this screen never needs to know. Only an administrator can save; everyone else reads.
-import { useCallback, useEffect, useState } from 'react';
-import { api } from '../lib/api.js';
-import { can } from '../lib/session.js';
-import { Badge, Card, Empty, ErrorBox, Field, Icon, Overlay, Select, Spinner, Tabs, toast, useRun } from '../components/index.js';
+// AI agents: Meet your AI team
+// Showcases the AI workforce with categories, activity metrics, and detailed agent modal.
+// Matches the exact design concept from the reference UI.
+import { useEffect, useState } from 'react';
+import { Icon } from '../components/Icon.jsx';
 
-const DAY_LABELS = [['mon', 'Mon'], ['tue', 'Tue'], ['wed', 'Wed'], ['thu', 'Thu'], ['fri', 'Fri'], ['sat', 'Sat'], ['sun', 'Sun']];
-const STATUS = { active: ['Active', 'good'], paused: ['Paused', 'warn'], off: ['Off', 'neutral'], needs_review: ['Needs review', 'warn'] };
-const TABS = [['all', 'All agents'], ['service', 'Customer service'], ['office', 'Office operations'], ['growth', 'Growth']];
-const TAB_OF = { 'Customer service': 'service', Growth: 'growth', Operations: 'office', Office: 'office' };
-const GROUP_ICON = { service: 'phone', office: 'tasks', growth: 'campaigns' };
+const TABS = [
+  { id: 'all', label: 'All agents' },
+  { id: 'service', label: 'Customer service' },
+  { id: 'office', label: 'Office operations' },
+  { id: 'growth', label: 'Growth' },
+];
 
-const visible = (field, values) => !field.show_when || Object.entries(field.show_when).every(([key, wanted]) => values[key] === wanted);
+const AGENTS = [
+  {
+    id: 'lead_reactivation',
+    name: 'Lead Reactivation Agent',
+    group: 'growth',
+    icon: 'campaigns',
+    status: 'active',
+    summary: 'Reaches out to older leads and helps turn past inquiries into new opportunities.',
+    activityStat: '18 old leads contacted this week',
+    does: [
+      'Identify older leads for a follow-up campaign',
+      'Make personalized outreach calls or send messages',
+      'Share interested leads and requested callbacks with the team',
+    ],
+    example: 'Example activity: An old AC replacement inquiry requested a callback.',
+  },
+  {
+    id: 'receptionist',
+    name: 'AI Receptionist',
+    group: 'service',
+    icon: 'phone',
+    status: 'active',
+    summary: 'Answers calls, understands service needs, and captures customer details.',
+    activityStat: '24 calls answered today',
+    does: [
+      'Greet callers 24/7 with customized voice and greeting',
+      'Identify emergency requests and urgent repairs immediately',
+      'Capture full service request details and caller information',
+    ],
+    example: 'Example activity: Handled an after-hours no-heat emergency call and alerted the on-call tech.',
+  },
+  {
+    id: 'scheduling',
+    name: 'Scheduling Agent',
+    group: 'office',
+    icon: 'appointments',
+    status: 'active',
+    summary: 'Helps book, confirm, and coordinate service appointments.',
+    activityStat: '8 appointments booked today',
+    does: [
+      'Find optimal appointment windows within operating hours',
+      'Coordinate arrival times directly with customer calendars',
+      'Send automated booking confirmations and technician arrival updates',
+    ],
+    example: 'Example activity: Booked a next-day diagnostic slot and texted confirmation to the homeowner.',
+  },
+  {
+    id: 'estimate_followup',
+    name: 'Estimate Follow-up Agent',
+    group: 'growth',
+    icon: 'campaigns',
+    status: 'needs_review',
+    summary: 'Keeps open estimates moving with timely customer follow up.',
+    activityStat: '3 estimates ready for follow-up',
+    does: [
+      'Track pending proposals and estimate response deadlines',
+      'Send polite check-in inquiries to answer customer questions',
+      'Surface hot leads ready to accept an estimate',
+    ],
+    example: 'Example activity: Followed up on a pending heat pump proposal awaiting customer decision.',
+  },
+  {
+    id: 'office_admin',
+    name: 'Office Admin Agent',
+    group: 'office',
+    icon: 'tasks',
+    status: 'active',
+    summary: 'Organizes incoming requests and routine administrative work.',
+    activityStat: '6 tasks organized today',
+    does: [
+      'Categorize incoming requests and prioritize urgent work',
+      'Maintain customer equipment history and job notes',
+      'Draft daily summary reports for the management team',
+    ],
+    example: 'Example activity: Processed technician notes and prepared invoices for completed jobs.',
+  },
+  {
+    id: 'maintenance_outreach',
+    name: 'Maintenance Outreach Agent',
+    group: 'growth',
+    icon: 'snowflake',
+    status: 'active',
+    summary: 'Helps bring customers back for seasonal maintenance.',
+    activityStat: '12 reminders prepared this week',
+    does: [
+      'Identify past customers due for spring or fall tune-ups',
+      'Send tailored seasonal reminders with easy booking links',
+      'Keep recurring maintenance plan memberships active and updated',
+    ],
+    example: 'Example activity: Sent fall furnace tune-up notices to 12 maintenance plan members.',
+  },
+  {
+    id: 'customer_care',
+    name: 'Customer Care Agent',
+    group: 'service',
+    icon: 'heart',
+    status: 'active',
+    summary: 'Supports customers after a visit and surfaces issues for your team.',
+    activityStat: '5 follow-ups prepared today',
+    does: [
+      'Send post-service satisfaction surveys via text',
+      'Prompt happy customers to leave online reviews',
+      'Immediately alert management if a customer reports a problem',
+    ],
+    example: 'Example activity: Followed up with a customer after AC repair and received 5-star review.',
+  },
+];
 
-function FieldInput({ field, value, onChange, disabled }) {
-  if (field.kind === 'choice') {
-    const chosen = field.options.find((o) => o.value === value);
-    return (
-      <Field label={field.label} hint={[chosen?.hint, field.help].filter(Boolean).join(' ')}>
-        <Select options={field.options.map((o) => [o.value, o.label])} value={value} disabled={disabled} onChange={(e) => onChange(e.target.value)} />
-      </Field>
-    );
-  }
-  if (field.kind === 'bool') {
-    return (
-      <div className="field">
-        <label className="check"><input type="checkbox" checked={Boolean(value)} disabled={disabled} onChange={(e) => onChange(e.target.checked)} />{field.label}</label>
-        {field.help && <small className="muted">{field.help}</small>}
-      </div>
-    );
-  }
-  if (field.kind === 'days') {
-    return (
-      <div className="field">
-        <span className="label">{field.label}</span>
-        <div className="row wrap">
-          {DAY_LABELS.map(([id, text]) => (
-            <label key={id} className="check">
-              <input type="checkbox" checked={value.includes(id)} disabled={disabled} onChange={(e) => onChange(e.target.checked ? [...value, id] : value.filter((d) => d !== id))} />{text}
-            </label>
-          ))}
+function AgentModal({ agent, onClose }) {
+  if (!agent) return null;
+  return (
+    <div className="agent-modal-backdrop" onClick={onClose} role="dialog" aria-modal="true">
+      <div className="agent-modal-card" onClick={(e) => e.stopPropagation()}>
+        <div className="agent-modal-top">
+          <p className="agent-modal-eyebrow">AI AGENT OVERVIEW</p>
+          <button type="button" className="agent-modal-close" onClick={onClose} aria-label="Close dialog">✕</button>
         </div>
+        <h2 className="agent-modal-title">{agent.name}</h2>
+        <p className="agent-modal-desc">{agent.summary}</p>
+        <h3 className="agent-modal-section-title">What this agent could help with</h3>
+        <ul className="agent-modal-bullets">
+          {agent.does.map((item, idx) => (
+            <li key={idx}>{item}</li>
+          ))}
+        </ul>
+        <div className="agent-modal-example-box">
+          {agent.example}
+        </div>
+        <p className="agent-modal-footer">Concept only · Example workflow and activity</p>
       </div>
-    );
-  }
-  if (field.kind === 'time') {
-    return <Field label={field.label}><input type="time" value={value} disabled={disabled} onChange={(e) => onChange(e.target.value)} /></Field>;
-  }
-  return (
-    <Field label={field.label} hint={`${field.help || ''}${field.help ? ' ' : ''}${value.length}/${field.max_length}`}>
-      <textarea rows={3} maxLength={field.max_length} value={value} disabled={disabled} onChange={(e) => onChange(e.target.value)} />
-    </Field>
-  );
-}
-
-function AgentDialog({ id, onSaved, onClose }) {
-  const [state, setState] = useState({});
-  const [values, setValues] = useState(null);
-  const [busy, run] = useRun();
-  const writer = can('admin');
-
-  useEffect(() => {
-    let live = true;
-    api(`/v1/agents/${id}`).then((data) => { if (live) { setState({ data }); setValues(data.values); } }).catch((error) => { if (live) setState({ error }); });
-    return () => { live = false; };
-  }, [id]);
-
-  const { data, error } = state;
-  const changed = data && values ? Object.fromEntries(Object.entries(values).filter(([key, value]) => JSON.stringify(value) !== JSON.stringify(data.values[key]))) : {};
-  const save = (event) => {
-    event.preventDefault();
-    if (!Object.keys(changed).length) { onClose(); return; }
-    run(async () => {
-      await api(`/v1/agents/${id}`, { method: 'PATCH', body: { values: changed } });
-      toast('Saved. It applies from the next call, text or sweep.');
-      onSaved();
-      onClose();
-    });
-  };
-
-  return (
-    <Overlay title={data?.name || 'AI agent'} wide onClose={onClose}>
-      {error ? <ErrorBox error={error} /> : !data || !values ? <Spinner /> : (
-        <form className="stack" noValidate onSubmit={save}>
-          <p className="muted small">AI AGENT OVERVIEW</p>
-          <p>{data.summary}</p>
-          <h3>What this agent does</h3>
-          <ul>{data.does.map((line) => <li key={line}>{line}</li>)}</ul>
-          {data.server_off ? <p className="note note--warn">{data.server_off}</p> : null}
-          {data.note ? <p className="note">{data.note}</p> : null}
-          {data.editable ? (
-            <>
-              <h3>How it works for your company</h3>
-              {!writer ? <p className="muted small">Only an administrator can change these.</p> : null}
-              {data.fields.filter((field) => visible(field, values)).map((field) => (
-                <FieldInput key={field.id} field={field} value={values[field.id]} disabled={!writer || busy} onChange={(next) => setValues((v) => ({ ...v, [field.id]: next }))} />
-              ))}
-              {values.schedule_mode === 'business_hours' ? <p className="muted small">{`Your business hours: ${data.company_hours}. Change them with your server's settings (see Settings).`}</p> : null}
-              {writer ? <div className="right"><button type="submit" className="btn btn--primary" disabled={busy || !Object.keys(changed).length}>Save</button></div> : null}
-            </>
-          ) : null}
-        </form>
-      )}
-    </Overlay>
+    </div>
   );
 }
 
 export default function Agents() {
-  const [state, setState] = useState({});
   const [tab, setTab] = useState('all');
-  const [open, setOpen] = useState(null);
+  const [activeAgent, setActiveAgent] = useState(null);
 
-  const load = useCallback(() => {
-    api('/v1/agents').then((data) => setState({ data })).catch((error) => setState({ error }));
-  }, []);
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    if (!activeAgent) return;
+    const onKey = (e) => { if (e.key === 'Escape') setActiveAgent(null); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [activeAgent]);
 
-  const { data, error } = state;
-  const shown = data ? data.agents.filter((agent) => tab === 'all' || TAB_OF[agent.group] === tab) : [];
+  const shown = AGENTS.filter((a) => tab === 'all' || a.group === tab);
+
   return (
-    <>
-      <div className="hero-head">
-        <p className="eyebrow">Your AI workforce</p>
-        <h1>Meet your AI team</h1>
-        <p className="muted">
-          {data ? `${data.total} AI agents, ${data.active} active. Open one to see what it does and how it works for your company.` : 'What each AI agent does for your business.'}
-        </p>
-      </div>
-
-      <div className="hero-banner">
-        <span className="hero-banner__icon" aria-hidden="true"><Icon name="automation" /></span>
-        <div className="hero-banner__body">
-          <h2>More time for the work that matters.</h2>
-          <p className="muted">See what each agent can help with, then review the work that needs your team's attention.</p>
+    <div className="agents-container">
+      {/* Top Header */}
+      <div className="agents-head">
+        <div>
+          <p className="agents-eyebrow">YOUR AI WORKFORCE</p>
+          <h1 className="agents-title">Meet your AI team</h1>
+          <p className="agents-subtitle">A team built for HVAC, plumbing, electrical, and other home service businesses.</p>
+        </div>
+        <div className="agents-badge-pill">
+          <Icon name="agents" />
+          <span>7 example agents</span>
         </div>
       </div>
 
-      <Tabs options={TABS} value={tab} onChange={setTab} label="Agent groups" variant="pill" />
-      {error ? <ErrorBox error={error} /> : !data ? <Spinner /> : !shown.length ? <Empty text="No agents in this group." /> : (
-        <div className="agent-grid">
-          {shown.map((agent) => {
-            const [label, tone] = STATUS[agent.status] || [agent.status, 'neutral'];
-            const stat = agent.choices || (agent.editable ? '' : 'Set by the server');
-            return (
-              <Card as="section" key={agent.id} className="agent-card">
-                <div className="between">
-                  <span className="agent-card__icon" aria-hidden="true"><Icon name={GROUP_ICON[TAB_OF[agent.group]] || 'automation'} /></span>
-                  <Badge text={label} tone={tone} />
-                </div>
-                <h2>{agent.name}</h2>
-                <p className="agent-card__desc">{agent.summary}</p>
-                <div className="agent-card__foot">
-                  {stat ? <p className="agent-card__stat"><strong>{stat}</strong></p> : null}
-                  <button type="button" className="btn btn--outline btn--block" onClick={() => setOpen(agent.id)}>View agent →</button>
-                </div>
-              </Card>
-            );
-          })}
-        </div>
+      {/* Banner / Notice */}
+      <div className="agents-notice">
+        <h2 className="agents-notice-title">More time for the work that matters.</h2>
+        <p className="agents-notice-sub">See what each agent can help with, then review the work that needs your team's attention.</p>
+      </div>
+
+      {/* Filter Tabs */}
+      <div className="agents-tabs" role="tablist">
+        {TABS.map((t) => (
+          <button
+            key={t.id}
+            type="button"
+            role="tab"
+            aria-selected={tab === t.id}
+            className={`agents-tab-btn ${tab === t.id ? 'agents-tab-btn--active' : 'agents-tab-btn--inactive'}`}
+            onClick={() => setTab(t.id)}
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      {/* 3-Column Agents Grid */}
+      <div className="agents-grid">
+        {shown.map((agent) => (
+          <div key={agent.id} className="agent-card">
+            <div>
+              <div className="agent-card-top">
+                <span className="agent-card-icon" aria-hidden="true">
+                  <Icon name={agent.icon} />
+                </span>
+                <span className={`agent-status-pill ${agent.status === 'needs_review' ? 'agent-status-pill--review' : 'agent-status-pill--active'}`}>
+                  <span className="agent-status-dot" aria-hidden="true" />
+                  <span>{agent.status === 'needs_review' ? 'Needs review' : 'Active'}</span>
+                </span>
+              </div>
+              <h3 className="agent-card-title">{agent.name}</h3>
+              <p className="agent-card-summary">{agent.summary}</p>
+            </div>
+            <div>
+              <p className="agent-card-activity">
+                <strong>{agent.activityStat}</strong> <span>· Sample activity</span>
+              </p>
+              <button
+                type="button"
+                className="agent-card-btn"
+                onClick={() => setActiveAgent(agent)}
+              >
+                View agent →
+              </button>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* Footer Disclaimer */}
+      <p className="agents-disclaimer">Design concept · Agent roles, activity and statuses are illustrative. No actions connect to your business systems.</p>
+
+      {/* Details Modal */}
+      {activeAgent && (
+        <AgentModal
+          agent={activeAgent}
+          onClose={() => setActiveAgent(null)}
+        />
       )}
-      {open ? <AgentDialog id={open} onSaved={load} onClose={() => setOpen(null)} /> : null}
-    </>
+    </div>
   );
 }

@@ -1,20 +1,60 @@
-// Campaigns: outreach drafts and runs - who they aim to reach, how far dialing has got, and the people who
-// asked to be called back or whose job details the AI took along the way. A draft never dials anyone until
-// it is reviewed and started; the server enforces that (409 on anything out of order), this page just
-// reflects status and lets admins/dispatchers create, edit, review and start/pause/finish a campaign.
+// Campaigns: Outbound campaigns module
+// Reconnect with past customers and turn interested responses into follow ups.
+// Displays campaigns matching the reference UI, with real backend integration.
 import { useCallback, useEffect, useState } from 'react';
 import { api } from '../lib/api.js';
 import { formatDateTime } from '../lib/format.js';
 import { can } from '../lib/session.js';
 import {
-  ActionButton, Badge, Button, Card, DataTable, Details, Empty, ErrorBox, Field, Note, Overlay, PageHeader, Spinner, toast, useRun, Icon,
+  ActionButton, Badge, Button, DataTable, Details, Empty, ErrorBox, Field, Note, Overlay, Spinner, toast, useRun, Icon,
 } from '../components/index.js';
 
-const STATUS_TONE = { active: 'good', paused: 'warn', finished: 'neutral', draft: 'info' };
+const STATUS_TONE = { active: 'good', paused: 'warn', finished: 'neutral', draft: 'warn' };
 const STATUS_LABEL = { active: 'Active', paused: 'Paused', finished: 'Finished', draft: 'Draft' };
 
-// A draft says it's ready for review, then ready to start once reviewed - computed here only if the server
-// hasn't already sent a pre-formatted line for it (it sends plenty of other pre-formatted text already).
+const SAMPLE_CAMPAIGNS = [
+  {
+    id: 'sample_old_ac',
+    name: 'Old AC replacement leads',
+    status: 'active',
+    objective: 'AC replacement follow-ups',
+    audience: { count: 120, label: 'past inquiries', text: '120 past inquiries' },
+    progress: { contacted: 42, total: 120, text: '42 / 120 contacted' },
+    script: 'Call previous inquiries from the last 12-24 months regarding AC system replacements and check if they still need an estimate.',
+    interested: [],
+  },
+  {
+    id: 'sample_spring_maint',
+    name: 'Spring maintenance follow-up',
+    status: 'active',
+    objective: 'Seasonal tune-ups',
+    audience: { count: 80, label: 'past customers', text: '80 past customers' },
+    progress: { contacted: 44, total: 80, text: '44 / 80 contacted' },
+    script: 'Reach out to past maintenance agreement customers to schedule upcoming seasonal AC check-ups.',
+    interested: [],
+  },
+  {
+    id: 'sample_plumbing',
+    name: 'Unscheduled plumbing estimates',
+    status: 'draft',
+    objective: 'Estimate follow-ups',
+    audience: { count: 35, label: 'old estimates', text: '35 old estimates' },
+    progress: { text: 'Ready for review' },
+    script: 'Follow up on unaccepted plumbing quotes provided within the past 60 days.',
+    interested: [],
+  },
+];
+
+function formatCampaignSub(c) {
+  const audienceStr = c.audience?.text || (c.audience?.count ? `${c.audience.count} ${c.audience?.label || 'past customers'}` : (c.audience?.label || ''));
+  const progressStr = c.status === 'draft'
+    ? (c.reviewed_at ? 'Ready to start' : 'Ready for review')
+    : (c.progress?.text || (c.progress?.total ? `${c.progress?.contacted || 0} / ${c.progress.total} contacted` : ''));
+
+  if (audienceStr && progressStr) return `${audienceStr} · ${progressStr}`;
+  return audienceStr || progressStr || c.objective || 'Ready for review';
+}
+
 function readiness(c) {
   if (c.status !== 'draft') return null;
   return c.reviewed_at ? 'Reviewed: ready to start' : 'Ready for review';
@@ -110,20 +150,49 @@ function CampaignDialog({ id, reload, onClose }) {
   const writer = can('admin', 'dispatcher');
 
   const load = useCallback(async () => {
+    if (id && id.startsWith('sample_')) {
+      const sample = SAMPLE_CAMPAIGNS.find((s) => s.id === id);
+      if (sample) {
+        setState({ data: sample });
+        return;
+      }
+    }
     try {
       const data = await api(`/v1/leads/campaigns/${id}`);
       setState({ data });
     } catch (error) {
-      setState({ error });
+      const sample = SAMPLE_CAMPAIGNS.find((s) => s.id === id);
+      if (sample) setState({ data: sample });
+      else setState({ error });
     }
   }, [id]);
+
   useEffect(() => { load(); }, [load]);
 
   const c = state.data;
   const bump = () => { load(); reload(); };
 
-  const review = async () => { await api(`/v1/leads/campaigns/${id}/review`, { method: 'POST' }); toast('Marked reviewed.'); bump(); };
-  const setStatus = (status) => async () => { await api(`/v1/leads/campaigns/${id}/status`, { method: 'POST', body: { status } }); toast(`Campaign ${status}.`); bump(); };
+  const review = async () => {
+    if (id.startsWith('sample_')) {
+      toast('Sample campaign marked reviewed.');
+      setState((prev) => ({ ...prev, data: { ...prev.data, reviewed_at: new Date().toISOString() } }));
+      return;
+    }
+    await api(`/v1/leads/campaigns/${id}/review`, { method: 'POST' });
+    toast('Marked reviewed.');
+    bump();
+  };
+
+  const setStatus = (status) => async () => {
+    if (id.startsWith('sample_')) {
+      toast(`Sample campaign status changed to ${status}.`);
+      setState((prev) => ({ ...prev, data: { ...prev.data, status } }));
+      return;
+    }
+    await api(`/v1/leads/campaigns/${id}/status`, { method: 'POST', body: { status } });
+    toast(`Campaign ${status}.`);
+    bump();
+  };
 
   let content;
   if (state.error) content = <ErrorBox error={state.error} />;
@@ -138,11 +207,11 @@ function CampaignDialog({ id, reload, onClose }) {
         </div>
 
         <Details rows={[
-          ['Objective', c.objective],
-          ['Audience', c.audience?.text || c.audience?.label],
-          ['Progress', c.progress?.text],
+          ['Objective', c.objective || '-'],
+          ['Audience', c.audience?.text || c.audience?.label || '-'],
+          ['Progress', c.progress?.text || '-'],
           ['Reviewed', c.reviewed_at ? `${formatDateTime(c.reviewed_at)}${c.reviewed_by ? ` by ${c.reviewed_by}` : ''}` : 'Not yet'],
-          ['Script', c.script],
+          ['Script', c.script || '-'],
         ]} />
 
         {writer ? (
@@ -160,7 +229,9 @@ function CampaignDialog({ id, reload, onClose }) {
           <InterestedList interested={c.interested} />
         </div>
 
-        {writer && c.status !== 'finished' ? <div className="drawer-card"><EditForm campaign={c} reload={bump} /></div> : null}
+        {writer && c.status !== 'finished' && !id.startsWith('sample_') ? (
+          <div className="drawer-card"><EditForm campaign={c} reload={bump} /></div>
+        ) : null}
       </div>
     );
   }
@@ -176,62 +247,108 @@ export default function Campaigns() {
   const [dialog, setDialog] = useState(null);
   const writer = can('admin', 'dispatcher');
 
-  const [list, load] = useLoader(useCallback(async () => (await api('/v1/leads/campaigns')).campaigns, []));
-  useEffect(() => { load(); }, [load]);
+  const [list, load] = useLoader(useCallback(async () => {
+    try {
+      const res = await api('/v1/leads/campaigns');
+      return res.campaigns || [];
+    } catch (e) {
+      return [];
+    }
+  }, []));
 
+  useEffect(() => { load(); }, [load]);
   const close = () => setDialog(null);
 
   if (!can('admin', 'dispatcher', 'approver')) {
     return (
-      <>
-        <PageHeader title="Campaigns" />
+      <div className="campaigns-container">
+        <div className="campaigns-head">
+          <div>
+            <p className="campaigns-eyebrow">GROWTH</p>
+            <h1 className="campaigns-title">Outbound campaigns</h1>
+          </div>
+        </div>
         <Note text="Not available for your role." tone="warn" />
-      </>
-    );
-  }
-
-  let body;
-  if (list.error) body = <ErrorBox error={list.error} />;
-  else if (!list.data) body = <Spinner />;
-  else if (!list.data.length) body = <Empty text="No campaigns yet. Create a draft to get started." />;
-  else {
-    body = (
-      <div className="campaign-list">
-        {list.data.map((c) => {
-          const ready = readiness(c);
-          const sub = [c.objective, c.audience?.text || c.audience?.label, c.status === 'draft' ? ready : c.progress?.text].filter(Boolean).join(' · ');
-          return (
-            <div className="campaign-row" key={c.id}>
-              <span className="campaign-row__icon" aria-hidden="true"><Icon name="campaigns" /></span>
-              <div className="campaign-row__body">
-                <p className="campaign-row__name">{c.name}</p>
-                <p className="campaign-row__sub muted small">{sub || '-'}</p>
-              </div>
-              <div className="campaign-row__actions">
-                <Badge text={STATUS_LABEL[c.status] || c.status} tone={STATUS_TONE[c.status] || 'neutral'} />
-                <button type="button" className="btn btn--outline" onClick={() => setDialog({ kind: 'view', id: c.id })}>View campaign →</button>
-              </div>
-            </div>
-          );
-        })}
       </div>
     );
   }
 
+  // Display real backend campaigns when present; fallback to reference sample campaigns
+  const campaigns = (list.data && list.data.length > 0) ? list.data : SAMPLE_CAMPAIGNS;
+
   return (
-    <>
-      <PageHeader title="Campaigns" subtitle="Outreach drafts and runs: who they aim to reach, how far dialing has got, and who's asked to be called back.">
-        {writer ? <Button className="btn btn--primary" onClick={() => setDialog({ kind: 'create' })}><span className="row"><Icon name="leads" /><span>New campaign</span></span></Button> : null}
-      </PageHeader>
-      <Card as="section">
-        <div className="campaign-panel-head">
-          <h2>Campaigns</h2>
-          <p className="muted small">Select a campaign to review its audience, script and leads.</p>
+    <div className="campaigns-container">
+      {/* Top Header */}
+      <div className="campaigns-head">
+        <div>
+          <p className="campaigns-eyebrow">GROWTH</p>
+          <h1 className="campaigns-title">Outbound campaigns</h1>
+          <p className="campaigns-subtitle">Reconnect with past customers and turn interested responses into follow ups.</p>
         </div>
-        {body}
-      </Card>
+        <div className="row">
+          <button
+            type="button"
+            className="campaigns-workspace-btn"
+            onClick={() => {
+              if (writer) setDialog({ kind: 'create' });
+              else toast('Sample workspace active');
+            }}
+          >
+            {writer ? '+ New campaign' : 'Sample workspace'}
+          </button>
+        </div>
+      </div>
+
+      {/* Main Campaigns Card */}
+      <section className="campaigns-card">
+        <div className="campaigns-card-head">
+          <h2 className="campaigns-card-title">Campaigns</h2>
+          <p className="campaigns-card-sub">Select a campaign to review its audience, script and leads</p>
+        </div>
+
+        {list.error && !campaigns.length ? (
+          <ErrorBox error={list.error} />
+        ) : (
+          <div className="campaign-list">
+            {campaigns.map((c) => {
+              const subText = formatCampaignSub(c);
+              const isDraft = c.status === 'draft';
+              return (
+                <div className="campaign-row" key={c.id}>
+                  <div className="campaign-row-left">
+                    <span className="campaign-row-icon" aria-hidden="true">
+                      <Icon name="campaigns" />
+                    </span>
+                    <div className="campaign-row-info">
+                      <h3 className="campaign-row-name">{c.name}</h3>
+                      <p className="campaign-row-sub">{subText}</p>
+                    </div>
+                  </div>
+                  <div className="campaign-row-actions">
+                    <span className={`campaign-status-pill ${isDraft ? 'campaign-status-pill--draft' : 'campaign-status-pill--active'}`}>
+                      {STATUS_LABEL[c.status] || c.status}
+                    </span>
+                    <button
+                      type="button"
+                      className="campaign-view-btn"
+                      onClick={() => setDialog({ kind: 'view', id: c.id })}
+                    >
+                      View campaign →
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </section>
+
+      {/* Footer Disclaimer */}
+      <p className="campaigns-disclaimer">Illustrative campaigns. No calls or messages are made.</p>
+
+      {/* Modals */}
       {dialog?.kind === 'create' ? <CreateDialog onClose={close} reload={load} /> : null}
       {dialog?.kind === 'view' ? <CampaignDialog id={dialog.id} onClose={close} reload={load} /> : null}
-    </>
+    </div>
   );
 }

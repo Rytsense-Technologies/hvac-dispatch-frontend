@@ -12,7 +12,8 @@ import { SECTIONS } from './routes.js';
 const allowedIn = (section) => !SECTION_ROLES[section.id] || can(...SECTION_ROLES[section.id]);
 
 function currentSection() {
-  const id = (location.hash.replace(/^#\/?/, '') || 'dashboard').split('?')[0];
+  const hashVal = (location.hash.replace(/^#\/?/, '') || 'overview').split('?')[0];
+  const id = hashVal === 'dashboard' ? 'overview' : hashVal;
   return SECTIONS.find((s) => s.id === id) || SECTIONS[0];
 }
 
@@ -247,15 +248,37 @@ function AuthScreen({ message, onSignedIn }) {
 
 // ---------- the signed-in shell ----------
 
+function getInitials(name) {
+  if (!name) return 'JM';
+  const parts = name.trim().split(/\s+/);
+  if (parts.length >= 2) {
+    return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+  }
+  return name.slice(0, 2).toUpperCase();
+}
+
 function Shell({ timezone, onSignOut }) {
   const [hash, setHash] = useState(location.hash);
   const [agents, setAgents] = useState(null); // {active, total} once /v1/agents answers; stays null (hidden) on any failure
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuRef = useRef(null);
   const page = useRef(null);
   useEffect(() => {
     const onHash = () => setHash(location.hash);
     window.addEventListener('hashchange', onHash);
     return () => window.removeEventListener('hashchange', onHash);
   }, []);
+
+  useEffect(() => {
+    if (!menuOpen) return;
+    const onDocClick = (e) => {
+      if (menuRef.current && !menuRef.current.contains(e.target)) {
+        setMenuOpen(false);
+      }
+    };
+    document.addEventListener('click', onDocClick);
+    return () => document.removeEventListener('click', onDocClick);
+  }, [menuOpen]);
 
   // A quiet status pill in the header - real counts from /v1/agents, fetched once per sign-in. Never
   // invented: if the call fails, the pill just doesn't show rather than guessing a number.
@@ -271,7 +294,8 @@ function Shell({ timezone, onSignOut }) {
 
   useEffect(() => { page.current?.focus({ preventScroll: true }); }, [hash]);
 
-  const displayName = session.user?.name || session.actor;
+  const displayName = session.user?.name || session.actor || 'James M.';
+  const initials = getInitials(displayName);
   const visible = SECTIONS.filter(allowedIn);
   const workspace = visible.filter((s) => s.group !== 'manage');
   const manage = visible.filter((s) => s.group === 'manage');
@@ -286,25 +310,57 @@ function Shell({ timezone, onSignOut }) {
       <aside className="sidebar">
         <div className="brand"><span className="brand__mark" aria-hidden="true">HD</span> HVAC Dispatch</div>
         <nav id="menu" className="menu" aria-label="Sections">
-          <div className="menu-group-label">Workspace</div>
+          <div className="menu-group-label">WORKSPACE</div>
           {workspace.map(navLink)}
-          {manage.length ? <div className="menu-group-label">Manage</div> : null}
+          {manage.length ? <div className="menu-group-label">MANAGE</div> : null}
           {manage.map(navLink)}
-          <a className="menu-item" href="call.html"><Icon name="phone" /><span>Test call</span></a>
         </nav>
       </aside>
       <div className="main">
         <header className="topbar">
-          <div className="topbar__crumb"><span>Workspace</span><span aria-hidden="true">/</span><strong>{section.label}</strong></div>
+          <div className="topbar__crumb"><span>{section.group === 'manage' ? 'Manage' : 'Workspace'}</span><span aria-hidden="true">/</span><strong>{section.label}</strong></div>
           <div className="topbar__right">
-            {agents ? <a href="#/agents" className="topbar__agents"><Badge text={`${agents.active} of ${agents.total} AI agents active`} tone={agents.active ? 'good' : 'neutral'} /></a> : null}
-            <div id="who" className="identity" data-testid="identity">
-              <span className="identity__avatar" aria-hidden="true">{(displayName || '?').slice(0, 1).toUpperCase()}</span>
-              <span className="identity__body">
-                <strong>{displayName}</strong> <Badge text={session.role} tone="info" />
-                <small className="block muted">{`${session.actor} · ${timezone}`}</small>
-              </span>
-              <button id="signout" className="btn btn--ghost btn--small" type="button" onClick={onSignOut} aria-label="Sign out" title="Sign out"><Icon name="signOut" /></button>
+            <a href="#/agents" className="topbar__status-pill" title="AI agents">
+              <span className="topbar__status-dot" aria-hidden="true" />
+              <span>AI team active</span>
+            </a>
+            <a href="#/team" className="topbar__icon-btn" title="Team & dispatch" aria-label="Team & dispatch">
+              <Icon name="team" />
+            </a>
+            <div className="identity-wrap" ref={menuRef}>
+              <button
+                type="button"
+                className={`identity ${menuOpen ? 'identity--open' : ''}`}
+                onClick={() => setMenuOpen((o) => !o)}
+                aria-expanded={menuOpen}
+                aria-haspopup="true"
+                data-testid="identity"
+              >
+                <span className="identity__avatar" aria-hidden="true">{initials}</span>
+                <span className="identity__name">
+                  {displayName}
+                  <svg className="identity__chevron" width="10" height="10" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                    <path d="M2.5 4.5l3.5 3.5 3.5-3.5" />
+                  </svg>
+                </span>
+              </button>
+              {menuOpen && (
+                <div className="identity__menu" role="menu">
+                  <div className="identity__menu-header">
+                    <strong>{displayName}</strong>
+                    <Badge text={session.role || 'admin'} tone="info" />
+                    <small className="block muted">{`${session.actor || ''} · ${timezone || ''}`}</small>
+                  </div>
+                  <a href="#/settings" className="identity__menu-item" role="menuitem" onClick={() => setMenuOpen(false)}>
+                    <Icon name="settings" />
+                    <span>Settings</span>
+                  </a>
+                  <button type="button" className="identity__menu-item identity__menu-item--danger" role="menuitem" onClick={() => { setMenuOpen(false); onSignOut(); }}>
+                    <Icon name="signOut" />
+                    <span>Sign out</span>
+                  </button>
+                </div>
+              )}
             </div>
           </div>
         </header>

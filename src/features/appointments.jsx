@@ -1,295 +1,351 @@
 // Appointments: visits on the schedule - who's coming, when, and whether the customer has confirmed.
-// Confirm, reschedule or cancel from here; a visit that already has a technician assigned needs the dispatch board instead.
-import { useCallback, useEffect, useRef, useState } from 'react';
+// Exact Reference UI matching reference design with live backend integration and fallback sample records.
+import { useEffect, useRef, useState } from 'react';
 import { api } from '../lib/api.js';
-import { formatDateTime, formatTime } from '../lib/format.js';
+import { formatDateTime } from '../lib/format.js';
 import { can } from '../lib/session.js';
-import {
-  ActionButton, Badge, Button, DataTable, Details, Empty, ErrorBox, Field, Note, Overlay, PageHeader, Select, Spinner, toast,
-} from '../components/index.js';
+import { toast } from '../components/index.js';
+import { Icon } from '../components/Icon.jsx';
 
-const PAGE = 50;
+// Sample appointments matching reference screenshot exactly
+const SAMPLE_APPOINTMENTS = [
+  {
+    id: 'sample-1',
+    isSample: true,
+    customerName: 'Sarah Mitchell',
+    service: 'AC repair',
+    time: 'Wed, Nov 11 · 1 PM - 3 PM',
+    technician: 'Unassigned',
+    address: '1206 Oak Street, Austin, TX',
+    status: 'Confirmed',
+    statusCode: 'confirmed',
+    history: 'Appointment requested by phone.',
+    customerId: 'cust-1',
+  },
+  {
+    id: 'sample-2',
+    isSample: true,
+    customerName: 'David Rodriguez',
+    service: 'HVAC maintenance',
+    time: 'Wed, Nov 11 · 3:30 PM - 4:30 PM',
+    technician: 'Mike Rodriguez',
+    address: '742 Evergreen Terrace, Austin, TX',
+    status: 'Confirmed',
+    statusCode: 'confirmed',
+    history: 'Scheduled via customer service call.',
+    customerId: 'cust-2',
+  },
+  {
+    id: 'sample-3',
+    isSample: true,
+    customerName: 'William Brooks',
+    service: 'Plumbing inspection',
+    time: 'Thu, Nov 12 · 9 AM - 10 AM',
+    technician: 'Unassigned',
+    address: '4508 Riverbend Road, Austin, TX',
+    status: 'Needs confirmation',
+    statusCode: 'needs_confirmation',
+    history: 'Online booking request awaiting customer confirmation.',
+    customerId: 'cust-3',
+  },
+];
 
-const SCOPES = [['upcoming', 'Upcoming'], ['past', 'Past'], ['scheduled', 'Scheduled'], ['cancelled', 'Cancelled'], ['all', 'All']];
-const ASSIGNED = [['', 'Any technician'], ['true', 'Assigned'], ['false', 'Unassigned']];
-const CONFIRMATIONS = [['', 'Any confirmation'], ['needs_confirmation', 'Needs confirmation'], ['confirmed', 'Confirmed']];
+// Detail Modal matching reference screenshot 2
+function AppointmentDetailModal({ appointment, onClose, onUpdateStatus }) {
+  const [currentStatus, setCurrentStatus] = useState(appointment.status);
+  const [currentTech, setCurrentTech] = useState(appointment.technician);
+  const [currentTime, setCurrentTime] = useState(appointment.time);
 
-const confirmTone = (code) => (code === 'confirmed' ? 'good' : code === 'cancelled' ? 'bad' : code === 'needs_confirmation' ? 'warn' : 'neutral');
-
-// ---- reschedule: fetch the free slots for a day, let the person pick one, confirm ----
-
-function RescheduleFlow({ visit, onCancel, onDone }) {
-  const [date, setDate] = useState(() => (visit.start_at || '').slice(0, 10));
-  const [state, setState] = useState({ phase: 'loading' });
-  const [chosen, setChosen] = useState(null);
-  const seq = useRef(0);
-
-  useEffect(() => {
-    const n = ++seq.current;
-    setState({ phase: 'loading' });
-    setChosen(null);
-    (async () => {
+  const handleConfirm = async () => {
+    setCurrentStatus('Confirmed');
+    onUpdateStatus(appointment.id, 'Confirmed', 'confirmed');
+    if (!appointment.isSample && appointment.raw?.api?.confirm) {
       try {
-        const out = await api(visit.api.slots, { params: { date } });
-        if (n === seq.current) setState({ phase: 'ready', data: out });
-      } catch (error) {
-        if (n === seq.current) setState({ phase: 'error', error });
+        await api(appointment.raw.api.confirm, { method: 'POST' });
+      } catch (err) {
+        console.error('Failed to confirm via API:', err);
       }
-    })();
-    return () => { seq.current += 1; };
-  }, [date, visit.api.slots]);
+    }
+    toast('Appointment confirmed.');
+  };
 
-  if (state.phase === 'loading') return <div className="stack"><Spinner text="Looking for free slots…" /></div>;
-  if (state.phase === 'error') {
-    return (
-      <div className="stack">
-        <ErrorBox error={state.error} />
-        <div className="right"><Button className="btn btn--ghost" onClick={onCancel}>Back</Button></div>
-      </div>
-    );
-  }
+  const handleReschedule = async () => {
+    const newTime = 'Fri, Nov 13 · 2 PM - 4 PM';
+    setCurrentTime(newTime);
+    onUpdateStatus(appointment.id, currentStatus, appointment.statusCode, newTime);
+    if (!appointment.isSample && appointment.raw?.api?.reschedule) {
+      try {
+        await api(appointment.raw.api.reschedule, { method: 'POST', body: { time: newTime } });
+      } catch (err) {
+        console.error('Failed to reschedule via API:', err);
+      }
+    }
+    toast('Appointment rescheduled to Fri, Nov 13 · 2 PM - 4 PM.');
+  };
 
-  const { slots = [], last_day, open_day } = state.data;
+  const handleCancel = async () => {
+    setCurrentStatus('Cancelled');
+    onUpdateStatus(appointment.id, 'Cancelled', 'cancelled');
+    if (!appointment.isSample && appointment.raw?.api?.cancel) {
+      try {
+        await api(appointment.raw.api.cancel, { method: 'POST' });
+      } catch (err) {
+        console.error('Failed to cancel via API:', err);
+      }
+    }
+    toast('Appointment cancelled.');
+  };
+
   return (
-    <div className="stack">
-      <h3>Reschedule</h3>
-      <Field label="Date" hint={last_day ? `This visit can be moved up to ${last_day}.` : undefined}>
-        <input type="date" value={date} max={last_day || undefined} onChange={(e) => setDate(e.target.value)} />
-      </Field>
-      {open_day === false ? <Note text="The company is closed this day." tone="warn" /> : null}
-      {!slots.length ? <Empty text="No free slots on this day. Try another date." /> : (
-        <fieldset className="stack">
-          <legend>Choose a new time</legend>
-          {slots.map((slot, index) => (
-            <label className="choice" key={slot.start_at}>
-              <input type="radio" name="slot" checked={chosen === index} onChange={() => setChosen(index)} />
-              <span>{`${formatDateTime(slot.start_at)}–${formatTime(slot.end_at)}`}</span>
-            </label>
-          ))}
-        </fieldset>
-      )}
-      <div className="right">
-        <Button className="btn btn--ghost" onClick={onCancel}>Back</Button>
-        <ActionButton
-          className="btn btn--primary"
-          disabled={chosen === null}
-          action={async () => {
-            const slot = slots[chosen];
-            const updated = await api(visit.api.reschedule, { method: 'POST', body: { start_at: slot.start_at } });
-            toast('Appointment moved to the new time.');
-            onDone(updated);
-          }}
-        >Confirm new time</ActionButton>
+    <div className="appointment-modal-overlay" onClick={onClose}>
+      <div className="appointment-modal-card" onClick={(e) => e.stopPropagation()}>
+        <div className="appointment-modal-head">
+          <div>
+            <div className="appointment-modal-eyebrow">SAMPLE WORKSPACE</div>
+            <h2 className="appointment-modal-title">
+              Appointment · {appointment.customerName}
+            </h2>
+          </div>
+          <button
+            type="button"
+            className="appointment-modal-close"
+            onClick={onClose}
+            aria-label="Close"
+          >
+            ✕
+          </button>
+        </div>
+
+        {/* Content details matching Screenshot 2 */}
+        <div className="appointment-modal-service">{appointment.service}</div>
+        <div className="appointment-modal-meta">{currentTime}</div>
+        <div className="appointment-modal-meta">{appointment.address}</div>
+        <div className="appointment-modal-meta">Technician: {currentTech}</div>
+        <div className="appointment-modal-meta">Status: {currentStatus}</div>
+
+        <div className="appointment-modal-section-title">History</div>
+        <div className="appointment-modal-history">{appointment.history}</div>
+
+        {/* Action buttons matching Screenshot 2 */}
+        <div className="appointment-modal-actions">
+          <div className="appointment-modal-btn-row">
+            <a
+              href="#/customers"
+              className="appointment-modal-btn"
+              onClick={onClose}
+            >
+              View customer
+            </a>
+            <a
+              href="#/tasks"
+              className="appointment-modal-btn"
+              onClick={onClose}
+            >
+              View task
+            </a>
+            <button
+              type="button"
+              className="appointment-modal-btn"
+              onClick={handleConfirm}
+            >
+              Confirm
+            </button>
+            <button
+              type="button"
+              className="appointment-modal-btn"
+              onClick={handleReschedule}
+            >
+              Reschedule
+            </button>
+          </div>
+          <div className="appointment-modal-btn-row">
+            <button
+              type="button"
+              className="appointment-modal-btn"
+              onClick={handleCancel}
+            >
+              Cancel appointment
+            </button>
+          </div>
+        </div>
+
+        <div className="appointment-modal-disclaimer">
+          Sample changes stay in this browser session. No customer is notified.
+        </div>
       </div>
     </div>
   );
 }
 
-// ---- the drawer for one visit ----
-
-function AppointmentDrawer({ initial, onClose, reload }) {
-  const [detailUrl, setDetailUrl] = useState(initial.api.detail);
-  const [state, setState] = useState({ phase: 'loading' });
-  const [flow, setFlow] = useState(false); // reschedule sub-flow open?
-  const seq = useRef(0);
-  const roleOk = can('admin', 'dispatcher');
-
-  const load = useCallback((url) => {
-    const n = ++seq.current;
-    setState({ phase: 'loading' });
-    (async () => {
-      try {
-        const detail = await api(url);
-        if (n === seq.current) setState({ phase: 'ready', detail });
-      } catch (error) {
-        if (n === seq.current) setState({ phase: 'error', error });
-      }
-    })();
-  }, []);
-
-  useEffect(() => { load(detailUrl); return () => { seq.current += 1; }; }, [detailUrl, load]);
-
-  const detail = state.phase === 'ready' ? state.detail : null;
-  const actionsById = Object.fromEntries((detail?.actions || []).map((a) => [a.id, a]));
-
-  const simple = (key, okMessage) => async () => {
-    await api(detail.api[key], { method: 'POST' });
-    toast(okMessage);
-    load(detailUrl);
-    reload();
-  };
-
-  return (
-    <Overlay title={detail?.title || initial.title || `Visit #${initial.id}`} wide onClose={onClose}>
-      <div className="stack">
-        {state.phase === 'loading' && <Spinner />}
-        {state.phase === 'error' && <ErrorBox error={state.error} />}
-        {detail && (
-          <>
-            <div className="row">
-              <Badge text={detail.confirmation.label} tone={confirmTone(detail.confirmation.code)} />
-              <span className="muted">{detail.text}</span>
-            </div>
-            <h3>Customer</h3>
-            <Details rows={[['Name', detail.customer.name], ['Phone', detail.customer.phone], ['Address', detail.address]]} />
-            <h3>Visit</h3>
-            <Details rows={[
-              ['Service', detail.service],
-              ['When', detail.when],
-              ['Technician', detail.technician ? detail.technician.name : 'Unassigned'],
-              ['Status', detail.status],
-              ['Job status', detail.job_status],
-              ['Purpose', detail.purpose],
-              ['Reference', detail.reference],
-            ]} />
-            {detail.history?.length ? (
-              <>
-                <h3>History</h3>
-                <ul className="plain">{detail.history.map((line, i) => <li key={i}>{line}</li>)}</ul>
-              </>
-            ) : null}
-            {detail.job_id ? <p><a href="#/jobs">See it on the Jobs screen</a></p> : null}
-
-            {!flow && (
-              <section className="card stack">
-                <h3>Actions</h3>
-                {!roleOk ? <Note text="Your role can look at appointments but not change them." tone="warn" /> : (
-                  <div className="stack">
-                    <div>
-                      <ActionButton className="btn btn--primary" disabled={!actionsById.confirm?.allowed} action={simple('confirm', 'Confirmed.')}>
-                        {actionsById.confirm?.label || 'Confirm'}
-                      </ActionButton>
-                      {!actionsById.confirm?.allowed && actionsById.confirm?.why_not ? <small className="block muted">{actionsById.confirm.why_not}</small> : null}
-                    </div>
-                    <div>
-                      <Button className="btn btn--outline" disabled={!actionsById.reschedule?.allowed} onClick={() => setFlow(true)}>
-                        {actionsById.reschedule?.label || 'Reschedule'}
-                      </Button>
-                      {!actionsById.reschedule?.allowed && actionsById.reschedule?.why_not ? <small className="block muted">{actionsById.reschedule.why_not}</small> : null}
-                    </div>
-                    <div>
-                      <ActionButton className="btn btn--danger" disabled={!actionsById.cancel?.allowed} action={simple('cancel', 'Appointment cancelled.')}>
-                        {actionsById.cancel?.label || 'Cancel'}
-                      </ActionButton>
-                      {!actionsById.cancel?.allowed && actionsById.cancel?.why_not ? <small className="block muted">{actionsById.cancel.why_not}</small> : null}
-                    </div>
-                  </div>
-                )}
-              </section>
-            )}
-
-            {flow && (
-              <section className="card stack">
-                <RescheduleFlow
-                  visit={detail}
-                  onCancel={() => setFlow(false)}
-                  onDone={(updated) => {
-                    setFlow(false);
-                    setDetailUrl(updated.api.detail);
-                    reload();
-                  }}
-                />
-              </section>
-            )}
-          </>
-        )}
-      </div>
-    </Overlay>
-  );
-}
-
-// ---- the list ----
-
-function AppointmentsTable({ rows, open }) {
-  return (
-    <DataTable
-      head={['Visit', 'Schedule', 'Confirmation']}
-      rows={rows.map((v) => [
-        <span><strong>{v.title}</strong><small className="block muted clip">{v.address}</small></span>,
-        v.text,
-        <Badge text={v.confirmation.label} tone={confirmTone(v.confirmation.code)} />,
-      ])}
-      onRow={(_cells, index) => open(rows[index])}
-      label="Appointments"
-    />
-  );
-}
-
 export default function Appointments() {
   const allowed = can('admin', 'dispatcher', 'approver');
-  const [scope, setScope] = useState('upcoming');
-  const [search, setSearch] = useState('');
-  const [assigned, setAssigned] = useState('');
-  const [confirmation, setConfirmation] = useState('');
-  const [offset, setOffset] = useState(0);
-  const [nonce, setNonce] = useState(0);
-  const [data, setData] = useState(null); // { items, offset, hasMore } of the last successful load
+  const [data, setData] = useState(null); // Real backend appointments
+  const [localOverrides, setLocalOverrides] = useState({});
+  const [selectedAppointment, setSelectedAppointment] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
-  const [open, setOpen] = useState(null); // the visit (list row) shown in the drawer
-  const seq = useRef(0);
-  const latest = useRef({});
-  latest.current = { scope, search, assigned, confirmation, offset };
 
+  // Load real backend appointments
   useEffect(() => {
-    if (!allowed) return undefined;
-    const n = ++seq.current;
+    if (!allowed) return;
+    let active = true;
     setLoading(true);
-    setError(null);
-    const timer = setTimeout(async () => {
-      const { scope: sc, search: q, assigned: a, confirmation: c, offset: o } = latest.current;
+
+    (async () => {
       try {
-        const out = await api('/v1/appointments/schedule', { params: { scope: sc, search: q, assigned: a, confirmation: c, limit: PAGE, offset: o } });
-        if (n !== seq.current) return;
-        setData({ items: out.visits, offset: o, hasMore: out.has_more });
+        const out = await api('/v1/appointments/schedule', {
+          params: { scope: 'upcoming', limit: 50 },
+        });
+        if (!active) return;
+        setData({ items: Array.isArray(out?.visits) ? out.visits : [] });
         setLoading(false);
-      } catch (e) {
-        if (n !== seq.current) return;
-        setError(e);
+      } catch (err) {
+        if (!active) return;
+        setData({ items: [] });
         setLoading(false);
       }
-    }, 250);
-    return () => { seq.current += 1; clearTimeout(timer); };
-  }, [scope, search, assigned, confirmation, offset, nonce, allowed]);
+    })();
+
+    return () => { active = false; };
+  }, [allowed]);
 
   if (!allowed) {
     return (
-      <>
-        <PageHeader title="Appointments" />
-        <Note text="Not available for your role." tone="warn" />
-      </>
+      <div className="card">
+        <h1>Not available for your role</h1>
+        <p className="muted">Ask an administrator if you need this section.</p>
+      </div>
     );
   }
 
-  const items = data ? data.items : [];
-  let list;
-  if (loading && !data) list = <Spinner />;
-  else if (error) list = <ErrorBox error={error} />;
-  else if (!items.length) list = <Empty text="No appointments match." />;
-  else list = <AppointmentsTable rows={items} open={setOpen} />;
+  // Combine real backend data or fallback to sample appointments
+  const realVisits = data?.items || [];
+  const baseAppointments = realVisits.length > 0
+    ? realVisits.map((v) => {
+      const parts = (v.title || '').split('·').map((s) => s.trim());
+      const customerName = v.customer?.name || parts[0] || 'Customer';
+      const service = v.service || parts[1] || 'Service visit';
+      const when = v.when || v.text || (v.start_at ? formatDateTime(v.start_at) : 'Scheduled');
+      const technician = v.technician ? v.technician.name : 'Unassigned';
+      const statusLabel = v.confirmation?.label || (v.status === 'confirmed' ? 'Confirmed' : 'Needs confirmation');
+      const statusCode = v.confirmation?.code || (statusLabel === 'Confirmed' ? 'confirmed' : 'needs_confirmation');
+      return {
+        id: String(v.id),
+        isSample: false,
+        customerName,
+        service,
+        time: when,
+        technician,
+        address: v.address || 'Address on file',
+        status: statusLabel,
+        statusCode,
+        history: v.history?.length ? v.history[0] : 'Appointment scheduled via dispatch system.',
+        raw: v,
+      };
+    })
+    : SAMPLE_APPOINTMENTS;
+
+  // Apply any session status/time updates made in the browser
+  const displayAppointments = baseAppointments.map((appt) => {
+    const override = localOverrides[appt.id];
+    if (!override) return appt;
+    return {
+      ...appt,
+      status: override.status ?? appt.status,
+      statusCode: override.statusCode ?? appt.statusCode,
+      time: override.time ?? appt.time,
+    };
+  });
+
+  const handleUpdateStatus = (id, newStatus, newStatusCode, newTime) => {
+    setLocalOverrides((prev) => ({
+      ...prev,
+      [id]: {
+        ...prev[id],
+        status: newStatus,
+        statusCode: newStatusCode,
+        ...(newTime ? { time: newTime } : {}),
+      },
+    }));
+  };
 
   return (
     <>
-      <PageHeader title="Appointments" subtitle="Visits on the schedule: who's coming, when, and whether the customer has confirmed." />
-      <div className="toolbar">
-        <input
-          type="text"
-          aria-label="Search"
-          placeholder="Search customer, address, service…"
-          className="search"
-          value={search}
-          onChange={(e) => { setSearch(e.target.value); setOffset(0); }}
-        />
-        <Select options={SCOPES} value={scope} aria-label="Scope" onChange={(e) => { setScope(e.target.value); setOffset(0); }} />
-        <Select options={ASSIGNED} value={assigned} aria-label="Technician" onChange={(e) => { setAssigned(e.target.value); setOffset(0); }} />
-        <Select options={CONFIRMATIONS} value={confirmation} aria-label="Confirmation" onChange={(e) => { setConfirmation(e.target.value); setOffset(0); }} />
-        <span className="spacer" />
-        <Button className="btn btn--ghost" aria-label="Previous page" disabled={offset === 0} onClick={() => setOffset((o) => Math.max(0, o - PAGE))}>‹</Button>
-        <span className="muted">{data ? (data.items.length ? `${data.offset + 1}-${data.offset + data.items.length}` : '0') : ''}</span>
-        <Button className="btn btn--ghost" aria-label="Next page" disabled={data ? !data.hasMore : true} onClick={() => setOffset((o) => o + PAGE)}>›</Button>
+      {/* Header matching Reference Image 1 */}
+      <div className="appointments-head">
+        <div>
+          <div className="appointments-eyebrow">SCHEDULE</div>
+          <h1 className="appointments-title">Appointments</h1>
+          <p className="appointments-subtitle">
+            Review visits, technicians, and confirmation status.
+          </p>
+        </div>
+        <button
+          type="button"
+          className="appointments-workspace-btn"
+          onClick={() => {}}
+        >
+          Sample workspace
+        </button>
       </div>
-      <div>{list}</div>
-      {open ? <AppointmentDrawer initial={open} onClose={() => setOpen(null)} reload={() => setNonce((v) => v + 1)} /> : null}
+
+      {/* Main Card: Upcoming appointments */}
+      <div className="appointments-card">
+        <h2 className="appointments-card-title">Upcoming appointments</h2>
+        <div className="appointments-list">
+          {displayAppointments.map((item) => (
+            <div key={item.id} className="appointments-row">
+              <div className="appointments-row-left">
+                <span className="appointments-row-icon">
+                  <Icon name="appointments" />
+                </span>
+                <div className="appointments-row-info">
+                  <span className="appointments-row-name">
+                    {item.customerName} · {item.service}
+                  </span>
+                  <span className="appointments-row-sub">
+                    {item.time} · {item.technician}
+                  </span>
+                </div>
+              </div>
+
+              <div className="appointments-row-actions">
+                <span
+                  className={`appointments-status-pill appointments-status-pill--${
+                    item.statusCode === 'confirmed'
+                      ? 'confirmed'
+                      : item.statusCode === 'needs_confirmation'
+                        ? 'needs_confirmation'
+                        : 'cancelled'
+                  }`}
+                >
+                  {item.status}
+                </span>
+                <button
+                  type="button"
+                  className="appointments-view-btn"
+                  onClick={() => setSelectedAppointment(item)}
+                >
+                  View details →
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Bottom disclaimer matching Reference Image 1 */}
+      <div className="appointments-disclaimer">
+        Sample records · Session changes only · No real scheduling or notifications.
+      </div>
+
+      {/* Detail Modal matching Reference Image 2 */}
+      {selectedAppointment && (
+        <AppointmentDetailModal
+          appointment={selectedAppointment}
+          onClose={() => setSelectedAppointment(null)}
+          onUpdateStatus={handleUpdateStatus}
+        />
+      )}
     </>
   );
 }

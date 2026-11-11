@@ -95,16 +95,16 @@
 
   color-scheme: light;
 
-  /* ---- sidebar: rich dark slate-navy with refined borders and glowing active pill ---- */
-  --sidebar-bg: #090d16;
-  --sidebar-bg-raised: #111827;
-  --sidebar-text: #f8fafc;
-  --sidebar-muted: #94a3b8;
-  --sidebar-border: rgba(255, 255, 255, 0.08);
-  --sidebar-hover: rgba(255, 255, 255, 0.06);
-  --sidebar-active-bg: #1e293b;
-  --sidebar-active-text: #ffffff;
-  --sidebar-accent: #38bdf8;
+  /* ---- sidebar: clean modern white palette matching reference design ---- */
+  --sidebar-bg: #ffffff;
+  --sidebar-bg-raised: #f8fafc;
+  --sidebar-text: #334155;
+  --sidebar-muted: #64748b;
+  --sidebar-border: #e2e8f0;
+  --sidebar-hover: #f1f5f9;
+  --sidebar-active-bg: #e0f2fe;
+  --sidebar-active-text: #0284c7;
+  --sidebar-accent: #0284c7;
 }
 
 html {

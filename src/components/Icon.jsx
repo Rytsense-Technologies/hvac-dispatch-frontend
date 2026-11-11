@@ -1,14 +1,140 @@
 // A small, consistent set of line icons for the sidebar - plain SVG, no icon-font or library, so a
 // section's icon is just a name. Every icon shares the same 20x20 grid and stroke weight.
 const PATHS = {
-  dashboard: (
+  // WORKSPACE: Overview (grid table)
+  overview: (
     <>
-      <rect x="3" y="3" width="6" height="6" rx="1.3" />
-      <rect x="11" y="3" width="6" height="6" rx="1.3" />
-      <rect x="3" y="11" width="6" height="6" rx="1.3" />
-      <rect x="11" y="11" width="6" height="6" rx="1.3" />
+      <rect x="2.5" y="3.5" width="15" height="13" rx="1.5" />
+      <line x1="2.5" y1="10" x2="17.5" y2="10" />
+      <line x1="7.5" y1="3.5" x2="7.5" y2="16.5" />
+      <line x1="12.5" y1="3.5" x2="12.5" y2="16.5" />
     </>
   ),
+  dashboard: (
+    <>
+      <rect x="2.5" y="3.5" width="15" height="13" rx="1.5" />
+      <line x1="2.5" y1="10" x2="17.5" y2="10" />
+      <line x1="7.5" y1="3.5" x2="7.5" y2="16.5" />
+      <line x1="12.5" y1="3.5" x2="12.5" y2="16.5" />
+    </>
+  ),
+  // WORKSPACE: AI agents (sparkle star)
+  agents: (
+    <path d="M10 2.5C10 6.6 13.4 10 17.5 10C13.4 10 10 13.4 10 17.5C10 13.4 6.6 10 2.5 10C6.6 10 10 6.6 10 2.5Z" />
+  ),
+  // WORKSPACE: Campaigns (diagonal arrow northeast)
+  campaigns: (
+    <>
+      <line x1="5.5" y1="14.5" x2="14.5" y2="5.5" />
+      <polyline points="8.5,5.5 14.5,5.5 14.5,11.5" />
+    </>
+  ),
+  // WORKSPACE: Calls (concentric circle / bullseye)
+  calls: (
+    <>
+      <circle cx="10" cy="10" r="7.5" />
+      <circle cx="10" cy="10" r="2.8" />
+    </>
+  ),
+  // WORKSPACE: Appointments (square with centered square)
+  appointments: (
+    <>
+      <rect x="3" y="3" width="14" height="14" rx="2" />
+      <rect x="7.5" y="7.5" width="5" height="5" rx="0.8" />
+    </>
+  ),
+  // WORKSPACE: Admin automation (amber / orange lightning bolt)
+  automation: (
+    <polygon points="11 2 4.5 10.5 9.5 10.5 8.5 18 16 9 11 9 12 2" fill="currentColor" stroke="currentColor" strokeWidth="1" strokeLinejoin="round" />
+  ),
+  // WORKSPACE: Tasks (checkbox with checkmark)
+  tasks: (
+    <>
+      <rect x="3" y="3" width="14" height="14" rx="2" />
+      <polyline points="6.5,10.2 9,12.7 13.8,7.3" />
+    </>
+  ),
+  // WORKSPACE: Team & dispatch (trefoil / club matching reference)
+  team: (
+    <>
+      <circle cx="10" cy="6" r="2.7" />
+      <circle cx="6.8" cy="11.6" r="2.7" />
+      <circle cx="13.2" cy="11.6" r="2.7" />
+      <path d="M10 11v5M8.2 16h3.6" />
+    </>
+  ),
+  // WORKSPACE: Customers (trefoil / club matching reference)
+  customers: (
+    <>
+      <circle cx="10" cy="6" r="2.7" />
+      <circle cx="6.8" cy="11.6" r="2.7" />
+      <circle cx="13.2" cy="11.6" r="2.7" />
+      <path d="M10 11v5M8.2 16h3.6" />
+    </>
+  ),
+  // MANAGE: AI Coworker (sparkle star)
+  copilot: (
+    <path d="M10 2.5C10 6.6 13.4 10 17.5 10C13.4 10 10 13.4 10 17.5C10 13.4 6.6 10 2.5 10C6.6 10 10 6.6 10 2.5Z" />
+  ),
+  // MANAGE: Reports (bar chart inside container)
+  reports: (
+    <>
+      <rect x="3" y="3.5" width="14" height="13" rx="1.5" />
+      <line x1="6.5" y1="3.5" x2="6.5" y2="16.5" />
+      <line x1="10" y1="3.5" x2="10" y2="16.5" />
+      <line x1="13.5" y1="3.5" x2="13.5" y2="16.5" />
+    </>
+  ),
+  // MANAGE: Settings (gear)
+  settings: (
+    <>
+      <circle cx="10" cy="10" r="2.8" />
+      <path d="M10 2.8v2M10 15.2v2M17.2 10h-2M4.8 10h-2M15.1 4.9l-1.4 1.4M6.3 13.7l-1.4 1.4M15.1 15.1l-1.4-1.4M6.3 6.3 4.9 4.9" />
+    </>
+  ),
+  van: (
+    <>
+      <path d="M2.5 13V6a1 1 0 0 1 1-1h9l3.5 3.5V13a1 1 0 0 1-1 1h-12a1 1 0 0 1-1-1z" />
+      <circle cx="6" cy="14" r="1.8" />
+      <circle cx="13" cy="14" r="1.8" />
+      <line x1="9" y1="5" x2="9" y2="10" />
+      <line x1="2.5" y1="10" x2="16" y2="10" />
+    </>
+  ),
+  wrench: (
+    <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l1-1a5 5 0 0 1-6.5-6.5l1 1a1 1 0 0 0 0 1.4L11 6.4 5.3 12.1a2 2 0 0 0 0 2.8l.8.8a2 2 0 0 0 2.8 0L14.7 10z" />
+  ),
+  checkCircle: (
+    <>
+      <circle cx="10" cy="10" r="7.5" />
+      <polyline points="6.8,10 9,12.2 13.5,7.7" />
+    </>
+  ),
+  clock: (
+    <>
+      <circle cx="10" cy="10" r="7.5" />
+      <polyline points="10,5.5 10,10 13,11.5" />
+    </>
+  ),
+  snowflake: (
+    <>
+      <line x1="10" y1="3" x2="10" y2="17" />
+      <line x1="4" y1="6.5" x2="16" y2="13.5" />
+      <line x1="4" y1="13.5" x2="16" y2="6.5" />
+      <circle cx="10" cy="10" r="1.5" />
+    </>
+  ),
+  heart: (
+    <path d="M10 16.5s-6-3.8-6-7.8a4.2 4.2 0 0 1 6-3.7 4.2 4.2 0 0 1 6 3.7c0 4-6 7.8-6 7.8z" />
+  ),
+  plus: (
+    <>
+      <line x1="10" y1="4" x2="10" y2="16" />
+      <line x1="4" y1="10" x2="16" y2="10" />
+    </>
+  ),
+
+  // Fallback and utility icons used in internal cards / topbar
   requests: (
     <>
       <rect x="4" y="2.5" width="12" height="15" rx="1.5" />
@@ -76,20 +202,6 @@ const PATHS = {
       <path d="M12.3 12.6c.5-.2 1.1-.3 1.7-.3 2.3 0 4.2 1.4 4.2 3.8" />
     </>
   ),
-  reports: (
-    <>
-      <line x1="4" y1="16" x2="4" y2="11" />
-      <line x1="8.3" y1="16" x2="8.3" y2="6" />
-      <line x1="12.6" y1="16" x2="12.6" y2="9" />
-      <line x1="17" y1="16" x2="17" y2="3.5" />
-    </>
-  ),
-  copilot: (
-    <>
-      <path d="M10 3l1.3 3.7L15 8l-3.7 1.3L10 13l-1.3-3.7L5 8l3.7-1.3L10 3z" />
-      <path d="M15.5 12l.6 1.7 1.7.6-1.7.6-.6 1.7-.6-1.7-1.7-.6 1.7-.6.6-1.7z" />
-    </>
-  ),
   phone: (
     <path d="M5 3.5c0-.6.4-1 1-1h1.3c.5 0 .9.3 1 .8l.6 2.4c.1.4 0 .8-.3 1.1L7.3 8.1c1 2 2.6 3.6 4.6 4.6l1.3-1.3c.3-.3.7-.4 1.1-.3l2.4.6c.5.1.8.5.8 1V15c0 .6-.4 1-1 1h-1C8.9 16 4 11.1 4 5.5V3.5z" />
   ),
@@ -100,7 +212,6 @@ const PATHS = {
       <line x1="15.2" y1="10" x2="7.3" y2="10" />
     </>
   ),
-  // One person with a small key badge - who can sign in, distinct from the two-person "technicians" roster icon.
   users: (
     <>
       <circle cx="9.5" cy="7.3" r="3.3" />
@@ -110,59 +221,14 @@ const PATHS = {
       <path d="M17.6 10.5 18.6 11.5" />
     </>
   ),
-  // A contact card: a person's record, distinct from "users" (who can sign in) and "technicians" (the roster).
-  customers: (
-    <>
-      <rect x="2.5" y="3" width="15" height="14" rx="1.6" />
-      <circle cx="8" cy="8.3" r="2.2" />
-      <path d="M4.8 14c0-1.9 1.6-3 3.2-3s3.2 1.1 3.2 3" />
-      <line x1="13" y1="7" x2="15.5" y2="7" />
-      <line x1="13" y1="10" x2="15.5" y2="10" />
-    </>
-  ),
-  // A clock face - a booked visit at a time - distinct from "plan"'s calendar grid.
-  appointments: (
-    <>
-      <circle cx="10" cy="10.5" r="7" />
-      <path d="M10 6.5v4l3 2" />
-      <line x1="7" y1="2.3" x2="7" y2="4.3" />
-      <line x1="13" y1="2.3" x2="13" y2="4.3" />
-    </>
-  ),
-  campaigns: (
-    <>
-      <path d="M3 8.5v3a1 1 0 0 0 1 1h1.2l1.1 3.4a1 1 0 0 0 1.9-.3l-.6-3.1H9l6 3V5.5l-6 3H4a1 1 0 0 0-1 1z" />
-      <path d="M15.5 8a3 3 0 0 1 0 4" />
-    </>
-  ),
-  tasks: (
-    <>
-      <rect x="3" y="3" width="14" height="14" rx="1.6" />
-      <polyline points="6,9.3 7.6,11 10.5,7.5" />
-      <line x1="12" y1="9" x2="14.5" y2="9" />
-      <line x1="6" y1="14" x2="14.5" y2="14" />
-    </>
-  ),
-  // A verified shield - automated actions a person reviews and approves, distinct from "copilot"'s sparkle.
-  automation: (
-    <>
-      <path d="M10 2.8 16.5 6v8L10 17.2 3.5 14V6z" />
-      <polyline points="7,10 9,12 13,7.5" />
-    </>
-  ),
-  settings: (
-    <>
-      <circle cx="10" cy="10" r="2.6" />
-      <path d="M10 3.2v2M10 14.8v2M16.8 10h-2M5.2 10h-2M15.1 4.9l-1.4 1.4M6.3 13.7l-1.4 1.4M15.1 15.1l-1.4-1.4M6.3 6.3 4.9 4.9" />
-    </>
-  ),
 };
 
 export function Icon({ name, className = '' }) {
   const body = PATHS[name];
   if (!body) return null;
+  const isAuto = name === 'automation' ? 'icon--automation' : '';
   return (
-    <svg className={`icon ${className}`.trim()} width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <svg className={`icon ${isAuto} ${className}`.trim()} width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
       {body}
     </svg>
   );

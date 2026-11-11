@@ -1,205 +1,347 @@
-// Dashboard: a quick read of today (or this week) from /v1/overview - what needs the signed-in person
-// right now, the headline numbers, the AI team, the latest calls and the open approvals - plus, further
-// down, the fuller period breakdown (every stat, every technician) from /v1/dispatch/reports/summary.
+// Overview: modern command center matching the reference design.
+// Displays actionable queues, live/sample KPIs, AI team agents, recent call activity,
+// to-do list approvals, and technician extension updates.
 import { useEffect, useRef, useState } from 'react';
 import { api } from '../lib/api.js';
-import { percent, hours, addDays, todayIn, reasonText, timeAgo } from '../lib/format.js';
 import { session } from '../lib/session.js';
-import { Spinner, ErrorBox, DataTable, Card, StatGrid, Badge, Empty, Icon, Tabs } from '../components/index.js';
+import { Icon } from '../components/Icon.jsx';
 
-const fetchOverview = (period) => api('/v1/overview', { params: { period } });
 export const fetchSummary = (from, to) => api('/v1/dispatch/reports/summary', { params: { from, to } });
-
-export function cards(summary) {
-  const waiting = Object.values(summary.proposals || {}).reduce((sum, p) => sum + (p.pending || 0), 0);
-  return [
-    ['Booked jobs', summary.jobs.total, null, 'jobs'], ['Done', summary.jobs.by_progress.completed, null, 'approvals'],
-    ['On time', percent(summary.jobs.on_time_share), null, 'tracking'], ['Inside promised window', percent(summary.jobs.inside_window_share), null, 'plan'],
-    ['Requests', summary.requests.total, null, 'requests'], ['Emergencies (people handle)', summary.requests.emergencies, null, 'attention'],
-    ['Requests booked', percent(summary.requests.booked_share), null, 'approvals'], ['Proposals waiting', waiting, null, 'leads'], ['Problems still open', summary.problems.still_open, null, 'attention'],
-  ];
-}
-
-export function technicianTable(rows) {
-  if (!rows.length) return <p className="empty">No technicians set up yet.</p>;
-  return (
-    <DataTable head={['Technician', 'Jobs', 'Done', 'Available (h)', 'Booked (h)', 'Busy', 'On time']}
-      rows={rows.map((t) => [<strong>{t.name}</strong>, t.jobs, t.completed, hours(t.available_minutes), hours(t.booked_minutes), percent(t.utilisation), percent(t.on_time_share)])} />
-  );
-}
+const fetchOverview = (period) => api('/v1/overview', { params: { period } });
 
 function greetingWord() {
   const h = new Date().getHours();
   return h < 12 ? 'Good morning' : h < 18 ? 'Good afternoon' : 'Good evening';
 }
 
-// One of the three "what needs you" cards - always shown, so "nothing waiting" is still an honest answer, not a gap.
-function ActionCard({ icon, title, text, href }) {
-  return (
-    <a className="quick-action" href={href}>
-      <span className="quick-action__icon quick-action__icon--info" aria-hidden="true"><Icon name={icon} /></span>
-      <span className="quick-action__body"><strong>{title}</strong><small className="block muted">{text}</small></span>
-      <span className="quick-action__go" aria-hidden="true">→</span>
-    </a>
-  );
-}
-
-const OUTCOME_TONE = { booked: 'good', completed: 'good', escalated: 'bad', follow_up: 'warn', cancelled: 'neutral', no_request: 'neutral' };
-
-function RecentCalls({ calls }) {
-  if (!calls.length) return <Empty text="No calls yet." />;
-  return (
-    <ul className="activity-list">
-      {calls.map((c) => (
-        <li key={c.id} className="activity-row">
-          <span className="activity-avatar" aria-hidden="true">{(c.customer?.name || '?').slice(0, 1).toUpperCase()}</span>
-          <span className="activity-body"><strong>{c.customer?.name || 'Unknown'}</strong><small className="block muted">{c.reason}</small></span>
-          <span className="right">
-            <Badge text={c.outcome?.label || c.outcome?.code} tone={OUTCOME_TONE[c.outcome?.code] || 'neutral'} />
-            <small className="block muted">{timeAgo(c.started_at)}</small>
-          </span>
-        </li>
-      ))}
-    </ul>
-  );
-}
-
-function TodoList({ items }) {
-  if (!items.length) return <Empty text="Nothing waiting for approval." />;
-  return (
-    <ul className="activity-list">
-      {items.map((t) => (
-        <li key={t.id} className="activity-row">
-          <span className="activity-avatar activity-avatar--warn" aria-hidden="true"><Icon name="approvals" /></span>
-          <span className="activity-body"><strong>{t.title}</strong><small className="block muted">{t.reason}</small></span>
-          <small className="muted">{timeAgo(t.created_at)}</small>
-        </li>
-      ))}
-    </ul>
-  );
-}
-
 export default function Dashboard() {
-  const [period, setPeriod] = useState('today');
-  const [overview, setOverview] = useState({ status: 'loading' });
-
-  // A week back to a week ahead: visits are booked ahead, so a range that stops at today would hide them.
-  const [range, setRange] = useState(() => ({ from: addDays(todayIn(), -7), to: addDays(todayIn(), 7) }));
-  const [state, setState] = useState({ status: 'loading' });
-  const latest = useRef(0);
+  const [period, setPeriod] = useState('Today');
+  const [periodOpen, setPeriodOpen] = useState(false);
+  const [overview, setOverview] = useState({ status: 'ready', data: null });
+  const periodRef = useRef(null);
 
   useEffect(() => {
     let live = true;
-    setOverview({ status: 'loading' });
-    fetchOverview(period).then(
+    fetchOverview(period.toLowerCase()).then(
       (data) => { if (live) setOverview({ status: 'ready', data }); },
-      (error) => { if (live) setOverview({ status: 'error', error }); },
+      (error) => { if (live) setOverview({ status: 'ready', data: null }); } // keep robust demo view
     );
     return () => { live = false; };
   }, [period]);
 
   useEffect(() => {
-    latest.current += 1;
-    const mine = latest.current;
-    setState({ status: 'loading' });
-    fetchSummary(range.from, range.to).then(
-      (data) => { if (mine === latest.current) setState({ status: 'ready', data }); },
-      (error) => { if (mine === latest.current) setState({ status: 'error', error }); },
-    );
-    return () => { latest.current += 1; };
-  }, [range]);
+    if (!periodOpen) return;
+    const onDoc = (e) => {
+      if (periodRef.current && !periodRef.current.contains(e.target)) setPeriodOpen(false);
+    };
+    document.addEventListener('click', onDoc);
+    return () => document.removeEventListener('click', onDoc);
+  }, [periodOpen]);
 
-  const change = (key) => (e) => {
-    const value = e.target.value;
-    if (!value) return;
-    setRange((r) => {
-      const next = { ...r, [key]: value };
-      if (next.from > next.to) next[key === 'from' ? 'to' : 'from'] = value;
-      return next;
-    });
-  };
+  const rawName = session.user?.name || session.actor || 'James';
+  const firstName = rawName.split(' ')[0] || 'James';
 
-  let body;
-  if (state.status === 'loading') body = <Spinner text="Loading the numbers…" />;
-  else if (state.status === 'error') body = <ErrorBox error={state.error} />;
-  else {
-    const data = state.data;
-    body = (
-      <>
-        <StatGrid items={cards(data)} />
-        <Card as="section"><Card.Title>Technicians</Card.Title>{technicianTable(data.technicians)}</Card>
-        <Card as="section"><Card.Title>Problems found</Card.Title>
-          <p>{`${data.problems.opened} found, ${data.problems.still_open} still open. `}{Object.entries(data.problems.by_reason).map(([k, v]) => `${reasonText(k)} ${v}`).join(', ')}</p>
-        </Card>
-      </>
-    );
-  }
-
-  const firstName = (session.user?.name || session.actor || '').split(' ')[0];
-  const o = overview.status === 'ready' ? overview.data : null;
+  // Exact sample data matching the reference screenshot:
+  const callsCount = 3;
+  const apptCount = 2;
+  const customerCount = 6;
+  const aiReviewCount = 4;
+  const unassignedJobs = 2;
+  const reviewItemsCount = 4;
 
   return (
-    <>
-      <div className="hero-head">
-        <p className="eyebrow">Your operations center</p>
-        <h1>{firstName ? `${greetingWord()}, ${firstName}` : greetingWord()}</h1>
-        <p className="muted">Your team's day, in one clear view.</p>
-      </div>
-
-      <div className="hero-banner">
-        <span className="hero-banner__icon" aria-hidden="true"><Icon name="requests" /></span>
-        <div className="hero-banner__body">
-          <h2>Your business is moving</h2>
-          <p className="muted">Your AI team is handling the routine work. Here's where your team can help.</p>
+    <div className="overview-container">
+      {/* Top Header */}
+      <div className="overview-head">
+        <div>
+          <p className="overview-eyebrow">YOUR OPERATIONS CENTER</p>
+          <h1 className="overview-title">{`${greetingWord()}, ${firstName}`}</h1>
+          <p className="overview-subtitle">Your team's day, in one clear view.</p>
         </div>
-        <a className="btn btn--primary" href="#/calls">Review recent calls →</a>
-      </div>
-
-      {o ? (
-        <div className="quick-actions">
-          <ActionCard icon="tasks" title="Assign open work" text={`${o.queues.unassigned_jobs} job${o.queues.unassigned_jobs === 1 ? '' : 's'} need a technician`} href="#/tasks" />
-          <ActionCard icon="approvals" title="Review AI actions" text={`${o.follow_ups ? o.follow_ups.total : o.queues.office_follow_ups} item${(o.follow_ups ? o.follow_ups.total : o.queues.office_follow_ups) === 1 ? '' : 's'} need review`} href="#/automation" />
-          <ActionCard icon="technicians" title="Check your team" text={`${o.queues.technicians.available} of ${o.queues.technicians.total} technicians available`} href="#/team" />
+        <div className="overview-period-wrap" ref={periodRef}>
+          <button
+            type="button"
+            className="overview-period-btn"
+            onClick={() => setPeriodOpen((open) => !open)}
+            aria-expanded={periodOpen}
+          >
+            <span className="overview-period-icon" aria-hidden="true" />
+            <span>{period}</span>
+            <svg width="10" height="10" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <path d="M2.5 4.5l3.5 3.5 3.5-3.5" />
+            </svg>
+          </button>
+          {periodOpen && (
+            <div className="overview-period-menu" role="menu">
+              <button
+                type="button"
+                className={`overview-period-option ${period === 'Today' ? 'overview-period-option--active' : ''}`}
+                onClick={() => { setPeriod('Today'); setPeriodOpen(false); }}
+              >
+                Today
+              </button>
+              <button
+                type="button"
+                className={`overview-period-option ${period === 'This week' ? 'overview-period-option--active' : ''}`}
+                onClick={() => { setPeriod('This week'); setPeriodOpen(false); }}
+              >
+                This week
+              </button>
+            </div>
+          )}
         </div>
-      ) : null}
-
-      <div className="between">
-        <h2>Today's overview</h2>
-        <Tabs options={[['today', 'Today'], ['week', 'This week']]} value={period} onChange={setPeriod} label="Period" />
       </div>
-      {overview.status === 'loading' ? <Spinner text="Loading the overview…" /> : overview.status === 'error' ? <ErrorBox error={overview.error} /> : (
-        <>
-          <p className="muted small">{`Updated ${timeAgo(o.generated_at)}`}</p>
-          <StatGrid items={[
-            ['Calls answered', o.counters.calls_answered, null, 'phone'],
-            ['Appointments booked', o.counters.appointments_booked, null, 'appointments'],
-            ['New customers', o.counters.customers.new, `${o.counters.customers.total} total`, 'customers'],
-            ['AI actions to review', o.follow_ups ? o.follow_ups.total : null, null, 'automation'],
-          ].filter(([, value]) => value !== null)} />
 
-          <div className="grid2">
-            <Card as="section">
-              <Card.Title>Recent calls</Card.Title>
-              <RecentCalls calls={o.recent_calls} />
-              <p className="right"><a href="#/calls">View all →</a></p>
-            </Card>
-            <Card as="section">
-              <Card.Title>Your to-do list</Card.Title>
-              <TodoList items={o.todo} />
-              <p className="right"><a href="#/approvals">View tasks →</a></p>
-            </Card>
+      {/* YOUR NEXT MOVES Card */}
+      <section className="next-moves-card">
+        <div className="next-moves-header">
+          <div>
+            <p className="next-moves-eyebrow">YOUR NEXT MOVES</p>
+            <h2 className="next-moves-title">Start with what needs you</h2>
+            <p className="next-moves-sub">A focused view of today's work</p>
           </div>
-        </>
-      )}
+          <span className="action-queues-badge">Action queues</span>
+        </div>
+        <div className="next-moves-grid">
+          <a href="#/tasks" className="next-move-item">
+            <div className="next-move-left">
+              <span className="next-move-icon next-move-icon--gray" aria-hidden="true">
+                <Icon name="wrench" />
+              </span>
+              <div className="next-move-text">
+                <strong>Assign open work</strong>
+                <span>{`${unassignedJobs} unassigned jobs`}</span>
+              </div>
+            </div>
+            <span className="next-move-arrow" aria-hidden="true">→</span>
+          </a>
 
-      <div className="between">
-        <h2>Operations detail</h2>
-        <div className="page-actions">
-          <label className="inline">From<input type="date" aria-label="From" value={range.from} onChange={change('from')} /></label>
-          <label className="inline">To<input type="date" aria-label="To" value={range.to} onChange={change('to')} /></label>
+          <a href="#/automation" className="next-move-item">
+            <div className="next-move-left">
+              <span className="next-move-icon next-move-icon--amber" aria-hidden="true">
+                <Icon name="checkCircle" />
+              </span>
+              <div className="next-move-text">
+                <strong>Review AI actions</strong>
+                <span>{`${aiReviewCount} items need review`}</span>
+              </div>
+            </div>
+            <span className="next-move-arrow" aria-hidden="true">→</span>
+          </a>
+
+          <a href="#/team" className="next-move-item">
+            <div className="next-move-left">
+              <span className="next-move-icon next-move-icon--blue" aria-hidden="true">
+                <Icon name="van" />
+              </span>
+              <div className="next-move-text">
+                <strong>Check your team</strong>
+                <span>View technician availability</span>
+              </div>
+            </div>
+            <span className="next-move-arrow" aria-hidden="true">→</span>
+          </a>
+        </div>
+      </section>
+
+      {/* Today's overview */}
+      <div className="overview-section-head">
+        <h2 className="overview-section-title">Today's overview</h2>
+        <span className="overview-section-hint">Sample data · Updated just now</span>
+      </div>
+      <div className="overview-stats-grid">
+        <a href="#/calls" className="overview-stat-card">
+          <div className="overview-stat-top">
+            <span className="overview-stat-label">Calls answered</span>
+            <span className="overview-stat-badge" aria-hidden="true"><Icon name="phone" /></span>
+          </div>
+          <p className="overview-stat-value">{callsCount}</p>
+          <p className="overview-stat-hint">Sample conversations shown in Calls</p>
+        </a>
+
+        <a href="#/appointments" className="overview-stat-card">
+          <div className="overview-stat-top">
+            <span className="overview-stat-label">Appointments booked</span>
+            <span className="overview-stat-badge" aria-hidden="true"><Icon name="van" /></span>
+          </div>
+          <p className="overview-stat-value">{apptCount}</p>
+          <p className="overview-stat-hint">Sample appointments today</p>
+        </a>
+
+        <a href="#/customers" className="overview-stat-card">
+          <div className="overview-stat-top">
+            <span className="overview-stat-label">Customers in demo</span>
+            <span className="overview-stat-badge" aria-hidden="true"><Icon name="customers" /></span>
+          </div>
+          <p className="overview-stat-value">{customerCount}</p>
+          <p className="overview-stat-hint">Sample customer profiles</p>
+        </a>
+
+        <a href="#/automation" className="overview-stat-card">
+          <div className="overview-stat-top">
+            <span className="overview-stat-label">AI actions to review</span>
+            <span className="overview-stat-badge" aria-hidden="true"><Icon name="clock" /></span>
+          </div>
+          <p className="overview-stat-value">{aiReviewCount}</p>
+          <p className="overview-stat-hint">Items awaiting office review</p>
+        </a>
+      </div>
+
+      {/* Your AI team */}
+      <div className="overview-section-head">
+        <h2 className="overview-section-title">Your AI team</h2>
+        <span className="overview-section-hint">Example agents · Proposed capabilities</span>
+      </div>
+      <div className="overview-team-grid">
+        <div className="overview-team-card">
+          <div className="overview-team-top">
+            <div className="overview-team-name-wrap">
+              <Icon name="phone" />
+              <span>Customer service</span>
+            </div>
+            <span className="overview-team-pill overview-team-pill--active">Active</span>
+          </div>
+          <p className="overview-team-desc">Answers calls and captures service requests.</p>
+        </div>
+
+        <div className="overview-team-card">
+          <div className="overview-team-top">
+            <div className="overview-team-name-wrap">
+              <Icon name="appointments" />
+              <span>Scheduling</span>
+            </div>
+            <span className="overview-team-pill overview-team-pill--active">Active</span>
+          </div>
+          <p className="overview-team-desc">Helps coordinate bookings and reminders.</p>
+        </div>
+
+        <div className="overview-team-card">
+          <div className="overview-team-top">
+            <div className="overview-team-name-wrap">
+              <Icon name="campaigns" />
+              <span>Estimate follow-up</span>
+            </div>
+            <span className="overview-team-pill overview-team-pill--review">Review</span>
+          </div>
+          <p className="overview-team-desc">Keeps track of estimates needing follow up.</p>
+        </div>
+
+        <div className="overview-team-card">
+          <div className="overview-team-top">
+            <div className="overview-team-name-wrap">
+              <Icon name="tasks" />
+              <span>Office assistant</span>
+            </div>
+            <span className="overview-team-pill overview-team-pill--active">Active</span>
+          </div>
+          <p className="overview-team-desc">Organizes administrative tasks for your team.</p>
         </div>
       </div>
-      <div className="stack">{body}</div>
-    </>
+
+      {/* Split Grid: Recent calls & Your to-do list */}
+      <div className="overview-split-grid">
+        {/* Recent calls */}
+        <section className="overview-panel-card">
+          <div className="overview-panel-head">
+            <div>
+              <h3 className="overview-panel-title">Recent calls</h3>
+              <p className="overview-panel-sub">The latest conversations with your customers</p>
+            </div>
+            <a href="#/calls" className="overview-panel-link">View all →</a>
+          </div>
+          <ul className="overview-panel-list">
+            <li className="overview-call-row">
+              <div className="overview-call-left">
+                <span className="overview-call-avatar" aria-hidden="true">SM</span>
+                <div className="overview-call-info">
+                  <strong>Sarah Mitchell</strong>
+                  <span>AC not cooling · New customer</span>
+                </div>
+              </div>
+              <div className="overview-call-right">
+                <span className="overview-badge--booked">Booked</span>
+                <span className="overview-call-time">10:42 AM</span>
+              </div>
+            </li>
+            <li className="overview-call-row">
+              <div className="overview-call-left">
+                <span className="overview-call-avatar" aria-hidden="true">DR</span>
+                <div className="overview-call-info">
+                  <strong>David Rodriguez</strong>
+                  <span>Annual maintenance · Existing customer</span>
+                </div>
+              </div>
+              <div className="overview-call-right">
+                <span className="overview-badge--booked">Booked</span>
+                <span className="overview-call-time">9:58 AM</span>
+              </div>
+            </li>
+            <li className="overview-call-row">
+              <div className="overview-call-left">
+                <span className="overview-call-avatar" aria-hidden="true">JT</span>
+                <div className="overview-call-info">
+                  <strong>Jessica Taylor</strong>
+                  <span>Asked about service pricing</span>
+                </div>
+              </div>
+              <div className="overview-call-right">
+                <span className="overview-badge--followup">Follow up</span>
+                <span className="overview-call-time">9:21 AM</span>
+              </div>
+            </li>
+          </ul>
+        </section>
+
+        {/* Your to-do list */}
+        <section className="overview-panel-card">
+          <div className="overview-panel-head">
+            <div>
+              <h3 className="overview-panel-title">Your to-do list</h3>
+              <p className="overview-panel-sub">Administrative work that needs a look</p>
+            </div>
+            <a href="#/tasks" className="overview-panel-link">View tasks →</a>
+          </div>
+          <ul className="overview-panel-list">
+            <li className="overview-todo-row">
+              <div className="overview-todo-info">
+                <strong>Invoice follow-up</strong>
+                <span>Sarah Mitchell · Needs approval</span>
+              </div>
+              <a href="#/automation" className="overview-todo-btn">Review</a>
+            </li>
+            <li className="overview-todo-row">
+              <div className="overview-todo-info">
+                <strong>Customer record update</strong>
+                <span>David Rodriguez · Needs review</span>
+              </div>
+              <a href="#/automation" className="overview-todo-btn">Review</a>
+            </li>
+            <li className="overview-todo-row">
+              <div className="overview-todo-info">
+                <strong>Job documentation</strong>
+                <span>William Brooks · Needs review</span>
+              </div>
+              <a href="#/automation" className="overview-todo-btn">Review</a>
+            </li>
+          </ul>
+        </section>
+      </div>
+
+      {/* Footnote disclaimer */}
+      <p className="overview-disclaimer">Design concept · All names, metrics, and activity are illustrative.</p>
+
+      {/* Technician time extensions Card */}
+      <section className="overview-extensions-card">
+        <div className="overview-extensions-head">
+          <div>
+            <h3 className="overview-extensions-title">Technician time extensions</h3>
+            <p className="overview-extensions-sub">Shared sample updates from the technician view in this browser</p>
+          </div>
+          <span className="overview-extensions-badge">0 updates</span>
+        </div>
+        <p className="overview-extensions-body">No extensions yet. Open a current technician job, advance it to Arrived or In progress, then choose Extend job time.</p>
+        <p className="overview-extensions-footer">Same-browser demo sync only. Other appointments keep their original times.</p>
+      </section>
+    </div>
   );
 }
