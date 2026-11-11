@@ -2,7 +2,6 @@
 // Live profile/hours/Jobber/billing APIs stay wired; copy distinguishes live writes from illustrative panels.
 import { useEffect, useRef, useState } from 'react';
 import { api } from '../lib/api.js';
-import { formatDateTime } from '../lib/format.js';
 import { can } from '../lib/session.js';
 import {
   ActionButton, Badge, Button, DataTable, Details, Dialog, ErrorBox, Field, Note,
@@ -515,7 +514,65 @@ export default function Settings() {
   };
   useEffect(() => { load(); return () => { seq.current += 1; }; }, []);
 
-  if (!can('admin')) {
+  // Integrations state
+  const [stPreference, setStPreference] = useState('review_before_sync');
+
+  useEffect(() => {
+    let active = true;
+    (async () => {
+      try {
+        const res = await api('/v1/settings');
+        if (!active) return;
+        setData(res);
+
+        if (res?.profile?.name) {
+          setProfileName(res.profile.name);
+          const loc = res.profile.city ? `${res.profile.city}, ${res.profile.state || 'TX'}` : (res.profile.address || 'Austin, Texas');
+          setProfileLocation(loc);
+        }
+
+        if (res?.hours?.values) {
+          const h = res.hours.values;
+          const daysStr = Array.isArray(h.days) && h.days.length === 5 ? 'Monday–Friday' : 'Monday–Saturday';
+          const openStr = h.open ? `${h.open}` : '8:00 AM';
+          const closeStr = h.close ? `${h.close}` : '5:00 PM';
+          setProfileHours(`${daysStr} · ${openStr}–${closeStr}`);
+        }
+
+        if (res?.notifications) {
+          const n = res.notifications;
+          if (n.items?.length) {
+            setProfileNotifications(`${n.items.length} active notification channels`);
+          }
+        }
+
+        if (res?.connected?.items) {
+          const conn = res.connected.items.filter((c) => c.connected);
+          setConnectedCount(conn.length > 0 ? `${conn.length} systems connected` : 'No systems connected');
+        }
+
+        if (res?.team?.total) {
+          setTeamMemberCount(`${res.team.total} sample members`);
+        }
+
+        if (res?.billing?.plan?.name) {
+          setBillingPlanName(`${res.billing.plan.name} · Example plan`);
+        }
+        if (res?.billing?.provider) {
+          setPaymentProviderStatus(res.billing.provider.connected ? `Connected (${res.billing.provider.name})` : 'No payment provider connected');
+        }
+
+        setLoading(false);
+      } catch (err) {
+        if (!active) return;
+        setLoading(false);
+      }
+    })();
+
+    return () => { active = false; };
+  }, []);
+
+  if (!allowed) {
     return (
       <>
         <PageHeader eyebrow="WORKSPACE" title="Settings" subtitle="Company profile, hours, billing, and integrations." />
