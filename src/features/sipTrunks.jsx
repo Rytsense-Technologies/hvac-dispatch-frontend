@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { api } from '../lib/api.js';
 import { timeAgo } from '../lib/format.js';
-import { Badge, Note, DataTable, Field, Select, Overlay, ActionButton, Button, toast, useRun, Card, Icon } from '../components/index.js';
+import { Badge, Note, DataTable, Field, Select, Overlay, Dialog, ActionButton, Button, toast, useRun, Card, Icon } from '../components/index.js';
 
 function CopyField({ label, value }) {
   const copy = async () => {
@@ -17,9 +17,9 @@ function CopyField({ label, value }) {
 }
 
 // What the company types into its provider. The password is present only when it was just made.
-function SettingsDialog({ trunk, title, onClose }) {
+export function SettingsDialog({ trunk, title, onClose }) {
   return (
-    <Overlay title={title} onClose={onClose}>
+    <Dialog title={title} onClose={onClose}>
       <div className="stack">
         <CopyField label="Send calls to (SIP address)" value={trunk.sip_uri} />
         <CopyField label="Server" value={trunk.host} />
@@ -35,13 +35,13 @@ function SettingsDialog({ trunk, title, onClose }) {
             ) : <p className="muted">The password was shown when you connected. If you lost it, choose "New password".</p>}
           </>
         ) : <p className="muted">{`Only calls from ${trunk.allowed_addresses.join(', ')} are accepted.`}</p>}
-        <div className="right"><Button className="btn btn--primary" onClick={onClose}>Done</Button></div>
+        <div className="dialog-actions"><Button className="btn btn--primary action" onClick={onClose}>Done</Button></div>
       </div>
-    </Overlay>
+    </Dialog>
   );
 }
 
-function ConnectDialog({ onClose, onConnected }) {
+export function ConnectDialog({ onClose, onConnected }) {
   const [f, setF] = useState({ number: '', provider: '', mode: 'password', addresses: '' });
   const [problem, setProblem] = useState('');
   const [busy, run] = useRun();
@@ -55,7 +55,7 @@ function ConnectDialog({ onClose, onConnected }) {
     }, (error) => setProblem(error.message));
   };
   return (
-    <Overlay title="Connect a number you already have" onClose={onClose}>
+    <Dialog title="Connect a number you already have" onClose={onClose}>
       <form className="stack" noValidate onSubmit={submit}>
         <p className="muted">Use the number you already have at your phone provider. Your provider sends its calls to us over SIP, and your assistant answers them. You keep paying your provider as now.</p>
         <Field label="Your phone number" hint="With the + and country code."><input type="text" placeholder="+918012345678" autoComplete="off" required maxLength={20} {...bind('number')} /></Field>
@@ -67,9 +67,9 @@ function ConnectDialog({ onClose, onConnected }) {
           <textarea rows={3} maxLength={1000} placeholder="One or more, separated by commas: 52.1.2.3, 34.200.10.0/24" {...bind('addresses')} />
         </Field>
         {problem ? <Note tone="bad" text={problem} /> : null}
-        <div className="right"><button type="submit" className="btn btn--primary" disabled={busy}>Connect this number</button></div>
+        <div className="dialog-actions"><button type="submit" className="btn btn--primary action" disabled={busy}>Connect this number</button></div>
       </form>
-    </Overlay>
+    </Dialog>
   );
 }
 
