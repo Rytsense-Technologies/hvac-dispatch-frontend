@@ -26,36 +26,43 @@ const SUGGESTION_CHIPS = [
   { label: 'Show existing lead campaigns', question: 'Show existing lead campaigns' },
 ];
 
+// Illustrative rows for reference parity — CTAs open the matching section list
+// (not a named record). Visible labels stay as in the design; aria-label names the destination.
 const SUGGESTED_ACTIONS = [
   {
     title: 'Invoice follow-up',
     subtitle: 'Sarah Mitchell · Needs approval',
     cta: 'Review',
     href: '#/automation',
+    ariaLabel: 'Open Admin automation review queue',
   },
   {
     title: 'Customer record update',
     subtitle: 'David Rodriguez · Needs review',
     cta: 'Review',
     href: '#/automation',
+    ariaLabel: 'Open Admin automation review queue',
   },
   {
     title: 'Assign AC repair · Sarah Mitchell',
     subtitle: 'Unassigned work',
     cta: 'Open task',
     href: '#/work',
+    ariaLabel: 'Open Work task list',
   },
   {
     title: 'Assign Plumbing inspection · William Brooks',
     subtitle: 'Unassigned work',
     cta: 'Open task',
     href: '#/work',
+    ariaLabel: 'Open Work task list',
   },
   {
     title: 'Explore existing campaigns',
     subtitle: 'Sample outreach',
     cta: 'Open',
     href: '#/campaigns',
+    ariaLabel: 'Open Campaigns',
   },
 ];
 
@@ -457,7 +464,7 @@ export default function Copilot() {
           </form>
 
           <p className="sample-label">
-            Simulated responses based on demo records. No live AI or business systems are connected.
+            Chat uses your live schedule data. Confirming a proposed change still creates an Approvals item for a second person to review.
           </p>
 
           {threads && threads.length ? (
@@ -502,11 +509,19 @@ export default function Copilot() {
                 <strong>{action.title}</strong>
                 <small className="muted">{action.subtitle}</small>
               </span>
-              <a href={action.href} className="btn btn--secondary agent-btn coworker-action-btn">
+              <a
+                href={action.href}
+                className="btn btn--secondary agent-btn coworker-action-btn"
+                aria-label={action.ariaLabel}
+                title={action.ariaLabel}
+              >
                 {action.cta}
               </a>
             </div>
           ))}
+          <p className="sample-label">
+            Sample examples — buttons open the Work, Automation, or Campaigns list, not a specific record.
+          </p>
         </Panel>
       </div>
     </>
