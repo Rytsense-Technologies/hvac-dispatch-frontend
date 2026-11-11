@@ -2,7 +2,7 @@
 // Greeting → priority queues → metrics → AI team strip → recent calls + to-dos → extensions.
 import { useEffect, useRef, useState } from 'react';
 import { api } from '../lib/api.js';
-import { formatTime, timeAgo } from '../lib/format.js';
+import { formatDay, formatTime, timeAgo } from '../lib/format.js';
 import { session } from '../lib/session.js';
 import {
   Badge,
@@ -148,7 +148,18 @@ function AgentStripCard({ agent }) {
   );
 }
 
-function RecentCalls({ calls }) {
+function callWhen(iso, period) {
+  if (!iso) return '—';
+  const time = formatTime(iso);
+  if (!time || time === '-') return timeAgo(iso) || '—';
+  if (period === 'week') {
+    const day = formatDay(iso);
+    return day && day !== '-' ? `${day}, ${time}` : time;
+  }
+  return time;
+}
+
+function RecentCalls({ calls, period }) {
   if (!calls.length) return <Empty text="No calls yet." />;
   return calls.map((c) => {
     const name = c.customer?.name || 'Unknown';
@@ -163,7 +174,7 @@ function RecentCalls({ calls }) {
         trailing={(
           <span className="row-trailing">
             <Badge text={label} tone={tone} />
-            <small className="muted">{formatTime(c.started_at) || timeAgo(c.started_at)}</small>
+            <small className="muted">{callWhen(c.started_at, period)}</small>
           </span>
         )}
       />
@@ -211,9 +222,15 @@ export default function Dashboard() {
   const customersTotal = o?.counters?.customers?.total ?? 0;
   const recentCalls = o?.recent_calls || [];
   const todos = o?.todo || [];
+  const isWeek = period === 'week';
+  const overviewHeading = isWeek ? "This week's overview" : "Today's overview";
+  const prioritySubtitle = isWeek ? "A focused view of this week's work" : "A focused view of today's work";
   const updatedHint = o?.generated_at
     ? `Updated ${timeAgo(o.generated_at)}`
-    : period === 'week' ? 'This week' : 'Today';
+    : isWeek ? 'This week' : 'Today';
+  const customerHint = customersNew != null
+    ? `${customersNew} new · ${isWeek ? 'this week' : 'today'}`
+    : 'Customer profiles';
 
   return (
     <div className="overview">
@@ -230,7 +247,7 @@ export default function Dashboard() {
           <div>
             <p className="priority__eyebrow">YOUR NEXT MOVES</p>
             <h2>Start with what needs you</h2>
-            <p className="sub">A focused view of today's work</p>
+            <p className="sub">{prioritySubtitle}</p>
           </div>
           <Badge text="Action queues" tone="warn" />
         </div>
@@ -262,7 +279,7 @@ export default function Dashboard() {
       </Panel>
 
       <div className="sectionhead">
-        <h2>Today's overview</h2>
+        <h2>{overviewHeading}</h2>
         <span className="sectionhead__meta muted">{updatedHint}</span>
       </div>
 
@@ -282,14 +299,14 @@ export default function Dashboard() {
               href="#/work/appointments"
               label="Appointments booked"
               value={apptCount}
-              hint={period === 'week' ? 'Appointments this week' : 'Appointments today'}
+              hint={isWeek ? 'Appointments this week' : 'Appointments today'}
               icon="appointments"
             />
             <MetricCard
               href="#/customers"
               label="Customers"
-              value={customersNew ?? customersTotal}
-              hint={customersNew != null ? `${customersTotal} total` : 'Customer profiles'}
+              value={customersTotal}
+              hint={customerHint}
               icon="customers"
             />
             <MetricCard
@@ -303,7 +320,7 @@ export default function Dashboard() {
 
           <div className="sectionhead">
             <h2>Your AI team</h2>
-            <span className="sectionhead__meta muted">Operational agents · Status at a glance</span>
+            <span className="sectionhead__meta muted">Example agents · Proposed capabilities</span>
           </div>
           <div className="agent-strip">
             {AI_TEAM.map((agent) => <AgentStripCard key={agent.id} agent={agent} />)}
@@ -314,7 +331,7 @@ export default function Dashboard() {
               <PanelHead title="Recent calls" subtitle="The latest conversations with your customers">
                 <a className="link" href="#/calls">View all →</a>
               </PanelHead>
-              <RecentCalls calls={recentCalls.slice(0, 4)} />
+              <RecentCalls calls={recentCalls.slice(0, 4)} period={period} />
             </Panel>
 
             <Panel>

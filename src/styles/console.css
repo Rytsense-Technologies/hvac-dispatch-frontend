@@ -761,7 +761,14 @@ a.card.stat:hover { color: inherit; }
   gap: 10px;
   flex-shrink: 0;
 }
-.row-trailing small { min-width: 4.5rem; text-align: right; font-size: 12px; }
+.row-trailing small {
+  min-width: 4.5rem;
+  max-width: 9.5rem;
+  text-align: right;
+  font-size: 12px;
+  line-height: 1.3;
+  white-space: normal;
+}
 
 .overview-foot {
   margin: 22px 0 14px;
