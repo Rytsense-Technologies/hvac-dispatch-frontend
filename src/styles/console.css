@@ -1856,7 +1856,7 @@ tr.clickable:focus {
   margin: 0;
 }
 
-/* Agent detail dialog — eyebrow above title (shell Dialog head) */
+/* Agent detail dialog â€” eyebrow above title (shell Dialog head) */
 .dialog--agent {
   position: relative;
 }
@@ -2078,7 +2078,7 @@ button.date:hover {
 }
 
 /* ---------- Calls + Phone numbers (reference parity) ---------- */
-/* Shell renders section tabs before the view; reorder so header → tabs → body. */
+/* Shell renders section tabs before the view; reorder so header â†’ tabs â†’ body. */
 .page:has(.calls-page) {
   display: flex;
   flex-direction: column;
@@ -6868,6 +6868,16 @@ button.row-item {
 }
 
 /* ---------- Work (Tasks + Appointments) ---------- */
+.work-toolbar { margin-bottom: 12px; }
+.work-rows { display: flex; flex-direction: column; gap: 0; }
+.work-follow-filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+.work-follow-filters select { width: auto; min-width: 10rem; }
+
 .cards.work-metrics {
   grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
   margin-bottom: 24px;
@@ -6946,7 +6956,7 @@ button.row-item {
 }
 
 .mobile-nav {
-  /* visibility controlled by ≤700px / ≥701px media queries above */
+  /* visibility controlled by â‰¤700px / â‰¥701px media queries above */
   position: fixed;
   left: 0;
   right: 0;
@@ -7358,95 +7368,6 @@ button.slot.booked:hover {
     padding: 0;
   }
 }
-/* Restored from functionality stack: Work chrome */
-  align-items: center;
-  gap: 10px;
-  flex-shrink: 0;
-  margin-left: auto;
-}
-
-/* ---------- Work (Tasks + Appointments) ---------- */
-.work-toolbar { margin-bottom: 12px; }
-.work-rows { display: flex; flex-direction: column; gap: 0; }
-.work-follow-filters {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 10px;
-}
-.work-follow-filters select { width: auto; min-width: 10rem; }
-
-.cards.work-metrics {
-  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-  margin-bottom: 24px;
-}
-.work-panels {
-  display: grid;
-  gap: 18px;
-}
-.work-panel-title {
-  margin: 0 0 4px;
-  font-size: var(--font-size-h2);
-  font-weight: var(--font-weight-semibold);
-  color: var(--brand);
-}
-.work-empty {
-  margin: 8px 0 0;
-  font-size: 14px;
-}
-.work-foot {
-  margin: 22px 0 0;
-  text-align: center;
-  font-size: 12px;
-  color: #526b7b;
-}
-.work-sample-btn {
-  white-space: nowrap;
-}
-.work-sample-btn--on {
-  background: var(--accent-active-bg);
-  border-color: var(--accent);
-  color: var(--accent-strong);
-}
-.work-sample-label,
-.work-dialog-eyebrow {
-  margin: 10px 0 0;
-  font-size: 12px;
-  color: #526b7b;
-}
-.work-dialog-eyebrow {
-  margin: 0;
-  font-size: 10px;
-  font-weight: var(--font-weight-bold);
-  letter-spacing: var(--letter-eyebrow);
-  text-transform: uppercase;
-  color: #497385;
-}
-.work-dialog-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-.work-dialog-actions .btn {
-  text-decoration: none;
-}
-
-.symbol-tile {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 34px;
-  height: 34px;
-  border-radius: var(--radius-md);
-  background: #f0f6f9;
-  color: #37728d;
-
-
-/* Restored from functionality stack: Test module */
-  .schedule-days { grid-template-columns: 1fr; }
-  .tracking-layout { grid-template-columns: 1fr; }
-  .tracking-visits .tracking-day-nav { width: 100%; }
-}
 
 /* ---------- Test (voice + SMS text-chat) ---------- */
 .test-page { display: grid; gap: 18px; }
@@ -7542,7 +7463,4 @@ button.slot.booked:hover {
   .test-grid { grid-template-columns: 1fr; }
   .test-lead-row { grid-template-columns: 1fr; }
 }
-
-@media print {
-  .sidebar, .btn, select, .mobile-nav { display: none !important; }
 

@@ -2,6 +2,7 @@
 // Live queue stays honest: empty means empty; samples only when "Show sample queue" is on.
 import { useEffect, useRef, useState } from 'react';
 import { api } from '../lib/api.js';
+import { timeAgo } from '../lib/format.js';
 import { can } from '../lib/session.js';
 import { useEvery } from '../lib/hooks.js';
 import {
@@ -239,185 +240,146 @@ export default function Automation() {
   useEffect(() => { load(); return () => { latest.current += 1; }; }, []);
   useEvery(() => load(true), 30000);
 
-  (async () => {
-    try {
-      const res = await api('/v1/automation');
-      if (!active) return;
-      setData(res);
-      const reviewItems = res?.needs_review?.items || [];
-      if (reviewItems.length > 0 && !initialized.current) {
-        const mapped = reviewItems.map((item) => {
-          const customerName = item.dialog?.customer?.name
-            || (typeof item.dialog?.customer === 'string' ? item.dialog.customer : '')
-            || '';
-          const actionTitle = item.heading || item.title || 'Office action';
-          return {
-            id: String(item.id),
-            isSample: false,
-            title: actionTitle,
-            customer: customerName,
-            displayName: customerName ? `${actionTitle} · ${customerName}` : actionTitle,
-            subtitle: item.line || item.text || (item.status ? `${item.source || 'Office record'} · ${item.status.label || item.status}` : 'Needs review'),
-            headerLine: customerName ? `${customerName} · ${item.line || item.text || actionTitle}` : actionTitle,
-            source: item.source || 'Sample office record',
-            status: item.status?.label || item.status || 'Needs review',
-            proposed: item.dialog?.proposed || item.proposed?.text || '',
-            raw: item,
-          };
-        });
-        setActiveActions(mapped);
-        initialized.current = true;
-      }
-      setLoading(false);
-    } catch (err) {
-      if (!active) return;
-      setLoading(false);
-    }
-  })();
+  if (!can('admin', 'dispatcher', 'approver')) {
+    return (
+      <>
+        <p className="settings-back"><a className="link" href="#/settings">← Back to Settings</a></p>
+        <PageHeader eyebrow="OFFICE OPERATIONS" title="Admin automation" subtitle="Review actions prepared for your office." />
+        <Note text="Not available for your role." tone="warn" />
+      </>
+    );
+  }
 
-  return () => { active = false; };
-}, [allowed]);
+  const live = !!state.data;
+  const liveReview = live ? (state.data.needs_review?.items || []) : [];
+  const liveHistory = live ? (state.data.history?.items || []) : [];
 
-if (!allowed) {
+  const samplePending = SAMPLE_REVIEW.filter((x) => !sampleDone.includes(x.id));
+  const sampleHistory = SAMPLE_REVIEW.filter((x) => sampleDone.includes(x.id)).map((x) => ({
+    ...x,
+    title: itemTitle(x),
+    status: 'Completed · simulated',
+    result: 'Sample only',
+    decided_by: 'James M.',
+    decided_at: new Date().toISOString(),
+    history: true,
+  }));
+
+  const displayReview = demoMode ? samplePending : liveReview;
+  const displayHistory = demoMode ? sampleHistory : liveHistory;
+
+  const notAvailableText = live
+    ? (Array.isArray(state.data.not_available)
+      ? state.data.not_available.join(' ')
+      : (state.data.not_available && typeof state.data.not_available === 'object'
+        ? (state.data.not_available.text || Object.values(state.data.not_available).join(' '))
+        : state.data.not_available))
+    : null;
+
+  const activeItem = reviewTarget
+    ? [...displayReview, ...displayHistory, ...SAMPLE_REVIEW].find((x) => x.id === reviewTarget.id)
+    : null;
+
+  const completeSample = (id) => {
+    setSampleDone((ids) => (ids.includes(id) ? ids : [...ids, id]));
+  };
+
   return (
     <>
       <p className="settings-back"><a className="link" href="#/settings">← Back to Settings</a></p>
-      <PageHeader eyebrow="OFFICE OPERATIONS" title="Admin automation" subtitle="Review actions prepared for your office." />
-      <Note text="Not available for your role." tone="warn" />
+      <PageHeader
+        eyebrow="OFFICE OPERATIONS"
+        title="Admin automation"
+        subtitle="Review actions prepared for your office."
+        meta={demoMode ? <span className="date">Demo queue</span> : <span className="date">Live queue</span>}
+      >
+        <button
+          type="button"
+          className={`btn btn--secondary agent-btn${demoMode ? ' filter--on' : ''}`}
+          aria-pressed={demoMode}
+          onClick={() => setDemoMode((v) => !v)}
+        >
+          {demoMode ? 'Hide sample queue' : 'Show sample queue'}
+        </button>
+      </PageHeader>
+
+      {state.status === 'loading' && !state.data ? <Spinner /> : null}
+      {state.status === 'error' ? <ErrorBox error={state.error} /> : null}
+      {notAvailableText && !demoMode ? <Note text={notAvailableText} tone="neutral" /> : null}
+      {demoMode ? (
+        <Note tone="info" text="Demo queue is illustrative only. It is separate from your live automation items and does not call the API." />
+      ) : null}
+
+      {state.status !== 'loading' || state.data || demoMode ? (
+        <>
+          <Panel>
+            <h2 className="settings-section-title">Needs review · {displayReview.length}</h2>
+            {displayReview.length ? displayReview.map((item) => (
+              <Row
+                key={item.id}
+                leading="✦"
+                title={itemTitle(item)}
+                subtitle={itemSubtitle(item)}
+                trailing={(
+                  <button
+                    type="button"
+                    className="btn btn--secondary agent-btn"
+                    onClick={() => setReviewTarget({ id: item.id, history: false })}
+                    aria-label={`Review ${itemTitle(item)}`}
+                  >
+                    Review →
+                  </button>
+                )}
+              />
+            )) : (
+              <p className="sub empty-inline">
+                {demoMode ? 'All sample actions have been reviewed.' : 'Nothing needs review.'}
+              </p>
+            )}
+          </Panel>
+
+          <Panel className="settings-panel">
+            <h2 className="settings-section-title">Completed history</h2>
+            {displayHistory.length ? displayHistory.map((h) => (
+              <Row
+                key={h.id || `${h.title}-${h.decided_at}`}
+                leading="✦"
+                title={h.title || itemTitle(h)}
+                subtitle={[h.result || h.line, h.status, h.decided_by, h.decided_at ? timeAgo(h.decided_at) : null].filter(Boolean).join(' · ')}
+                trailing={h.id ? (
+                  <button
+                    type="button"
+                    className="btn btn--secondary agent-btn"
+                    onClick={() => setReviewTarget({ id: h.id, history: true })}
+                  >
+                    View history →
+                  </button>
+                ) : null}
+              />
+            )) : (
+              <p className="sub empty-inline">
+                {demoMode ? 'No completed sample actions.' : 'No history yet.'}
+              </p>
+            )}
+          </Panel>
+
+          <p className="foot">
+            {demoMode
+              ? 'Simulated actions only. No business system is connected.'
+              : 'Live automation queue from your workspace.'}
+          </p>
+        </>
+      ) : null}
+
+      {activeItem ? (
+        <ReviewDialog
+          item={activeItem}
+          history={!!reviewTarget?.history}
+          onClose={() => setReviewTarget(null)}
+          onSampleComplete={completeSample}
+          reload={() => load(true)}
+        />
+      ) : null}
     </>
   );
-}
-
-const live = !!state.data;
-const liveReview = live ? (state.data.needs_review?.items || []) : [];
-const liveHistory = live ? (state.data.history?.items || []) : [];
-
-const samplePending = SAMPLE_REVIEW.filter((x) => !sampleDone.includes(x.id));
-const sampleHistory = SAMPLE_REVIEW.filter((x) => sampleDone.includes(x.id)).map((x) => ({
-  ...x,
-  title: itemTitle(x),
-  status: 'Completed · simulated',
-  result: 'Sample only',
-  decided_by: 'James M.',
-  decided_at: new Date().toISOString(),
-  history: true,
-}));
-
-const displayReview = demoMode ? samplePending : liveReview;
-const displayHistory = demoMode ? sampleHistory : liveHistory;
-
-const notAvailableText = live
-  ? (Array.isArray(state.data.not_available)
-    ? state.data.not_available.join(' ')
-    : (state.data.not_available && typeof state.data.not_available === 'object'
-      ? (state.data.not_available.text || Object.values(state.data.not_available).join(' '))
-      : state.data.not_available))
-  : null;
-
-const activeItem = reviewTarget
-  ? [...displayReview, ...displayHistory, ...SAMPLE_REVIEW].find((x) => x.id === reviewTarget.id)
-  : null;
-
-const completeSample = (id) => {
-  setSampleDone((ids) => (ids.includes(id) ? ids : [...ids, id]));
-};
-
-return (
-  <>
-    <p className="settings-back"><a className="link" href="#/settings">← Back to Settings</a></p>
-    <PageHeader
-      eyebrow="OFFICE OPERATIONS"
-      title="Admin automation"
-      subtitle="Review actions prepared for your office."
-      meta={demoMode ? <span className="date">Demo queue</span> : <span className="date">Live queue</span>}
-    >
-      <button
-        type="button"
-        className={`btn btn--secondary agent-btn${demoMode ? ' filter--on' : ''}`}
-        aria-pressed={demoMode}
-        onClick={() => setDemoMode((v) => !v)}
-      >
-        {demoMode ? 'Hide sample queue' : 'Show sample queue'}
-      </button>
-    </PageHeader>
-
-    {state.status === 'loading' && !state.data ? <Spinner /> : null}
-    {state.status === 'error' ? <ErrorBox error={state.error} /> : null}
-    {notAvailableText && !demoMode ? <Note text={notAvailableText} tone="neutral" /> : null}
-    {demoMode ? (
-      <Note tone="info" text="Demo queue is illustrative only. It is separate from your live automation items and does not call the API." />
-    ) : null}
-
-    {state.status !== 'loading' || state.data || demoMode ? (
-      <>
-        <Panel>
-          <h2 className="settings-section-title">Needs review · {displayReview.length}</h2>
-          {displayReview.length ? displayReview.map((item) => (
-            <Row
-              key={item.id}
-              leading="✦"
-              title={itemTitle(item)}
-              subtitle={itemSubtitle(item)}
-              trailing={(
-                <button
-                  type="button"
-                  className="btn btn--secondary agent-btn"
-                  onClick={() => setReviewTarget({ id: item.id, history: false })}
-                  aria-label={`Review ${itemTitle(item)}`}
-                >
-                  Review →
-                </button>
-              )}
-            />
-          )) : (
-            <p className="sub empty-inline">
-              {demoMode ? 'All sample actions have been reviewed.' : 'Nothing needs review.'}
-            </p>
-          )}
-        </Panel>
-
-        <Panel className="settings-panel">
-          <h2 className="settings-section-title">Completed history</h2>
-          {displayHistory.length ? displayHistory.map((h) => (
-            <Row
-              key={h.id || `${h.title}-${h.decided_at}`}
-              leading="✦"
-              title={h.title || itemTitle(h)}
-              subtitle={[h.result || h.line, h.status, h.decided_by, h.decided_at ? timeAgo(h.decided_at) : null].filter(Boolean).join(' · ')}
-              trailing={h.id ? (
-                <button
-                  type="button"
-                  className="btn btn--secondary agent-btn"
-                  onClick={() => setReviewTarget({ id: h.id, history: true })}
-                >
-                  View history →
-                </button>
-              ) : null}
-            />
-          )) : (
-            <p className="sub empty-inline">
-              {demoMode ? 'No completed sample actions.' : 'No history yet.'}
-            </p>
-          )}
-        </Panel>
-
-        <p className="foot">
-          {demoMode
-            ? 'Simulated actions only. No business system is connected.'
-            : 'Live automation queue from your workspace.'}
-        </p>
-      </>
-    ) : null}
-
-    {activeItem ? (
-      <ReviewDialog
-        item={activeItem}
-        history={!!reviewTarget?.history}
-        onClose={() => setReviewTarget(null)}
-        onSampleComplete={completeSample}
-        reload={() => load(true)}
-      />
-    ) : null}
-  </>
-);
 }
