@@ -132,7 +132,7 @@ export function AddTechnicianDialog({ onClose, reload }) {
 }
 
 // A technician who was added without a sign-in (or before this page existed) gets one here.
-function TechnicianLoginDialog({ tech, onClose, reload }) {
+export function TechnicianLoginDialog({ tech, onClose, reload }) {
   const [f, setF] = useState({ name: tech.name || '', email: tech.email || '', phone: tech.phone || '' });
   const [result, setResult] = useState(null);
   const [busy, run] = useRun();
@@ -186,7 +186,7 @@ export function EditDialog({ user, onClose, reload }) {
 }
 
 // Signs the person out and sends a fresh one-time link - asked for up front since it's immediate and cannot be undone from here.
-function ResetPasswordDialog({ user, onClose, reload }) {
+export function ResetPasswordDialog({ user, onClose, reload }) {
   const go = async () => {
     await api(`/v1/users/${user.id}/reset-password`, { method: 'POST' });
     toast('They are signed out, and a reset link is on its way.');
@@ -306,10 +306,19 @@ export default function Users() {
 
   const close = () => setDialog(null);
   return (
-    <>
-      <PageHeader title="Users" subtitle="Who can sign in, and the technicians who can be sent: their skills, areas and working days.">
-        <Button className="btn btn--outline" onClick={() => setDialog({ kind: 'addTechnician' })}>Add technician</Button>
-        <Button className="btn btn--primary" onClick={() => setDialog({ kind: 'addAdmin' })}>Add admin</Button>
+    <div className="team-users-page">
+      <PageHeader
+        eyebrow="PEOPLE & OPERATIONS"
+        title="Accounts & technicians"
+        subtitle="Who can sign in, and the technicians who can be sent: their skills, areas and working days."
+      >
+        <a className="btn btn--secondary agent-btn" href="#/team">Back to team</a>
+        {can('admin') ? (
+          <>
+            <Button className="btn btn--secondary agent-btn" onClick={() => setDialog({ kind: 'addTechnician' })}>Add technician</Button>
+            <Button className="btn btn--primary action" onClick={() => setDialog({ kind: 'addAdmin' })}>Add admin</Button>
+          </>
+        ) : null}
       </PageHeader>
       <Card as="section">
         <Card.Title><span className="row"><Icon name="users" /><span>Users</span></span></Card.Title>
@@ -327,6 +336,6 @@ export default function Users() {
       {dialog?.kind === 'contact' ? <ContactDialog tech={dialog.tech} reload={loadTechs} onClose={close} /> : null}
       {dialog?.kind === 'shifts' ? <ShiftsDialog tech={dialog.tech} reload={loadTechs} onClose={close} /> : null}
       {dialog?.kind === 'unavailable' ? <UnavailableDialog tech={dialog.tech} reload={loadTechs} onClose={close} /> : null}
-    </>
+    </div>
   );
 }

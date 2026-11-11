@@ -8,9 +8,12 @@ import {
   Button, Dialog, Note, toast,
 } from '../components/index.js';
 import { ScheduleTech } from './schedule.jsx';
-import { TimeOffDialog } from './technicians.jsx';
+import {
+  ContactDialog, ShiftsDialog, TimeOffDialog,
+} from './technicians.jsx';
 import {
   AddAdminDialog, AddTechnicianDialog, EditDialog,
+  TechnicianLoginDialog, ResetPasswordDialog,
 } from './users.jsx';
 import TeamTracking from './tracking.jsx';
 
@@ -148,7 +151,10 @@ function ExtensionsPanel({ active }) {
   );
 }
 
-function PeopleTab({ active, onEditRole, onTimeOff }) {
+function PeopleTab({
+  active, canManageUsers, canSchedule, onEditRole, onResetPassword, onCreateSignIn,
+  onContact, onShifts, onTimeOff,
+}) {
   const state = useTabData('/v1/team', undefined, active);
   if (!active) return null;
   if (state.status !== 'ready') {
@@ -163,6 +169,9 @@ function PeopleTab({ active, onEditRole, onTimeOff }) {
           subtitle="Manage office staff and field technicians"
         >
           <Badge text={`${people.length} member${people.length === 1 ? '' : 's'}`} tone="good" />
+          {canManageUsers ? (
+            <a className="btn btn--secondary agent-btn" href="#/team/users">Manage accounts</a>
+          ) : null}
         </PanelHead>
         {people.length ? people.map((person) => {
           const statusLabel = person.status?.label || person.availability || person.status || '—';
@@ -178,15 +187,59 @@ function PeopleTab({ active, onEditRole, onTimeOff }) {
               </span>
               <Badge text={statusLabel} tone={toneFor(statusCode)} />
               <div className="team-person-actions">
-                <Button
-                  className="btn btn--secondary agent-btn"
-                  disabled={!user}
-                  title={user ? 'Edit role' : 'Needs a sign-in account before role can be edited'}
-                  onClick={() => (user ? onEditRole(user) : toast('Create a sign-in for this person on Users before editing their role.', 'warn'))}
-                >
-                  Edit role
-                </Button>
-                {tech ? (
+                {user && canManageUsers ? (
+                  <>
+                    <Button
+                      className="btn btn--secondary agent-btn"
+                      onClick={() => onEditRole(user)}
+                    >
+                      Edit role
+                    </Button>
+                    <Button
+                      className="btn btn--secondary agent-btn"
+                      onClick={() => onResetPassword(user)}
+                    >
+                      Reset password
+                    </Button>
+                  </>
+                ) : null}
+                {!user && tech && canManageUsers ? (
+                  <Button
+                    className="btn btn--secondary agent-btn"
+                    onClick={() => onCreateSignIn(tech)}
+                  >
+                    Create sign-in
+                  </Button>
+                ) : null}
+                {!user && !tech && canManageUsers ? (
+                  <Button
+                    className="btn btn--secondary agent-btn"
+                    disabled
+                    title="Needs a technician record or sign-in account first"
+                    onClick={() => toast('Add this person as a technician or admin first.', 'warn')}
+                  >
+                    Edit role
+                  </Button>
+                ) : null}
+                {tech && canManageUsers ? (
+                  <>
+                    <Button
+                      className="btn btn--secondary agent-btn"
+                      aria-label={`Update contact for ${person.name}`}
+                      onClick={() => onContact(tech)}
+                    >
+                      Contact
+                    </Button>
+                    <Button
+                      className="btn btn--secondary agent-btn"
+                      aria-label={`Set shifts for ${person.name}`}
+                      onClick={() => onShifts(tech)}
+                    >
+                      Set shifts
+                    </Button>
+                  </>
+                ) : null}
+                {tech && canSchedule ? (
                   <Button
                     className="btn btn--secondary agent-btn"
                     aria-label={`Manage time off for ${person.name}`}
@@ -201,7 +254,7 @@ function PeopleTab({ active, onEditRole, onTimeOff }) {
         }) : <Empty text="No team members yet." />}
       </Panel>
       <p className="page-foot">
-        Adding people, editing roles, and time off use your live account and dispatch APIs. The extensions panel only lists job-time updates shared from the technician view.
+        Adding people, creating sign-ins, editing roles, contact, shifts, and time off use your live account and dispatch APIs. Full account list is under Manage accounts. The extensions panel lists job-time updates from the technician view.
       </p>
       <ExtensionsPanel active={active} />
     </div>
@@ -342,6 +395,7 @@ export default function Team() {
   const [peopleTick, setPeopleTick] = useState(0);
   const allowed = can('admin', 'dispatcher', 'approver');
   const canManageUsers = can('admin');
+  const canSchedule = can('dispatcher', 'admin');
 
   // Refresh the People list without unmounting an open dialog (AddTechnician
   // reloads after creating the tech record, before the optional sign-in step).
@@ -365,7 +419,13 @@ export default function Team() {
       <PeopleTab
         key={peopleTick}
         active
+        canManageUsers={canManageUsers}
+        canSchedule={canSchedule}
         onEditRole={(user) => setDialog({ kind: 'edit', user })}
+        onResetPassword={(user) => setDialog({ kind: 'reset', user })}
+        onCreateSignIn={(tech) => setDialog({ kind: 'techLogin', tech })}
+        onContact={(tech) => setDialog({ kind: 'contact', tech })}
+        onShifts={(tech) => setDialog({ kind: 'shifts', tech })}
         onTimeOff={(tech) => setDialog({ kind: 'timeoff', tech })}
       />
     );
@@ -388,9 +448,12 @@ export default function Team() {
         subtitle="Manage your team, their access, and their schedule."
       >
         {canManageUsers ? (
-          <Button className="btn btn--primary action" onClick={() => setDialog({ kind: 'add' })}>
-            + Add team member
-          </Button>
+          <>
+            <a className="btn btn--secondary agent-btn" href="#/team/users">Manage accounts</a>
+            <Button className="btn btn--primary action" onClick={() => setDialog({ kind: 'add' })}>
+              + Add team member
+            </Button>
+          </>
         ) : null}
       </PageHeader>
 
@@ -411,7 +474,19 @@ export default function Team() {
       ) : null}
       {dialog?.kind === 'addAdmin' ? <AddAdminDialog onClose={closeDialog} reload={refreshPeople} /> : null}
       {dialog?.kind === 'addTech' ? <AddTechnicianDialog onClose={closeDialog} reload={refreshPeople} /> : null}
+      {dialog?.kind === 'techLogin' ? (
+        <TechnicianLoginDialog tech={dialog.tech} onClose={closeDialog} reload={refreshPeople} />
+      ) : null}
       {dialog?.kind === 'edit' ? <EditDialog user={dialog.user} onClose={closeDialog} reload={refreshPeople} /> : null}
+      {dialog?.kind === 'reset' ? (
+        <ResetPasswordDialog user={dialog.user} onClose={closeDialog} reload={refreshPeople} />
+      ) : null}
+      {dialog?.kind === 'contact' ? (
+        <ContactDialog tech={dialog.tech} reload={refreshPeople} onClose={closeDialog} />
+      ) : null}
+      {dialog?.kind === 'shifts' ? (
+        <ShiftsDialog tech={dialog.tech} reload={refreshPeople} onClose={closeDialog} />
+      ) : null}
       {dialog?.kind === 'timeoff' ? (
         <TimeOffDialog tech={dialog.tech} reload={refreshPeople} onClose={closeDialog} />
       ) : null}
