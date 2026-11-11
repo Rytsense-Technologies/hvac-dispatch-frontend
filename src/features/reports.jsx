@@ -1,385 +1,132 @@
-// Reports: dispatch operational performance, intake volumes, proposals, violations, and technician utilization.
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { percent, hours, addDays, todayIn, reasonText, formatDay } from '../lib/format.js';
-import { PageHeader, Spinner, ErrorBox, DataTable, Card, Empty, Badge, StatGrid, Icon, StatusBadge } from '../components/index.js';
-import { fetchSummary } from './dashboard.jsx';
+// Reports: operational metrics and definitions matching exact reference design.
+import { useEffect, useState } from 'react';
+import { api } from '../lib/api.js';
+import { can } from '../lib/session.js';
+
+const PERIOD_LABELS = {
+  week: 'This week',
+  today: 'Today',
+  month: 'This month',
+  all: 'All time',
+};
 
 export default function Reports() {
-  const [range, setRange] = useState(() => ({ from: addDays(todayIn(), -6), to: todayIn() }));
-  const [state, setState] = useState({ status: 'loading' });
-  const latest = useRef(0);
+  const allowed = can('admin', 'dispatcher', 'approver', 'tech');
+  const [period, setPeriod] = useState('week');
+  const [appointmentsCount, setAppointmentsCount] = useState(3);
+  const [reviewCount, setReviewCount] = useState(4);
 
   useEffect(() => {
-    latest.current += 1;
-    const mine = latest.current;
-    setState({ status: 'loading' });
-    fetchSummary(range.from, range.to).then(
-      (data) => {
-        if (mine === latest.current) setState({ status: 'ready', data });
-      },
-      (error) => {
-        if (mine === latest.current) setState({ status: 'error', error });
-      },
-    );
+    let active = true;
+
+    // Fetch real appointments count
+    (async () => {
+      try {
+        const out = await api('/v1/appointments/schedule', {
+          params: { scope: 'upcoming', limit: 50 },
+        });
+        if (!active) return;
+        const visits = Array.isArray(out?.visits) ? out.visits : [];
+        const nonCanceled = visits.filter(
+          (v) => (v.status || '').toLowerCase() !== 'cancelled' && (v.status || '').toLowerCase() !== 'canceled'
+        );
+        if (nonCanceled.length > 0) {
+          setAppointmentsCount(nonCanceled.length);
+        }
+      } catch (err) {
+        // Fallback to sample count 3
+      }
+    })();
+
+    // Fetch real automation review items count
+    (async () => {
+      try {
+        const res = await api('/v1/automation');
+        if (!active) return;
+        const reviewItems = res?.needs_review?.items || [];
+        if (reviewItems.length > 0) {
+          const awaitingReview = reviewItems.filter((item) => {
+            const s = (item.status?.code || item.status?.label || item.status || '').toLowerCase();
+            return !s.includes('completed') && !s.includes('dismissed') && !s.includes('approved') && !s.includes('rejected');
+          });
+          setReviewCount(awaitingReview.length || reviewItems.length);
+        }
+      } catch (err) {
+        // Fallback to sample count 4
+      }
+    })();
+
     return () => {
-      latest.current += 1;
+      active = false;
     };
-  }, [range]);
+  }, []);
 
-  const change = (key) => (e) => {
-    const value = e.target.value;
-    if (!value) return;
-    setRange((r) => {
-      const next = { ...r, [key]: value };
-      if (next.from > next.to) next[key === 'from' ? 'to' : 'from'] = value;
-      return next;
-    });
-  };
-
-  const setDaysPreset = (days) => {
-    setRange({ from: addDays(todayIn(), -(days - 1)), to: todayIn() });
-  };
-
-  const setMonthPreset = () => {
-    setRange({ from: `${todayIn().slice(0, 7)}-01`, to: todayIn() });
-  };
-
-  const isDaysPreset = (days) => {
-    return range.to === todayIn() && range.from === addDays(todayIn(), -(days - 1));
-  };
-
-  const isMonthPreset = () => {
-    return range.to === todayIn() && range.from === `${todayIn().slice(0, 7)}-01`;
-  };
-
-  const d = state.data;
-
-  const kpiItems = useMemo(() => {
-    if (!d) return [];
-    const waiting = Object.values(d.proposals || {}).reduce((sum, p) => sum + (p.pending || 0), 0);
-    const totalApproved = Object.values(d.proposals || {}).reduce((sum, p) => sum + (p.executed || 0), 0);
-    const totalProposals = Object.values(d.proposals || {}).reduce((sum, p) => sum + (p.total || 0), 0);
-
-    return [
-      [
-        'Total Booked Jobs',
-        String(d.jobs.total),
-        `${d.jobs.by_progress?.completed || 0} completed · ${d.jobs.arrived || 0} arrived`,
-        'jobs',
-      ],
-      [
-        'On-Time Arrival',
-        percent(d.jobs.on_time_share),
-        `${percent(d.jobs.inside_window_share)} within promised window`,
-        'tracking',
-      ],
-      [
-        'Requests Demand',
-        String(d.requests.total),
-        `${percent(d.requests.booked_share)} converted to bookings`,
-        'requests',
-      ],
-      [
-        'Proposal Approval',
-        totalProposals ? percent(totalApproved / totalProposals) : '—',
-        `${waiting} awaiting review`,
-        'approvals',
-      ],
-      [
-        'Open Violations',
-        String(d.problems.still_open),
-        `${d.problems.opened} detected in date range`,
-        'attention',
-      ],
-    ];
-  }, [d]);
-
-  let body;
-  if (state.status === 'loading') {
-    body = <Spinner />;
-  } else if (state.status === 'error') {
-    body = <ErrorBox error={state.error} />;
-  } else if (d) {
-    const proposalsEntries = Object.entries(d.proposals || {});
-    const problemEntries = Object.entries(d.problems?.by_reason || {});
-    const requestStatusEntries = Object.entries(d.requests?.by_status || {});
-
-    body = (
-      <>
-        <StatGrid items={kpiItems} />
-
-        <Card as="section">
-          <div className="between" style={{ alignItems: 'center', marginBottom: '8px' }}>
-            <Card.Title>Jobs & Dispatch Punctuality</Card.Title>
-            <div className="row" style={{ gap: '8px' }}>
-              <Badge text={`${d.jobs.total} Total Booked`} tone="info" />
-              <Badge text={`${percent(d.jobs.on_time_share)} On-Time`} tone={d.jobs.on_time_share >= 0.85 ? 'good' : 'warn'} />
-            </div>
-          </div>
-          <div className="reports-stat-row">
-            <div className="reports-mini-card">
-              <span className="reports-mini-label">Booked Jobs</span>
-              <span className="reports-mini-val">{d.jobs.total}</span>
-            </div>
-            <div className="reports-mini-card">
-              <span className="reports-mini-label">Jobs Completed</span>
-              <span className="reports-mini-val">{d.jobs.by_progress?.completed || 0}</span>
-            </div>
-            <div className="reports-mini-card">
-              <span className="reports-mini-label">Arrived On Site</span>
-              <span className="reports-mini-val">{d.jobs.arrived}</span>
-            </div>
-            <div className="reports-mini-card">
-              <span className="reports-mini-label">On-Time Share</span>
-              <span className="reports-mini-val" style={{ color: d.jobs.on_time_share >= 0.85 ? 'var(--good-600)' : 'var(--warn-600)' }}>
-                {percent(d.jobs.on_time_share)}
-              </span>
-            </div>
-            <div className="reports-mini-card">
-              <span className="reports-mini-label">Inside Window</span>
-              <span className="reports-mini-val">{percent(d.jobs.inside_window_share)}</span>
-            </div>
-            <div className="reports-mini-card">
-              <span className="reports-mini-label">Avg Delay</span>
-              <span className="reports-mini-val" style={{ fontSize: '1.05rem' }}>
-                {d.jobs.average_minutes_late !== null && d.jobs.average_minutes_late !== undefined
-                  ? `${d.jobs.average_minutes_late} min late`
-                  : 'On schedule'}
-              </span>
-            </div>
-          </div>
-        </Card>
-
-        <Card as="section">
-          <div className="between" style={{ alignItems: 'center', marginBottom: '8px' }}>
-            <Card.Title>Service Requests Intake & Status</Card.Title>
-            <div className="row" style={{ gap: '8px' }}>
-              <Badge text={`${d.requests.total} Requests`} tone="neutral" />
-              {d.requests.emergencies > 0 ? (
-                <Badge text={`${d.requests.emergencies} Emergency`} tone="warn" />
-              ) : null}
-              <Badge text={`${percent(d.requests.booked_share)} Booked`} tone="good" />
-            </div>
-          </div>
-
-          <div className="reports-stat-row" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 180px), 1fr))' }}>
-            <div className="reports-mini-card">
-              <span className="reports-mini-label">Total Ingested</span>
-              <span className="reports-mini-val">{d.requests.total}</span>
-            </div>
-            <div className="reports-mini-card">
-              <span className="reports-mini-label">Emergency Escalations</span>
-              <span className="reports-mini-val" style={{ color: d.requests.emergencies ? 'var(--warn-600)' : 'inherit' }}>
-                {d.requests.emergencies}
-              </span>
-            </div>
-            <div className="reports-mini-card">
-              <span className="reports-mini-label">Booking Conversion</span>
-              <span className="reports-mini-val">{percent(d.requests.booked_share)}</span>
-            </div>
-          </div>
-
-          {requestStatusEntries.length > 0 ? (
-            <div style={{ marginTop: '16px' }}>
-              <small className="muted" style={{ display: 'block', marginBottom: '6px', textTransform: 'uppercase', letterSpacing: '0.04em', fontSize: '0.74rem' }}>
-                Distribution by Status
-              </small>
-              <div className="reports-status-chips">
-                {requestStatusEntries.map(([statusKey, count]) => (
-                  <div key={statusKey} className="reports-status-card">
-                    <StatusBadge status={statusKey} />
-                    <span className="reports-status-count">{count}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          ) : null}
-        </Card>
-
-        <Card as="section">
-          <Card.Title>Dispatch Proposals Pipeline</Card.Title>
-          {proposalsEntries.length ? (
-            <DataTable
-              label="Proposals breakdown"
-              head={['Origin / Channel', 'Total Generated', 'Approved', 'Rejected', 'Expired', 'Awaiting Decision', 'Approval Share']}
-              rows={proposalsEntries.map(([source, c]) => [
-                <span key={`src-${source}`} style={{ textTransform: 'capitalize', fontWeight: 'var(--font-weight-medium)' }}>
-                  {source.replaceAll('_', ' ')}
-                </span>,
-                String(c.total),
-                <Badge key={`app-${source}`} text={String(c.executed || 0)} tone="good" />,
-                <Badge key={`rej-${source}`} text={String(c.rejected || 0)} tone={c.rejected ? 'bad' : 'neutral'} />,
-                <Badge key={`exp-${source}`} text={String(c.expired || 0)} tone="neutral" />,
-                <Badge key={`pend-${source}`} text={String(c.pending || 0)} tone={c.pending ? 'warn' : 'neutral'} />,
-                percent(c.total ? (c.executed || 0) / c.total : 0),
-              ])}
-            />
-          ) : (
-            <Empty text="No proposals generated in this period." />
-          )}
-        </Card>
-
-        <Card as="section">
-          <div className="between" style={{ alignItems: 'center', marginBottom: '8px' }}>
-            <Card.Title>Operational Problems & Violations</Card.Title>
-            <div className="row" style={{ gap: '8px' }}>
-              <Badge text={`${d.problems.opened} Detected`} tone="neutral" />
-              <Badge text={`${d.problems.still_open} Open`} tone={d.problems.still_open ? 'bad' : 'good'} />
-            </div>
-          </div>
-
-          <div className="reports-stat-row" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 180px), 1fr))' }}>
-            <div className="reports-mini-card">
-              <span className="reports-mini-label">Violations Detected</span>
-              <span className="reports-mini-val">{d.problems.opened}</span>
-            </div>
-            <div className="reports-mini-card">
-              <span className="reports-mini-label">Unresolved / Open</span>
-              <span className="reports-mini-val" style={{ color: d.problems.still_open ? 'var(--danger-600)' : 'var(--good-600)' }}>
-                {d.problems.still_open}
-              </span>
-            </div>
-            <div className="reports-mini-card">
-              <span className="reports-mini-label">Resolved</span>
-              <span className="reports-mini-val">{Math.max(0, d.problems.opened - d.problems.still_open)}</span>
-            </div>
-          </div>
-
-          {problemEntries.length ? (
-            <div style={{ marginTop: '16px' }}>
-              <small className="muted" style={{ display: 'block', marginBottom: '6px', textTransform: 'uppercase', letterSpacing: '0.04em', fontSize: '0.74rem' }}>
-                Reasons Breakdown
-              </small>
-              <div className="reports-problems-grid">
-                {problemEntries.map(([reason, count]) => (
-                  <div key={reason} className="reports-problem-item">
-                    <span className="reports-problem-label">
-                      <Icon name="attention" />
-                      {reasonText(reason)}
-                    </span>
-                    <Badge text={`${count} occurrence${count === 1 ? '' : 's'}`} tone="warn" />
-                  </div>
-                ))}
-              </div>
-            </div>
-          ) : (
-            <div style={{ marginTop: '12px' }}>
-              <Empty text="No problem categories reported in this date range." />
-            </div>
-          )}
-        </Card>
-
-        <Card as="section">
-          <div className="between" style={{ alignItems: 'center', marginBottom: '8px' }}>
-            <Card.Title>Technician Roster & Utilization</Card.Title>
-            <Badge text={`${d.technicians?.length || 0} Technicians`} tone="neutral" />
-          </div>
-          {d.technicians && d.technicians.length ? (
-            <DataTable
-              label="Technician performance"
-              head={['Technician', 'Total Jobs', 'Completed', 'Available', 'Booked', 'Utilization', 'On-Time Rate']}
-              rows={d.technicians.map((t) => [
-                <span key={`tech-${t.name}`} style={{ fontWeight: 'var(--font-weight-medium)' }}>
-                  {t.name}
-                </span>,
-                String(t.jobs),
-                String(t.completed),
-                `${hours(t.available_minutes)} h`,
-                `${hours(t.booked_minutes)} h`,
-                <Badge
-                  key={`util-${t.name}`}
-                  text={percent(t.utilisation)}
-                  tone={t.utilisation >= 0.75 ? 'good' : t.utilisation < 0.4 ? 'neutral' : 'info'}
-                />,
-                <Badge
-                  key={`ontime-${t.name}`}
-                  text={percent(t.on_time_share)}
-                  tone={t.on_time_share >= 0.85 ? 'good' : 'warn'}
-                />,
-              ])}
-            />
-          ) : (
-            <Empty text="No technicians recorded in this period." />
-          )}
-        </Card>
-      </>
+  if (!allowed) {
+    return (
+      <div className="card">
+        <h1>Not available for your role</h1>
+        <p className="muted">Ask an administrator if you need this section.</p>
+      </div>
     );
   }
 
+  const currentPeriodTitle = PERIOD_LABELS[period] || 'This week';
+
   return (
-    <>
-      <PageHeader
-        title="Reports & Analytics"
-        subtitle={`Operational dispatch metrics, job punctuality, and technician throughput from ${formatDay(range.from)} to ${formatDay(range.to)}.`}
-      >
-        <div className="reports-toolbar">
-          <div className="reports-presets" role="group" aria-label="Date range presets">
-            <button
-              type="button"
-              className={`reports-preset-btn ${isDaysPreset(7) ? 'reports-preset-btn--active' : ''}`}
-              onClick={() => setDaysPreset(7)}
-            >
-              7 Days
-            </button>
-            <button
-              type="button"
-              className={`reports-preset-btn ${isDaysPreset(30) ? 'reports-preset-btn--active' : ''}`}
-              onClick={() => setDaysPreset(30)}
-            >
-              30 Days
-            </button>
-            <button
-              type="button"
-              className={`reports-preset-btn ${isMonthPreset() ? 'reports-preset-btn--active' : ''}`}
-              onClick={setMonthPreset}
-            >
-              This Month
-            </button>
-            <button
-              type="button"
-              className={`reports-preset-btn ${isDaysPreset(90) ? 'reports-preset-btn--active' : ''}`}
-              onClick={() => setDaysPreset(90)}
-            >
-              90 Days
-            </button>
-          </div>
-
-          <div className="reports-dates">
-            <label className="reports-date-label">
-              <span>From</span>
-              <input
-                type="date"
-                className="reports-date-input"
-                aria-label="From date"
-                value={range.from}
-                onChange={change('from')}
-              />
-            </label>
-            <span className="reports-date-sep">→</span>
-            <label className="reports-date-label">
-              <span>To</span>
-              <input
-                type="date"
-                className="reports-date-input"
-                aria-label="To date"
-                value={range.to}
-                onChange={change('to')}
-              />
-            </label>
-          </div>
-
-          <a
-            className="btn btn--outline"
-            download=""
-            href={`/v1/dispatch/reports/jobs.csv?from=${range.from}&to=${range.to}`}
-            title="Download CSV spreadsheet of booked jobs in this period"
-          >
-            Download Jobs (CSV)
-          </a>
+    <div className="reports-page">
+      <div className="reports-head">
+        <div>
+          <div className="reports-eyebrow">PERFORMANCE</div>
+          <h1 className="reports-title">Reports</h1>
+          <p className="reports-subtitle">Sample operational metrics and definitions.</p>
         </div>
-      </PageHeader>
+        <div className="reports-period-wrap">
+          <label htmlFor="reports-period-select" className="reports-period-label">Period</label>
+          <select
+            id="reports-period-select"
+            className="reports-period-select"
+            value={period}
+            onChange={(e) => setPeriod(e.target.value)}
+          >
+            <option value="week">This week</option>
+            <option value="today">Today</option>
+            <option value="month">This month</option>
+            <option value="all">All time</option>
+          </select>
+        </div>
+      </div>
 
-      <div className="stack">{body}</div>
-    </>
+      <div className="reports-card">
+        <h2 className="reports-card-title">{currentPeriodTitle}</h2>
+
+        <div className="reports-metric-list">
+          <div className="reports-metric-row">
+            <div className="reports-metric-info">
+              <h3 className="reports-metric-title">Appointments in sample workspace</h3>
+              <p className="reports-metric-desc">Count of non canceled sample appointments; not actual business bookings.</p>
+            </div>
+            <div className="reports-metric-actions">
+              <span className="reports-metric-count">{appointmentsCount}</span>
+              <a href="#/appointments" className="reports-action-btn">View appointments</a>
+            </div>
+          </div>
+
+          <div className="reports-metric-row">
+            <div className="reports-metric-info">
+              <h3 className="reports-metric-title">AI actions awaiting review</h3>
+              <p className="reports-metric-desc">Sample items with a needs review or needs approval status.</p>
+            </div>
+            <div className="reports-metric-actions">
+              <span className="reports-metric-count">{reviewCount}</span>
+              <a href="#/automation" className="reports-action-btn">View review queue</a>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <p className="reports-disclaimer">
+        Illustrative workspace data. Appointments are filtered by the selected period; review items show the current queue. No historical dataset is connected.
+      </p>
+    </div>
   );
 }

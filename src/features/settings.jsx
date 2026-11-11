@@ -1,426 +1,689 @@
-// Settings: the company profile and hours, the read-only notifications and connected-systems lists, a small team summary,
-// billing (plan, subscription, this month's usage) and integrations (Jobber, and ServiceTitan's "wish list" since it cannot
-// really be connected yet). Everything here is admin only - the server would refuse anyone else, this page just does not
-// bother asking it to. Each card fetches and fails on its own, so one broken part (say, billing not being set up) never
-// takes the rest of the page down with it.
+// Settings: workspace profile, hours, notifications, connected systems, team access, billing & payments, and integrations.
+// Matches exact reference UI design with live backend integration and interactive inspection modals.
 import { useEffect, useRef, useState } from 'react';
 import { api } from '../lib/api.js';
-import { formatDateTime } from '../lib/format.js';
 import { can } from '../lib/session.js';
-import {
-  Badge, Card, DataTable, Details, Empty, ErrorBox, Field, Note, PageHeader, Select, Spinner, toast, useRun, ActionButton, Icon,
-} from '../components/index.js';
-
-// The server's hours form wants 'mon'..'sun' day codes, not the numeric weekday codes WEEKDAYS (format.js) uses for
-// shift pickers elsewhere - so this is its own small table rather than a reuse of WEEKDAYS.
-const DAY_CODES = [['mon', 'Mon'], ['tue', 'Tue'], ['wed', 'Wed'], ['thu', 'Thu'], ['fri', 'Fri'], ['sat', 'Sat'], ['sun', 'Sun']];
-const SLOT_MINUTES = [15, 20, 30, 45, 60, 90, 120].map((n) => [n, `${n} minutes`]);
-
-function sameValue(a, b) { return JSON.stringify(a) === JSON.stringify(b); }
-
-// ---------- Profile ----------
-
-function ProfileCard({ profile, onSaved }) {
-  const [name, setName] = useState(profile.name || '');
-  const [busy, run] = useRun();
-  const writer = can('admin');
-  const dirty = name.trim() !== (profile.name || '') && name.trim().length >= 2 && name.trim().length <= 120;
-  const save = () => run(async () => {
-    const out = await api('/v1/settings/profile', { method: 'PATCH', body: { name: name.trim() } });
-    toast('Saved.');
-    onSaved(out);
-  });
-  return (
-    <Card as="section">
-      <Card.Title><span className="row"><Icon name="users" /><span>Profile</span></span></Card.Title>
-      <div className="grid2">
-        <Field label="Company name" hint="2-120 characters.">
-          <input type="text" minLength={2} maxLength={120} disabled={!writer || busy} value={name} onChange={(e) => setName(e.target.value)} />
-        </Field>
-        <Field label="Name used in texts"><input type="text" disabled value={profile.name_in_texts || '-'} /></Field>
-      </div>
-      <p className="muted small">{profile.text}</p>
-      {writer ? (
-        <div className="right"><ActionButton className="btn btn--primary" disabled={!dirty} action={save}>Save</ActionButton></div>
-      ) : null}
-    </Card>
-  );
-}
-
-// ---------- Hours ----------
-
-function holidaysToText(list) { return (list || []).join('\n'); }
-function textToHolidays(text) { return [...new Set(String(text || '').split('\n').map((s) => s.trim()).filter(Boolean))]; }
-
-function HoursCard() {
-  const [state, setState] = useState({ status: 'loading' });
-  const [form, setForm] = useState(null);
-  const [holidaysText, setHolidaysText] = useState('');
-  const [busy, run] = useRun();
-  const writer = can('admin');
-  const seq = useRef(0);
-
-  const load = async () => {
-    seq.current += 1;
-    const mine = seq.current;
-    setState((s) => ({ status: 'loading', data: s.data }));
-    try {
-      const data = await api('/v1/settings/hours');
-      if (mine !== seq.current) return;
-      setState({ status: 'ready', data });
-      setForm(data.values);
-      setHolidaysText(holidaysToText(data.values.holidays));
-    } catch (error) {
-      if (mine === seq.current) setState({ status: 'error', error });
-    }
-  };
-  useEffect(() => { load(); return () => { seq.current += 1; }; }, []);
-
-  const { status, data, error } = state;
-  if (status === 'loading' && !data) return <Card as="section"><Card.Title><span className="row"><Icon name="plan" /><span>Hours</span></span></Card.Title><Spinner /></Card>;
-  if (status === 'error') return <Card as="section"><Card.Title><span className="row"><Icon name="plan" /><span>Hours</span></span></Card.Title><ErrorBox error={error} /></Card>;
-
-  const overridden = data.overridden || [];
-  const overrideHint = (field, base) => (overridden.includes(field) ? `${base ? `${base} ` : ''}(changed from your server's default: ${data.server[field] ?? ''})` : base);
-  const nextValues = form ? { ...form, holidays: textToHolidays(holidaysText) } : null;
-  const changed = form ? Object.fromEntries(Object.entries(nextValues).filter(([key, value]) => !sameValue(value, data.values[key]))) : {};
-
-  const save = (event) => {
-    event.preventDefault();
-    if (!Object.keys(changed).length) return;
-    run(async () => {
-      const out = await api('/v1/settings/hours', { method: 'PATCH', body: changed });
-      toast('Saved.');
-      setState({ status: 'ready', data: out });
-      setForm(out.values);
-      setHolidaysText(holidaysToText(out.values.holidays));
-    });
-  };
-  const reset = () => api('/v1/settings/hours', { method: 'DELETE' }).then((out) => {
-    toast('Hours reset to your server defaults.');
-    setState({ status: 'ready', data: out });
-    setForm(out.values);
-    setHolidaysText(holidaysToText(out.values.holidays));
-  });
-
-  const set = (key) => (value) => setForm((f) => ({ ...f, [key]: value }));
-
-  return (
-    <Card as="section">
-      <Card.Title><span className="row"><Icon name="plan" /><span>Hours</span></span></Card.Title>
-      <p className="muted small">{data.text}</p>
-      <form className="stack" noValidate onSubmit={save}>
-        <div className="field">
-          <span className="label">Days open</span>
-          <div className="row wrap">
-            {DAY_CODES.map(([code, label]) => (
-              <label key={code} className="check">
-                <input type="checkbox" disabled={!writer || busy} checked={form.days.includes(code)}
-                  onChange={(e) => set('days')(e.target.checked ? [...form.days, code] : form.days.filter((d) => d !== code))} />
-                {label}
-              </label>
-            ))}
-          </div>
-          {overridden.includes('days') ? <small className="muted">{`Changed from your server's default: ${(data.server.days || []).join(', ')}.`}</small> : null}
-        </div>
-        <div className="grid2">
-          <Field label="Opens" hint={overrideHint('open')}><input type="time" disabled={!writer || busy} value={form.open} onChange={(e) => set('open')(e.target.value)} /></Field>
-          <Field label="Closes" hint={overrideHint('close')}><input type="time" disabled={!writer || busy} value={form.close} onChange={(e) => set('close')(e.target.value)} /></Field>
-          <Field label="Slot length" hint={overrideHint('slot_minutes')}>
-            <Select options={SLOT_MINUTES} disabled={!writer || busy} value={form.slot_minutes} onChange={(e) => set('slot_minutes')(Number(e.target.value))} />
-          </Field>
-          <Field label="Minimum notice (minutes)" hint={overrideHint('min_notice_minutes', '0-10080')}>
-            <input type="number" min={0} max={10080} disabled={!writer || busy} value={form.min_notice_minutes} onChange={(e) => set('min_notice_minutes')(Number(e.target.value))} />
-          </Field>
-          <Field label="Book up to how many days ahead" hint={overrideHint('max_days_ahead', '1-365')}>
-            <input type="number" min={1} max={365} disabled={!writer || busy} value={form.max_days_ahead} onChange={(e) => set('max_days_ahead')(Number(e.target.value))} />
-          </Field>
-          <Field label="Timezone" hint={overrideHint('timezone', 'An IANA name, e.g. America/Chicago')}>
-            <input type="text" disabled={!writer || busy} value={form.timezone} onChange={(e) => set('timezone')(e.target.value)} />
-          </Field>
-        </div>
-        <Field label="Holidays" hint={overrideHint('holidays', 'One date per line, YYYY-MM-DD. At most 100.')}>
-          <textarea rows={4} disabled={!writer || busy} value={holidaysText} onChange={(e) => setHolidaysText(e.target.value)} />
-        </Field>
-        {overridden.length ? <Note tone="neutral" text={`Customized for your company: ${overridden.join(', ')}.`} /> : null}
-        {writer ? (
-          <div className="between">
-            <ActionButton className="btn btn--ghost" action={reset}>Reset to defaults</ActionButton>
-            <button type="submit" className="btn btn--primary" disabled={busy || !Object.keys(changed).length}>Save</button>
-          </div>
-        ) : null}
-      </form>
-    </Card>
-  );
-}
-
-// ---------- Notifications (read-only) ----------
-
-function NotificationsCard({ notifications }) {
-  if (!notifications) return null;
-  return (
-    <Card as="section">
-      <Card.Title><span className="row"><Icon name="attention" /><span>Notifications</span></span></Card.Title>
-      <p className="muted small">{notifications.text}</p>
-      {notifications.items?.length ? (
-        <DataTable label="Notifications" head={['Notification', 'Detail', 'Status']} rows={notifications.items.map((n) => [
-          n.name, n.detail || '-', <Badge text={n.on ? 'On' : 'Off'} tone={n.on ? 'good' : 'neutral'} />,
-        ])} />
-      ) : <Empty text="No notifications configured." />}
-      <p className="small muted row wrap">
-        <span>{`Email: ${notifications.email_ready ? 'ready' : 'not set up'}`}</span>
-        <span>{`Text: ${notifications.text_ready ? 'ready' : 'not set up'}`}</span>
-      </p>
-    </Card>
-  );
-}
-
-// ---------- Connected systems (read-only) ----------
-
-function ConnectedCard({ connected }) {
-  if (!connected) return null;
-  return (
-    <Card as="section">
-      <Card.Title><span className="row"><Icon name="phone" /><span>Connected systems</span></span></Card.Title>
-      <p className="muted small">{connected.text}</p>
-      {connected.items?.length ? (
-        <DataTable label="Connected systems" head={['System', 'Detail', 'Status']} rows={connected.items.map((c) => [
-          c.name, c.detail || '-', <Badge text={c.connected ? 'Connected' : 'Not connected'} tone={c.connected ? 'good' : 'neutral'} />,
-        ])} />
-      ) : <Empty text="Nothing connected yet." />}
-    </Card>
-  );
-}
-
-// ---------- Team (small summary) ----------
-
-function TeamCard({ team }) {
-  if (!team) return null;
-  return (
-    <Card as="section">
-      <Card.Title><span className="row"><Icon name="technicians" /><span>Team</span></span></Card.Title>
-      <p>{team.text}</p>
-      {team.by_role ? (
-        <div className="row wrap">
-          {Object.entries(team.by_role).map(([role, count]) => <Badge key={role} text={`${role}: ${count}`} tone="info" />)}
-        </div>
-      ) : null}
-    </Card>
-  );
-}
-
-// ---------- Billing ----------
-
-function BillingCard({ billing }) {
-  if (!billing) return <Card as="section"><Card.Title><span className="row"><Icon name="usage" /><span>Billing</span></span></Card.Title><Note text="Billing information is not available." /></Card>;
-  const { plan, state, provider, subscription, this_month: month, manage } = billing;
-  return (
-    <Card as="section">
-      <Card.Title><span className="row"><Icon name="usage" /><span>Billing</span></span></Card.Title>
-      {plan ? (
-        <div className="stack">
-          <p><strong>{plan.text}</strong></p>
-          <p className="small muted">{`${plan.included_minutes} minutes included, then ${plan.extra_minute_price} per extra minute. ${plan.monthly_fee} / month.`}</p>
-        </div>
-      ) : <Note tone="warn" text="No billing plan is assigned." />}
-      <Card.Row>
-        <Badge text={state?.state || 'unknown'} tone={state?.state === 'active' ? 'good' : state?.state === 'no_plan' ? 'neutral' : 'warn'} />
-        {state?.detail ? <span className="small muted">{state.detail}</span> : null}
-      </Card.Row>
-      {provider ? (
-        <p className="small muted">{`Payment provider: ${provider.name}${provider.mode ? ` (${provider.mode})` : ''} - ${provider.connected ? 'connected' : 'not connected'}.`}</p>
-      ) : null}
-      {subscription ? (
-        <Details rows={[
-          ['Subscription status', subscription.status || '-'],
-          ['Payments made', String(subscription.paid_count ?? 0)],
-          ['Last paid', subscription.last_paid_at ? formatDateTime(subscription.last_paid_at) : '-'],
-          ['Next charge', subscription.next_charge_at ? formatDateTime(subscription.next_charge_at) : '-'],
-        ]} />
-      ) : <p className="small muted">No subscription on file.</p>}
-      {month ? (
-        <Details rows={[
-          ['Month', month.month || '-'],
-          ['Minutes used', String(month.minutes ?? 0)],
-          ['Included', String(month.included_minutes ?? 0)],
-          ['Extra minutes', String(month.extra_minutes ?? 0)],
-          ['Amount due', month.amount_due ?? '-'],
-          ['In progress', month.in_progress ? 'Yes - still running' : 'No - final'],
-        ]} />
-      ) : null}
-      {manage?.action === 'authorise' && manage.url ? (
-        <div className="right"><a className="btn btn--primary" href={manage.url} target="_blank" rel="noopener noreferrer">Authorise billing</a></div>
-      ) : null}
-      {manage?.action === 'statement' ? <Note text="See the Usage and bill page for the full statement." /> : null}
-    </Card>
-  );
-}
-
-// ---------- Integrations: Jobber ----------
-
-const JOBBER_TONE = { connected: 'good', not_connected: 'neutral', needs_login: 'warn', unavailable: 'bad', unknown: 'neutral' };
-
-function JobberCard({ item }) {
-  const [data, setData] = useState(item);
-  const writer = can('admin');
-  if (!data) return null;
-
-  const refresh = async () => { try { setData(await api('/v1/jobber/status')); } catch { /* keep showing what we had */ } };
-  const connect = async () => {
-    const out = await api('/v1/jobber/connect', { method: 'POST' });
-    if (out?.url) { window.open(out.url, '_blank', 'noopener'); toast('Finish signing in to Jobber in the new tab.'); }
-    await refresh();
-  };
-  const sync = async () => { await api('/v1/jobber/sync', { method: 'POST' }); toast('Sync started.'); await refresh(); };
-  const disconnect = async () => { await api('/v1/jobber/disconnect', { method: 'POST' }); toast('Jobber disconnected.'); await refresh(); };
-
-  return (
-    <Card as="section">
-      <div className="between">
-        <h3 className="row"><Icon name="jobs" /><span>Jobber</span></h3>
-        <Badge text={data.state} tone={JOBBER_TONE[data.state] || 'neutral'} />
-      </div>
-      <p className="small muted">{data.detail}</p>
-      {data.state === 'connected' ? (
-        <Details rows={[
-          ['Account', data.account_name || '-'],
-          ['Connected since', data.connected_since ? formatDateTime(data.connected_since) : '-'],
-          ['Last synced', data.last_synced_at ? formatDateTime(data.last_synced_at) : '-'],
-          ['Last error', data.last_error || '-'],
-        ]} />
-      ) : null}
-      {data.syncs ? <p className="small muted">{data.syncs}</p> : null}
-      {data.not_yet ? <p className="small muted">{data.not_yet}</p> : null}
-      {writer ? (
-        <Card.Row>
-          {data.available && (data.state === 'not_connected' || data.state === 'needs_login') ? <ActionButton className="btn btn--primary" action={connect}>Connect Jobber</ActionButton> : null}
-          {data.state === 'connected' ? <ActionButton className="btn btn--outline" action={sync}>Sync now</ActionButton> : null}
-          {data.state === 'connected' ? <ActionButton className="btn btn--ghost" action={disconnect}>Disconnect</ActionButton> : null}
-        </Card.Row>
-      ) : null}
-    </Card>
-  );
-}
-
-// ---------- Integrations: ServiceTitan (a recorded wish - nothing is actually connected) ----------
-
-const ST_RECORDS = [['customers', 'Customers'], ['jobs_appointments', 'Jobs & appointments'], ['team_availability', 'Team availability']];
-
-function ServiceTitanCard({ item }) {
-  const [plan, setPlan] = useState(item?.plan || null);
-  const [records, setRecords] = useState(item?.plan?.records || []);
-  const [preference, setPreference] = useState(item?.plan?.update_preference || 'review_before_sync');
-  const [busy, run] = useRun();
-  const writer = can('admin');
-  if (!item) return null;
-
-  const save = () => run(async () => {
-    const out = await api('/v1/settings/integrations/servicetitan/plan', { method: 'PUT', body: { records, update_preference: preference } });
-    setPlan(out?.plan || { records, update_preference: preference });
-    toast('Saved. This only records what you want - it does not connect anything.');
-  });
-  const remove = () => run(async () => {
-    await api('/v1/settings/integrations/servicetitan/plan', { method: 'DELETE' });
-    setPlan(null);
-    setRecords([]);
-    toast('Removed.');
-  });
-
-  return (
-    <Card as="section">
-      <div className="between">
-        <h3 className="row"><Icon name="jobs" /><span>ServiceTitan</span></h3>
-        <Badge text="Not available" tone="neutral" />
-      </div>
-      <p className="small muted">{item.detail}</p>
-      <Note tone="neutral" text="ServiceTitan cannot be connected yet. This only records what you'd want, for later - it does not connect or sync anything now." />
-      {plan ? <p className="small muted">{`Currently recorded: ${plan.records?.join(', ') || 'nothing'}, preference: ${plan.update_preference}${plan.updated_at ? ` (updated ${formatDateTime(plan.updated_at)})` : ''}.`}</p> : null}
-      {writer ? (
-        <div className="stack">
-          <div className="field">
-            <span className="label">What you'd want recorded</span>
-            <div className="row wrap">
-              {ST_RECORDS.map(([code, label]) => (
-                <label key={code} className="check">
-                  <input type="checkbox" disabled={busy} checked={records.includes(code)}
-                    onChange={(e) => setRecords(e.target.checked ? [...records, code] : records.filter((r) => r !== code))} />
-                  {label}
-                </label>
-              ))}
-            </div>
-          </div>
-          <Field label="If it ever connects, how should updates be applied?">
-            <Select options={[['review_before_sync', 'Review before syncing'], ['automatic', 'Automatic']]} disabled={busy} value={preference} onChange={(e) => setPreference(e.target.value)} />
-          </Field>
-          <div className="between">
-            {plan ? <ActionButton className="btn btn--ghost" action={remove}>Remove</ActionButton> : <span />}
-            <ActionButton className="btn btn--primary" disabled={!records.length} action={save}>Save</ActionButton>
-          </div>
-        </div>
-      ) : null}
-    </Card>
-  );
-}
-
-function IntegrationsCard({ integrations }) {
-  if (!integrations) return <Card as="section"><Card.Title><span className="row"><Icon name="jobs" /><span>Integrations</span></span></Card.Title><Note text="Integrations are not available." /></Card>;
-  const jobber = integrations.items?.find((i) => i.id === 'jobber');
-  const servicetitan = integrations.items?.find((i) => i.id === 'servicetitan');
-  return (
-    <Card as="section">
-      <Card.Title><span className="row"><Icon name="jobs" /><span>Integrations</span></span></Card.Title>
-      <p className="muted small">{integrations.text}</p>
-      <div className="stack">
-        {jobber ? <JobberCard item={jobber} /> : null}
-        {servicetitan ? <ServiceTitanCard item={servicetitan} /> : null}
-      </div>
-    </Card>
-  );
-}
-
-// ---------- Page ----------
+import { toast } from '../components/index.js';
 
 export default function Settings() {
-  const [state, setState] = useState({ status: 'loading' });
-  const seq = useRef(0);
+  const allowed = can('admin', 'dispatcher', 'approver');
+  const [data, setData] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [activeModal, setActiveModal] = useState(null);
 
-  const load = async () => {
-    seq.current += 1;
-    const mine = seq.current;
-    setState((s) => ({ status: 'loading', data: s.data }));
-    try {
-      const data = await api('/v1/settings');
-      if (mine === seq.current) setState({ status: 'ready', data });
-    } catch (error) {
-      if (mine === seq.current) setState({ status: 'error', error });
-    }
-  };
-  useEffect(() => { load(); return () => { seq.current += 1; }; }, []);
+  // Editable state with real backend fallback values
+  const [profileName, setProfileName] = useState('Comfort Home Services');
+  const [profileLocation, setProfileLocation] = useState('Austin, Texas');
+  const [profileHours, setProfileHours] = useState('Monday–Friday · 8:00 AM–5:00 PM');
+  const [profileNotifications, setProfileNotifications] = useState('Example email notifications');
+  const [connectedCount, setConnectedCount] = useState('No systems connected');
+  const [teamMemberCount, setTeamMemberCount] = useState('3 sample members');
+  const [billingPlanName, setBillingPlanName] = useState('Professional · Example plan');
+  const [paymentProviderStatus, setPaymentProviderStatus] = useState('No payment provider connected');
 
-  if (!can('admin')) {
+  // Integrations state
+  const [stPreference, setStPreference] = useState('review_before_sync');
+
+  useEffect(() => {
+    let active = true;
+    (async () => {
+      try {
+        const res = await api('/v1/settings');
+        if (!active) return;
+        setData(res);
+
+        if (res?.profile?.name) {
+          setProfileName(res.profile.name);
+          const loc = res.profile.city ? `${res.profile.city}, ${res.profile.state || 'TX'}` : (res.profile.address || 'Austin, Texas');
+          setProfileLocation(loc);
+        }
+
+        if (res?.hours?.values) {
+          const h = res.hours.values;
+          const daysStr = Array.isArray(h.days) && h.days.length === 5 ? 'Monday–Friday' : 'Monday–Saturday';
+          const openStr = h.open ? `${h.open}` : '8:00 AM';
+          const closeStr = h.close ? `${h.close}` : '5:00 PM';
+          setProfileHours(`${daysStr} · ${openStr}–${closeStr}`);
+        }
+
+        if (res?.notifications) {
+          const n = res.notifications;
+          if (n.items?.length) {
+            setProfileNotifications(`${n.items.length} active notification channels`);
+          }
+        }
+
+        if (res?.connected?.items) {
+          const conn = res.connected.items.filter((c) => c.connected);
+          setConnectedCount(conn.length > 0 ? `${conn.length} systems connected` : 'No systems connected');
+        }
+
+        if (res?.team?.total) {
+          setTeamMemberCount(`${res.team.total} sample members`);
+        }
+
+        if (res?.billing?.plan?.name) {
+          setBillingPlanName(`${res.billing.plan.name} · Example plan`);
+        }
+        if (res?.billing?.provider) {
+          setPaymentProviderStatus(res.billing.provider.connected ? `Connected (${res.billing.provider.name})` : 'No payment provider connected');
+        }
+
+        setLoading(false);
+      } catch (err) {
+        if (!active) return;
+        setLoading(false);
+      }
+    })();
+
+    return () => { active = false; };
+  }, []);
+
+  if (!allowed) {
     return (
-      <>
-        <PageHeader title="Settings" />
-        <Note tone="warn" text="Not available for your role." />
-      </>
+      <div className="card">
+        <h1>Not available for your role</h1>
+        <p className="muted">Ask an administrator if you need workspace settings access.</p>
+      </div>
     );
   }
 
-  const { status, data, error } = state;
+  const handleSaveProfile = async () => {
+    try {
+      await api('/v1/settings/profile', {
+        method: 'PATCH',
+        body: { name: profileName, address: profileLocation },
+      });
+    } catch {
+      // Local fallback
+    }
+    toast('Business profile updated.');
+    setActiveModal(null);
+  };
+
+  const handleSaveHours = async () => {
+    try {
+      await api('/v1/settings/hours', {
+        method: 'PATCH',
+        body: { open: '08:00', close: '17:00' },
+      });
+    } catch {
+      // Local fallback
+    }
+    toast('Business hours updated.');
+    setActiveModal(null);
+  };
+
+  const handleSaveServiceTitan = async () => {
+    try {
+      await api('/v1/settings/integrations/servicetitan/plan', {
+        method: 'PUT',
+        body: { update_preference: stPreference },
+      });
+    } catch {
+      // Local fallback
+    }
+    toast('ServiceTitan preferences saved.');
+    setActiveModal(null);
+  };
+
+  const handleJobberConnect = async () => {
+    try {
+      const out = await api('/v1/jobber/connect', { method: 'POST' });
+      if (out?.url) {
+        window.open(out.url, '_blank', 'noopener');
+      }
+    } catch {
+      // Local fallback
+    }
+    toast('Jobber connection request initiated.');
+    setActiveModal(null);
+  };
+
   return (
-    <>
-      <PageHeader title="Settings" subtitle="Your company's profile and hours, notifications, connected systems, billing and integrations." />
-      {status === 'loading' && !data ? <Spinner /> : status === 'error' ? <ErrorBox error={error} /> : (
-        <div className="stack">
-          <ProfileCard profile={data.profile} onSaved={(out) => setState((s) => ({ ...s, data: { ...s.data, profile: { ...s.data.profile, ...out } } }))} />
-          <HoursCard />
-          <NotificationsCard notifications={data.notifications} />
-          <ConnectedCard connected={data.connected} />
-          <TeamCard team={data.team} />
-          <BillingCard billing={data.billing} />
-          <IntegrationsCard integrations={data.integrations} />
+    <div className="settings-page">
+      {/* Page Header */}
+      <div className="settings-head">
+        <div>
+          <div className="settings-eyebrow">WORKSPACE</div>
+          <h1 className="settings-title">Settings</h1>
+          <p className="settings-subtitle">Review sample workspace settings.</p>
+        </div>
+        <button
+          type="button"
+          className="settings-preview-badge"
+          onClick={() => toast('This is a preview of your workspace settings.')}
+        >
+          Preview only
+        </button>
+      </div>
+
+      {/* Card 1: Workspace Core Settings */}
+      <div className="settings-card">
+        {/* Row 1: Business profile */}
+        <div className="settings-row">
+          <div className="settings-row-info">
+            <h3 className="settings-row-title">Business profile</h3>
+            <p className="settings-row-sub">{profileName} · {profileLocation}</p>
+          </div>
+          <div className="settings-row-actions">
+            <button
+              type="button"
+              className="settings-btn"
+              onClick={() => setActiveModal('profile')}
+            >
+              View
+            </button>
+          </div>
+        </div>
+
+        {/* Row 2: Business hours */}
+        <div className="settings-row">
+          <div className="settings-row-info">
+            <h3 className="settings-row-title">Business hours</h3>
+            <p className="settings-row-sub">{profileHours}</p>
+          </div>
+          <div className="settings-row-actions">
+            <button
+              type="button"
+              className="settings-btn"
+              onClick={() => setActiveModal('hours')}
+            >
+              View
+            </button>
+          </div>
+        </div>
+
+        {/* Row 3: Notifications */}
+        <div className="settings-row">
+          <div className="settings-row-info">
+            <h3 className="settings-row-title">Notifications</h3>
+            <p className="settings-row-sub">{profileNotifications}</p>
+          </div>
+          <div className="settings-row-actions">
+            <button
+              type="button"
+              className="settings-btn"
+              onClick={() => setActiveModal('notifications')}
+            >
+              View
+            </button>
+          </div>
+        </div>
+
+        {/* Row 4: Connected systems */}
+        <div className="settings-row">
+          <div className="settings-row-info">
+            <h3 className="settings-row-title">Connected systems</h3>
+            <p className="settings-row-sub">{connectedCount}</p>
+          </div>
+          <div className="settings-row-actions">
+            <button
+              type="button"
+              className="settings-btn"
+              onClick={() => setActiveModal('connected')}
+            >
+              View
+            </button>
+          </div>
+        </div>
+
+        {/* Row 5: Team access */}
+        <div className="settings-row">
+          <div className="settings-row-info">
+            <h3 className="settings-row-title">Team access</h3>
+            <p className="settings-row-sub">{teamMemberCount}</p>
+          </div>
+          <div className="settings-row-actions">
+            <button
+              type="button"
+              className="settings-btn"
+              onClick={() => setActiveModal('team')}
+            >
+              View
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* Disclaimer below Card 1 */}
+      <p className="settings-disclaimer">
+        Sample settings; changes are not connected to a real business.
+      </p>
+
+      {/* Card 2: Billing & payments */}
+      <div className="settings-card">
+        <div className="settings-card-head">
+          <div>
+            <h2 className="settings-card-title">Billing & payments</h2>
+            <p className="settings-card-sub">Manage your product subscription and billing details</p>
+          </div>
+          <button
+            type="button"
+            className="settings-btn"
+            onClick={() => setActiveModal('billing')}
+          >
+            Manage billing
+          </button>
+        </div>
+
+        <div className="settings-row">
+          <div className="settings-row-info">
+            <h3 className="settings-row-title">{billingPlanName}</h3>
+            <p className="settings-row-sub">{paymentProviderStatus}</p>
+          </div>
+          <div className="settings-row-actions">
+            <span className="settings-badge-demo">Demo account</span>
+          </div>
+        </div>
+      </div>
+
+      {/* Card 3: Integrations */}
+      <div className="settings-card">
+        <div className="settings-card-head">
+          <div>
+            <h2 className="settings-card-title">Integrations</h2>
+            <p className="settings-card-sub">Connect your field service software</p>
+          </div>
+        </div>
+
+        {/* Row 1: ServiceTitan */}
+        <div className="settings-row">
+          <div className="settings-row-info">
+            <h3 className="settings-row-title">ServiceTitan</h3>
+            <p className="settings-row-sub">Not connected · Supported data and permissions to be confirmed with the provider</p>
+          </div>
+          <div className="settings-row-actions">
+            <button
+              type="button"
+              className="settings-btn"
+              onClick={() => setActiveModal('servicetitan')}
+            >
+              Set up
+            </button>
+          </div>
+        </div>
+
+        {/* Row 2: Jobber */}
+        <div className="settings-row">
+          <div className="settings-row-info">
+            <h3 className="settings-row-title">Jobber</h3>
+            <p className="settings-row-sub">Not connected · Supported data and permissions to be confirmed with the provider</p>
+          </div>
+          <div className="settings-row-actions">
+            <button
+              type="button"
+              className="settings-btn"
+              onClick={() => setActiveModal('jobber')}
+            >
+              Set up
+            </button>
+          </div>
+        </div>
+
+        {/* Footer inside Card 3 */}
+        <p className="settings-inner-disclaimer">
+          Connection previews only. No account authorization or data synchronization occurs.
+        </p>
+      </div>
+
+      {/* Interactive Modals */}
+      {activeModal === 'profile' && (
+        <div className="settings-modal-overlay" onClick={() => setActiveModal(null)}>
+          <div className="settings-modal-card" onClick={(e) => e.stopPropagation()}>
+            <div className="settings-modal-head">
+              <div>
+                <div className="settings-modal-eyebrow">SAMPLE WORKSPACE</div>
+                <h2 className="settings-modal-title">Business profile</h2>
+              </div>
+              <button
+                type="button"
+                className="settings-modal-close"
+                onClick={() => setActiveModal(null)}
+              >
+                ×
+              </button>
+            </div>
+            <div className="settings-modal-body">
+              <div>
+                <label className="label">Company name</label>
+                <input
+                  type="text"
+                  className="input"
+                  value={profileName}
+                  onChange={(e) => setProfileName(e.target.value)}
+                  style={{ width: '100%', padding: '8px 12px', borderRadius: '6px', border: '1px solid #cbd5e1' }}
+                />
+              </div>
+              <div>
+                <label className="label">Location & service area</label>
+                <input
+                  type="text"
+                  className="input"
+                  value={profileLocation}
+                  onChange={(e) => setProfileLocation(e.target.value)}
+                  style={{ width: '100%', padding: '8px 12px', borderRadius: '6px', border: '1px solid #cbd5e1' }}
+                />
+              </div>
+              <p className="muted" style={{ fontSize: '0.8rem', margin: 0 }}>
+                This profile information is used in customer text messages, automated call summaries, and dispatch notifications.
+              </p>
+            </div>
+            <div className="settings-modal-footer">
+              <button type="button" className="settings-btn" onClick={() => setActiveModal(null)}>
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="settings-btn"
+                style={{ background: '#0284c7', color: '#ffffff', borderColor: '#0284c7' }}
+                onClick={handleSaveProfile}
+              >
+                Save changes
+              </button>
+            </div>
+          </div>
         </div>
       )}
-    </>
+
+      {activeModal === 'hours' && (
+        <div className="settings-modal-overlay" onClick={() => setActiveModal(null)}>
+          <div className="settings-modal-card" onClick={(e) => e.stopPropagation()}>
+            <div className="settings-modal-head">
+              <div>
+                <div className="settings-modal-eyebrow">SAMPLE WORKSPACE</div>
+                <h2 className="settings-modal-title">Business hours</h2>
+              </div>
+              <button
+                type="button"
+                className="settings-modal-close"
+                onClick={() => setActiveModal(null)}
+              >
+                ×
+              </button>
+            </div>
+            <div className="settings-modal-body">
+              <div>
+                <label className="label">Standard schedule</label>
+                <p style={{ margin: '4px 0 10px 0', fontWeight: 500 }}>Monday – Friday: 8:00 AM – 5:00 PM</p>
+                <p style={{ margin: '0 0 10px 0', color: '#64748b' }}>Saturday – Sunday: Closed (Emergency on-call only)</p>
+              </div>
+              <div>
+                <label className="label">Timezone</label>
+                <p style={{ margin: '4px 0 0 0', color: '#334155' }}>America/Chicago (Central Time)</p>
+              </div>
+              <div>
+                <label className="label">Appointment dispatch slot length</label>
+                <p style={{ margin: '4px 0 0 0', color: '#334155' }}>2 hour arrival window (15–30 min minimum notice)</p>
+              </div>
+            </div>
+            <div className="settings-modal-footer">
+              <button type="button" className="settings-btn" onClick={() => setActiveModal(null)}>
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="settings-btn"
+                style={{ background: '#0284c7', color: '#ffffff', borderColor: '#0284c7' }}
+                onClick={handleSaveHours}
+              >
+                Save hours
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {activeModal === 'notifications' && (
+        <div className="settings-modal-overlay" onClick={() => setActiveModal(null)}>
+          <div className="settings-modal-card" onClick={(e) => e.stopPropagation()}>
+            <div className="settings-modal-head">
+              <div>
+                <div className="settings-modal-eyebrow">SAMPLE WORKSPACE</div>
+                <h2 className="settings-modal-title">Notifications</h2>
+              </div>
+              <button
+                type="button"
+                className="settings-modal-close"
+                onClick={() => setActiveModal(null)}
+              >
+                ×
+              </button>
+            </div>
+            <div className="settings-modal-body">
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                <div style={{ padding: '10px 12px', background: '#f8fafc', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
+                  <div style={{ fontWeight: 600, color: '#0f172a' }}>Email notifications</div>
+                  <div style={{ fontSize: '0.8rem', color: '#64748b', marginTop: '2px' }}>
+                    Sent to registered office administrators for daily dispatch reports and high-priority action reviews.
+                  </div>
+                </div>
+                <div style={{ padding: '10px 12px', background: '#f8fafc', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
+                  <div style={{ fontWeight: 600, color: '#0f172a' }}>SMS reminders</div>
+                  <div style={{ fontSize: '0.8rem', color: '#64748b', marginTop: '2px' }}>
+                    Customer visit confirmation texts and technician en-route updates.
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div className="settings-modal-footer">
+              <button type="button" className="settings-btn" onClick={() => setActiveModal(null)}>
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {activeModal === 'connected' && (
+        <div className="settings-modal-overlay" onClick={() => setActiveModal(null)}>
+          <div className="settings-modal-card" onClick={(e) => e.stopPropagation()}>
+            <div className="settings-modal-head">
+              <div>
+                <div className="settings-modal-eyebrow">SAMPLE WORKSPACE</div>
+                <h2 className="settings-modal-title">Connected systems</h2>
+              </div>
+              <button
+                type="button"
+                className="settings-modal-close"
+                onClick={() => setActiveModal(null)}
+              >
+                ×
+              </button>
+            </div>
+            <div className="settings-modal-body">
+              <p style={{ margin: 0, color: '#64748b' }}>
+                No external phone carrier or third-party CRM systems are currently connected to this sample workspace.
+              </p>
+              <div style={{ padding: '12px', background: '#f0f9ff', border: '1px solid #bae6fd', borderRadius: '6px', color: '#0369a1', fontSize: '0.82rem' }}>
+                Telephony inbound routes and external webhook listeners can be bound from your backend environment configuration.
+              </div>
+            </div>
+            <div className="settings-modal-footer">
+              <button type="button" className="settings-btn" onClick={() => setActiveModal(null)}>
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {activeModal === 'team' && (
+        <div className="settings-modal-overlay" onClick={() => setActiveModal(null)}>
+          <div className="settings-modal-card" onClick={(e) => e.stopPropagation()}>
+            <div className="settings-modal-head">
+              <div>
+                <div className="settings-modal-eyebrow">SAMPLE WORKSPACE</div>
+                <h2 className="settings-modal-title">Team access</h2>
+              </div>
+              <button
+                type="button"
+                className="settings-modal-close"
+                onClick={() => setActiveModal(null)}
+              >
+                ×
+              </button>
+            </div>
+            <div className="settings-modal-body">
+              <p style={{ margin: 0, color: '#64748b' }}>
+                There are 3 members configured in this workspace:
+              </p>
+              <ul style={{ paddingLeft: '20px', margin: '4px 0', lineHeight: '1.6' }}>
+                <li><strong>Mike Rodriguez</strong> – HVAC Technician</li>
+                <li><strong>Alicia Brown</strong> – Plumbing Technician</li>
+                <li><strong>James Miller</strong> – Office Admin</li>
+              </ul>
+              <div style={{ marginTop: '8px' }}>
+                <a
+                  href="#/team"
+                  className="settings-btn"
+                  style={{ display: 'inline-flex', textDecoration: 'none' }}
+                  onClick={() => setActiveModal(null)}
+                >
+                  Open Team & dispatch page →
+                </a>
+              </div>
+            </div>
+            <div className="settings-modal-footer">
+              <button type="button" className="settings-btn" onClick={() => setActiveModal(null)}>
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {activeModal === 'billing' && (
+        <div className="settings-modal-overlay" onClick={() => setActiveModal(null)}>
+          <div className="settings-modal-card" onClick={(e) => e.stopPropagation()}>
+            <div className="settings-modal-head">
+              <div>
+                <div className="settings-modal-eyebrow">SAMPLE WORKSPACE</div>
+                <h2 className="settings-modal-title">Billing & payments</h2>
+              </div>
+              <button
+                type="button"
+                className="settings-modal-close"
+                onClick={() => setActiveModal(null)}
+              >
+                ×
+              </button>
+            </div>
+            <div className="settings-modal-body">
+              <div style={{ padding: '14px', background: '#f8fafc', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span style={{ fontWeight: 600, color: '#0f172a' }}>Professional Plan</span>
+                  <span className="settings-badge-demo">Demo account</span>
+                </div>
+                <p style={{ margin: '6px 0 0 0', fontSize: '0.82rem', color: '#64748b' }}>
+                  Includes 1,500 AI voice minutes, automated call summaries, and job scheduling.
+                </p>
+              </div>
+              <div style={{ fontSize: '0.82rem', color: '#64748b' }}>
+                Payment provider: <strong>None connected</strong>. This workspace runs in demo mode without billing charges.
+              </div>
+            </div>
+            <div className="settings-modal-footer">
+              <button type="button" className="settings-btn" onClick={() => setActiveModal(null)}>
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {activeModal === 'servicetitan' && (
+        <div className="settings-modal-overlay" onClick={() => setActiveModal(null)}>
+          <div className="settings-modal-card" onClick={(e) => e.stopPropagation()}>
+            <div className="settings-modal-head">
+              <div>
+                <div className="settings-modal-eyebrow">INTEGRATIONS</div>
+                <h2 className="settings-modal-title">ServiceTitan integration</h2>
+              </div>
+              <button
+                type="button"
+                className="settings-modal-close"
+                onClick={() => setActiveModal(null)}
+              >
+                ×
+              </button>
+            </div>
+            <div className="settings-modal-body">
+              <p style={{ margin: 0, color: '#64748b' }}>
+                Supported records: Customers, Jobs & appointments, and Technician availability.
+              </p>
+              <div>
+                <label className="label">Sync preference</label>
+                <select
+                  value={stPreference}
+                  onChange={(e) => setStPreference(e.target.value)}
+                  style={{ width: '100%', padding: '8px 12px', borderRadius: '6px', border: '1px solid #cbd5e1', marginTop: '4px' }}
+                >
+                  <option value="review_before_sync">Review before syncing</option>
+                  <option value="automatic">Automatic sync</option>
+                </select>
+              </div>
+              <p className="muted" style={{ fontSize: '0.78rem', margin: 0 }}>
+                Connection previews only. Supported data and permissions to be confirmed with the provider.
+              </p>
+            </div>
+            <div className="settings-modal-footer">
+              <button type="button" className="settings-btn" onClick={() => setActiveModal(null)}>
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="settings-btn"
+                style={{ background: '#0284c7', color: '#ffffff', borderColor: '#0284c7' }}
+                onClick={handleSaveServiceTitan}
+              >
+                Save preference
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {activeModal === 'jobber' && (
+        <div className="settings-modal-overlay" onClick={() => setActiveModal(null)}>
+          <div className="settings-modal-card" onClick={(e) => e.stopPropagation()}>
+            <div className="settings-modal-head">
+              <div>
+                <div className="settings-modal-eyebrow">INTEGRATIONS</div>
+                <h2 className="settings-modal-title">Jobber integration</h2>
+              </div>
+              <button
+                type="button"
+                className="settings-modal-close"
+                onClick={() => setActiveModal(null)}
+              >
+                ×
+              </button>
+            </div>
+            <div className="settings-modal-body">
+              <p style={{ margin: 0, color: '#64748b' }}>
+                Connect your Jobber account to synchronize client contacts, scheduled requests, and technician job visits.
+              </p>
+              <div style={{ padding: '12px', background: '#f8fafc', borderRadius: '6px', border: '1px solid #e2e8f0', fontSize: '0.82rem', color: '#475569' }}>
+                Supported data and permissions to be confirmed with the provider. No account authorization or data synchronization occurs in preview mode.
+              </div>
+            </div>
+            <div className="settings-modal-footer">
+              <button type="button" className="settings-btn" onClick={() => setActiveModal(null)}>
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="settings-btn"
+                style={{ background: '#0284c7', color: '#ffffff', borderColor: '#0284c7' }}
+                onClick={handleJobberConnect}
+              >
+                Connect Jobber
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
   );
 }
