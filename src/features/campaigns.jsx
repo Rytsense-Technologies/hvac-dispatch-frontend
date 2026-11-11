@@ -294,7 +294,7 @@ function CampaignDialog({ id, reload, onClose }) {
 
         {c.script ? (
           <div className="agent-banner">
-            <strong>Sample outreach script</strong>
+            <strong>{id.startsWith('sample_') ? 'Sample outreach script' : 'Outreach script'}</strong>
             <br />
             {c.script}
           </div>
@@ -324,7 +324,7 @@ function CampaignDialog({ id, reload, onClose }) {
         <p className="sample-label">
           {id.startsWith('sample_')
             ? 'Demo state only; no actual outreach is scheduled or sent.'
-            : 'Sample state only; no outreach is scheduled or sent.'}
+            : 'Status and review actions update this campaign in your workspace.'}
         </p>
       </div>
     );
@@ -353,19 +353,6 @@ export default function Campaigns() {
   useEffect(() => { load(); }, [load]);
   const close = () => setDialog(null);
 
-  const sampleMeta = writer ? (
-    <button
-      type="button"
-      className="date"
-      onClick={() => setDialog({ kind: 'create' })}
-      aria-label="New campaign"
-    >
-      Sample workspace
-    </button>
-  ) : (
-    <span className="date">Sample workspace</span>
-  );
-
   if (!can('admin', 'dispatcher', 'approver')) {
     return (
       <>
@@ -373,7 +360,6 @@ export default function Campaigns() {
           eyebrow="GROWTH"
           title="Outbound campaigns"
           subtitle="Reconnect with past customers and turn interested responses into follow-ups."
-          meta={<span className="date">Sample workspace</span>}
         />
         <Note text="Not available for your role." tone="warn" />
       </>
@@ -385,13 +371,28 @@ export default function Campaigns() {
   const campaigns = usingSamples ? SAMPLE_CAMPAIGNS : list.data;
   const loading = list.data === undefined && !list.error;
 
+  const headerMeta = (
+    <>
+      {usingSamples ? <span className="date">Sample workspace</span> : null}
+      {writer ? (
+        <button
+          type="button"
+          className="btn btn--secondary agent-btn"
+          onClick={() => setDialog({ kind: 'create' })}
+        >
+          + New campaign
+        </button>
+      ) : null}
+    </>
+  );
+
   return (
     <>
       <PageHeader
         eyebrow="GROWTH"
         title="Outbound campaigns"
         subtitle="Reconnect with past customers and turn interested responses into follow-ups."
-        meta={sampleMeta}
+        meta={headerMeta}
       />
 
       <Panel>
@@ -437,7 +438,11 @@ export default function Campaigns() {
         ) : null}
       </Panel>
 
-      <p className="foot">Illustrative campaigns. No calls or messages are made.</p>
+      {usingSamples ? (
+        <p className="foot">Illustrative campaigns. No calls or messages are made.</p>
+      ) : (
+        <p className="foot">Live campaigns · Outreach follows each campaign’s status and schedule.</p>
+      )}
 
       {dialog?.kind === 'create' ? <CreateDialog onClose={close} reload={load} /> : null}
       {dialog?.kind === 'view' ? <CampaignDialog id={dialog.id} onClose={close} reload={load} /> : null}
