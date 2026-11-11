@@ -7,7 +7,7 @@ import { timeAgo } from '../lib/format.js';
 import { can } from '../lib/session.js';
 import { useEvery } from '../lib/hooks.js';
 import {
-  Spinner, ErrorBox, Note, Badge, StatGrid, Dialog, Field, DataTable, FilterChips,
+  Spinner, ErrorBox, Note, Badge, StatGrid, Dialog, Field, DataTable, FilterChips, Select,
   ActionButton, Button, toast, Panel, PanelHead, Row,
 } from '../components/index.js';
 import { WorkChrome, WorkFoot } from './workChrome.jsx';
@@ -65,30 +65,56 @@ function followUpSubtitle(item) {
   return [name, hint].filter(Boolean).join(' · ');
 }
 
+function jobIdOf(item) {
+  return item.job_id || item.id || null;
+}
+
+/** Resolve choices + assign URLs from hypermedia or OpenAPI fallbacks. */
+function assignmentEndpoints(item) {
+  const jobId = jobIdOf(item);
+  const choices = item.api?.choices || (jobId ? `/v1/tasks/jobs/${jobId}/choices` : null);
+  const assign = item.api?.assign || (jobId ? `/v1/dispatch/jobs/${jobId}/assign` : null);
+  return { choices, assign, jobId };
+}
+
 function canAssignJob(item) {
   if (!can('admin', 'dispatcher')) return false;
   if (item.isSample) return true;
-  return Boolean(item.api?.choices);
+  if (item.status === 'assigned') return false;
+  return Boolean(assignmentEndpoints(item).choices);
+}
+
+function followUpEndpoints(item) {
+  const kind = item.kind;
+  const sourceId = item.source_id || item.id;
+  const base = (kind && sourceId) ? `/v1/tasks/follow-ups/${kind}/${sourceId}` : null;
+  return {
+    approve: item.api?.approve || (base ? `${base}/approve` : null),
+    dismiss: item.api?.dismiss || (base ? `${base}/dismiss` : null),
+    edit: item.api?.edit || (base ? `${base}/edit` : null),
+  };
 }
 
 // ---------- assign dialog ----------
 
 function AssignDialog({ job, onClose, onDone }) {
   const [state, setState] = useState({ phase: 'loading' });
+  const endpoints = assignmentEndpoints(job);
 
   useEffect(() => {
     let current = true;
+    const { choices: choicesUrl } = assignmentEndpoints(job);
     if (job.isSample) {
       setState({ phase: 'sample' });
       return () => { current = false; };
     }
-    if (!job.api?.choices) {
+    if (!choicesUrl) {
       setState({ phase: 'unavailable' });
       return () => { current = false; };
     }
     (async () => {
       try {
-        const choices = await api(job.api.choices);
+        const choices = await api(choicesUrl);
         if (current) setState({ phase: 'ready', choices });
       } catch (error) {
         if (current) setState({ phase: 'error', error });
@@ -137,9 +163,9 @@ function AssignDialog({ job, onClose, onDone }) {
                 {can('admin', 'dispatcher') ? (
                   <ActionButton
                     className="btn btn--primary"
-                    disabled={t.eligible === false}
+                    disabled={t.eligible === false || !endpoints.assign}
                     action={async () => {
-                      await api(job.api.assign, {
+                      await api(endpoints.assign, {
                         method: 'POST',
                         body: { technician_id: t.technician_id, arrival: t.arrival, reason: DEFAULT_REASON },
                       });
@@ -176,6 +202,7 @@ function FollowUpReview({ item, onClose, onDone }) {
   const [text, setText] = useState(item.proposed?.text || '');
   const isReply = item.kind === 'text_reply';
   const approveLabel = (item.actions || []).find((a) => /send|approve/i.test(a)) || (isReply ? 'Send reply' : 'Mark handled');
+  const endpoints = followUpEndpoints(item);
 
   if (item.isSample) {
     return (
@@ -205,11 +232,11 @@ function FollowUpReview({ item, onClose, onDone }) {
       ) : null}
       {can('admin', 'dispatcher') ? (
         <div className="row wrap" style={{ gap: 8, marginTop: 12 }}>
-          {isReply ? (
+          {isReply && endpoints.edit ? (
             <ActionButton
               className="btn btn--secondary"
               action={async () => {
-                await api(item.api.edit, { method: 'POST', body: { text: text.trim() } });
+                await api(endpoints.edit, { method: 'POST', body: { text: text.trim() } });
                 toast('Saved.');
                 onDone();
               }}
@@ -217,26 +244,33 @@ function FollowUpReview({ item, onClose, onDone }) {
               Save edit
             </ActionButton>
           ) : null}
-          <ActionButton
-            className="btn btn--primary"
-            action={async () => {
-              await api(item.api.approve, { method: 'POST', body: isReply ? { text: text.trim() } : {} });
-              toast('Done.');
-              onDone();
-            }}
-          >
-            {approveLabel}
-          </ActionButton>
-          <ActionButton
-            className="btn btn--ghost"
-            action={async () => {
-              await api(item.api.dismiss, { method: 'POST', body: {} });
-              toast('Dismissed.');
-              onDone();
-            }}
-          >
-            Dismiss
-          </ActionButton>
+          {endpoints.approve ? (
+            <ActionButton
+              className="btn btn--primary"
+              action={async () => {
+                await api(endpoints.approve, { method: 'POST', body: isReply ? { text: text.trim() } : {} });
+                toast('Done.');
+                onDone();
+              }}
+            >
+              {approveLabel}
+            </ActionButton>
+          ) : null}
+          {endpoints.dismiss ? (
+            <ActionButton
+              className="btn btn--ghost"
+              action={async () => {
+                await api(endpoints.dismiss, { method: 'POST', body: {} });
+                toast('Dismissed.');
+                onDone();
+              }}
+            >
+              Dismiss
+            </ActionButton>
+          ) : null}
+          {!endpoints.approve && !endpoints.dismiss ? (
+            <p className="muted">Follow-up actions are not available for this item.</p>
+          ) : null}
         </div>
       ) : null}
       <p className="muted small" style={{ marginTop: 12 }}>{item.age || timeAgo(item.created_at)}</p>
@@ -263,10 +297,24 @@ function FollowUpHistory({ items }) {
 
 // ---------- page ----------
 
+const FOLLOW_KINDS = [
+  ['', 'All kinds'],
+  ['text_reply', 'Text reply'],
+  ['change_request', 'Change request'],
+  ['book_visit', 'Book visit'],
+  ['call_back_lead', 'Call-back lead'],
+  ['record_update', 'Record update'],
+  ['job_notes', 'Job notes'],
+  ['job_blocker', 'Job blocker'],
+  ['missing_details', 'Missing details'],
+  ['needs_person', 'Needs person'],
+];
+
 export default function Tasks() {
   const [demoMode, setDemoMode] = useState(false);
   const [state, setState] = useState({ status: 'loading' });
   const [followSub, setFollowSub] = useState('open');
+  const [followKind, setFollowKind] = useState('');
   const [followUps, setFollowUps] = useState({ status: 'loading', items: [] });
   const [assigning, setAssigning] = useState(null);
   const [reviewing, setReviewing] = useState(null);
@@ -290,7 +338,12 @@ export default function Tasks() {
     const mine = followLatest.current;
     if (!quiet) setFollowUps((prev) => ({ ...prev, status: 'loading' }));
     try {
-      const data = await api('/v1/tasks/follow-ups', { params: { status: followSub } });
+      const data = await api('/v1/tasks/follow-ups', {
+        params: {
+          status: followSub,
+          ...(followKind ? { kind: followKind } : {}),
+        },
+      });
       if (mine === followLatest.current) {
         setFollowUps({ status: 'ready', items: data.items || [] });
       }
@@ -309,7 +362,7 @@ export default function Tasks() {
   useEffect(() => {
     loadFollowUps();
     return () => { followLatest.current += 1; };
-  }, [followSub]);
+  }, [followSub, followKind]);
 
   useEvery(() => {
     if (demoMode) return;
@@ -428,12 +481,22 @@ export default function Tasks() {
             title="Office follow-ups"
             subtitle="AI actions awaiting review and campaign callbacks"
           >
-            <FilterChips
-              label="Follow-up view"
-              value={followSub}
-              onChange={setFollowSub}
-              options={[['open', 'Open'], ['history', 'History']]}
-            />
+            <div className="work-follow-filters">
+              <FilterChips
+                label="Follow-up view"
+                value={followSub}
+                onChange={setFollowSub}
+                options={[['open', 'Open'], ['history', 'History']]}
+              />
+              {!demoMode ? (
+                <Select
+                  options={FOLLOW_KINDS}
+                  value={followKind}
+                  aria-label="Follow-up kind"
+                  onChange={(e) => setFollowKind(e.target.value)}
+                />
+              ) : null}
+            </div>
           </PanelHead>
 
           {demoMode && followSub === 'history' ? (

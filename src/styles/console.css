@@ -3685,6 +3685,16 @@ button.row-item { cursor: pointer; }
 }
 
 /* ---------- Work (Tasks + Appointments) ---------- */
+.work-toolbar { margin-bottom: 12px; }
+.work-rows { display: flex; flex-direction: column; gap: 0; }
+.work-follow-filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+.work-follow-filters select { width: auto; min-width: 10rem; }
+
 .cards.work-metrics {
   grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
   margin-bottom: 24px;
