@@ -1,11 +1,22 @@
-// Overview: operations center matching the reference design.
-// Greeting → priority queues → metrics → AI team strip → recent calls + to-dos → extensions.
+// Overview: operations center matching the reference design, with pre-design live data.
+// Greeting → priority queues → metrics → AI team strip → recent calls + to-dos →
+// extensions → operations detail (dispatch reports summary + date range, below the reference layout).
 import { useEffect, useRef, useState } from 'react';
 import { api } from '../lib/api.js';
-import { formatDay, formatTime, timeAgo } from '../lib/format.js';
+import {
+  addDays,
+  formatDay,
+  formatTime,
+  hours,
+  percent,
+  reasonText,
+  timeAgo,
+  todayIn,
+} from '../lib/format.js';
 import { session } from '../lib/session.js';
 import {
   Badge,
+  DataTable,
   Empty,
   ErrorBox,
   Icon,
@@ -14,10 +25,45 @@ import {
   PanelHead,
   Row,
   Spinner,
+  StatGrid,
 } from '../components/index.js';
 
 export const fetchSummary = (from, to) => api('/v1/dispatch/reports/summary', { params: { from, to } });
 const fetchOverview = (period) => api('/v1/overview', { params: { period } });
+const fetchExtensions = () => api('/v1/team/extensions', { params: { status: 'new', limit: 20 } });
+
+export function cards(summary) {
+  const waiting = Object.values(summary.proposals || {}).reduce((sum, p) => sum + (p.pending || 0), 0);
+  return [
+    ['Booked jobs', summary.jobs?.total ?? 0, null, 'jobs'],
+    ['Done', summary.jobs?.by_progress?.completed ?? 0, null, 'approvals'],
+    ['On time', percent(summary.jobs?.on_time_share), null, 'tracking'],
+    ['Inside promised window', percent(summary.jobs?.inside_window_share), null, 'plan'],
+    ['Requests', summary.requests?.total ?? 0, null, 'requests'],
+    ['Emergencies (people handle)', summary.requests?.emergencies ?? 0, null, 'attention'],
+    ['Requests booked', percent(summary.requests?.booked_share), null, 'approvals'],
+    ['Proposals waiting', waiting, null, 'leads'],
+    ['Problems still open', summary.problems?.still_open ?? 0, null, 'attention'],
+  ];
+}
+
+export function technicianTable(rows) {
+  if (!rows?.length) return <Empty text="No technicians set up yet." />;
+  return (
+    <DataTable
+      head={['Technician', 'Jobs', 'Done', 'Available (h)', 'Booked (h)', 'Busy', 'On time']}
+      rows={rows.map((t) => [
+        <strong key="name">{t.name}</strong>,
+        t.jobs,
+        t.completed,
+        hours(t.available_minutes),
+        hours(t.booked_minutes),
+        percent(t.utilisation),
+        percent(t.on_time_share),
+      ])}
+    />
+  );
+}
 
 const PERIODS = [
   ['today', 'Today'],
@@ -53,6 +99,12 @@ function initials(name) {
 
 function plural(n, one, many) {
   return `${n} ${n === 1 ? one : many}`;
+}
+
+function extensionEntries(data) {
+  if (!data) return [];
+  if (Array.isArray(data.updates)) return data.updates;
+  return data.extensions || data.items || data.entries || [];
 }
 
 function PeriodChip({ period, onChange }) {
@@ -196,9 +248,112 @@ function TodoRows({ items }) {
   ));
 }
 
+function ExtensionsPanel({ state }) {
+  const entries = state.status === 'ready' ? extensionEntries(state.data) : [];
+  const count = typeof state.data?.updates === 'number'
+    ? state.data.updates
+    : entries.length;
+
+  return (
+    <Panel className="overview-extensions">
+      <PanelHead
+        title="Technician time extensions"
+        subtitle="Updates from technicians extending job time"
+      >
+        <span className="overview-extensions__actions">
+          <Badge text={`${count} update${count === 1 ? '' : 's'}`} tone={count ? 'warn' : 'good'} />
+          <a className="link" href="#/team">View team →</a>
+        </span>
+      </PanelHead>
+      {state.status === 'loading' ? <Spinner text="Loading extensions…" /> : null}
+      {state.status === 'error' ? <ErrorBox error={state.error} /> : null}
+      {state.status === 'ready' && !entries.length ? (
+        <Empty text="No extensions yet. Open a current technician job, advance it to Arrived or In progress, then choose Extend job time." />
+      ) : null}
+      {entries.length ? entries.slice(0, 5).map((x, i) => (
+        <Row
+          key={x.id || i}
+          title={[x.service, x.customer].filter(Boolean).join(' · ') || x.title || 'Time extension'}
+          subtitle={[
+            x.technician || x.technician_name || 'Technician',
+            x.reason,
+            x.added_minutes != null ? `+${x.added_minutes} minutes` : null,
+          ].filter(Boolean).join(' · ')}
+          trailing={(
+            <Badge
+              text={x.conflicts?.length || x.warning ? 'Schedule conflict' : (x.label || 'Extended')}
+              tone={x.conflicts?.length || x.warning ? 'warn' : 'good'}
+            />
+          )}
+        />
+      )) : null}
+    </Panel>
+  );
+}
+
+function OperationsDetail({ range, onChange, state }) {
+  let body;
+  if (state.status === 'loading') body = <Spinner text="Loading the numbers…" />;
+  else if (state.status === 'error') body = <ErrorBox error={state.error} />;
+  else {
+    const data = state.data;
+    const problems = data.problems || {};
+    const byReason = Object.entries(problems.by_reason || {})
+      .map(([k, v]) => `${reasonText(k)} ${v}`)
+      .join(', ');
+    body = (
+      <div className="overview-detail__body stack">
+        <StatGrid items={cards(data)} />
+        <Panel>
+          <PanelHead title="Technicians" subtitle="Workload across the selected range" />
+          {technicianTable(data.technicians || [])}
+        </Panel>
+        <Panel>
+          <PanelHead title="Problems found" subtitle="Dispatch issues opened in this range" />
+          <p className="overview-detail__problems">
+            {`${problems.opened ?? 0} found, ${problems.still_open ?? 0} still open.`}
+            {byReason ? ` ${byReason}` : ''}
+          </p>
+        </Panel>
+      </div>
+    );
+  }
+
+  return (
+    <section className="overview-detail" aria-label="Operations detail">
+      <div className="sectionhead">
+        <h2>Operations detail</h2>
+        <div className="overview-detail__filters page-actions">
+          <label className="inline">
+            From
+            <input type="date" aria-label="From" value={range.from} onChange={onChange('from')} />
+          </label>
+          <label className="inline">
+            To
+            <input type="date" aria-label="To" value={range.to} onChange={onChange('to')} />
+          </label>
+        </div>
+      </div>
+      {body}
+    </section>
+  );
+}
+
+function teamAvailabilityText(queues) {
+  const available = queues?.technicians?.available;
+  const total = queues?.technicians?.total;
+  if (available == null || total == null) return 'View technician availability';
+  return `${available} of ${total} technicians available`;
+}
+
 export default function Dashboard() {
   const [period, setPeriod] = useState('today');
   const [overview, setOverview] = useState({ status: 'loading' });
+  const [extensions, setExtensions] = useState({ status: 'loading' });
+  // A week back to a week ahead: visits are booked ahead, so a range that stops at today would hide them.
+  const [range, setRange] = useState(() => ({ from: addDays(todayIn(), -7), to: addDays(todayIn(), 7) }));
+  const [summary, setSummary] = useState({ status: 'loading' });
+  const latestSummary = useRef(0);
 
   useEffect(() => {
     let live = true;
@@ -209,6 +364,37 @@ export default function Dashboard() {
     );
     return () => { live = false; };
   }, [period]);
+
+  useEffect(() => {
+    let live = true;
+    setExtensions({ status: 'loading' });
+    fetchExtensions().then(
+      (data) => { if (live) setExtensions({ status: 'ready', data }); },
+      (error) => { if (live) setExtensions({ status: 'error', error }); },
+    );
+    return () => { live = false; };
+  }, []);
+
+  useEffect(() => {
+    latestSummary.current += 1;
+    const mine = latestSummary.current;
+    setSummary({ status: 'loading' });
+    fetchSummary(range.from, range.to).then(
+      (data) => { if (mine === latestSummary.current) setSummary({ status: 'ready', data }); },
+      (error) => { if (mine === latestSummary.current) setSummary({ status: 'error', error }); },
+    );
+    return () => { latestSummary.current += 1; };
+  }, [range]);
+
+  const changeRange = (key) => (e) => {
+    const value = e.target.value;
+    if (!value) return;
+    setRange((r) => {
+      const next = { ...r, [key]: value };
+      if (next.from > next.to) next[key === 'from' ? 'to' : 'from'] = value;
+      return next;
+    });
+  };
 
   const rawName = session.user?.name || session.actor || '';
   const firstName = rawName.split(/\s+/)[0] || 'there';
@@ -272,7 +458,7 @@ export default function Dashboard() {
               href="#/team"
               icon="team"
               title="Check your team"
-              text="View technician availability"
+              text={teamAvailabilityText(o?.queues)}
             />
           </div>
         )}
@@ -320,8 +506,9 @@ export default function Dashboard() {
 
           <div className="sectionhead">
             <h2>Your AI team</h2>
-            <span className="sectionhead__meta muted">Example agents · Proposed capabilities</span>
+            <a className="link sectionhead__meta" href="#/agents">View agents →</a>
           </div>
+          <p className="overview-agents-meta muted">Example agents · Proposed capabilities</p>
           <div className="agent-strip">
             {AI_TEAM.map((agent) => <AgentStripCard key={agent.id} agent={agent} />)}
           </div>
@@ -346,15 +533,9 @@ export default function Dashboard() {
 
       <p className="overview-foot muted">Operational view · Counts refresh with your live workspace data.</p>
 
-      <Panel className="overview-extensions">
-        <PanelHead
-          title="Technician time extensions"
-          subtitle="Updates from technicians extending job time"
-        >
-          <Badge text="0 updates" tone="good" />
-        </PanelHead>
-        <Empty text="No extensions yet. Open a current technician job, advance it to Arrived or In progress, then choose Extend job time." />
-      </Panel>
+      <ExtensionsPanel state={extensions} />
+
+      <OperationsDetail range={range} onChange={changeRange} state={summary} />
     </div>
   );
 }
