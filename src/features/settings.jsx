@@ -1,17 +1,22 @@
 // Settings: reference-aligned workspace rows + Billing, Integrations, Admin automation panels.
-// Live profile/hours/Jobber/billing APIs stay wired behind View / Set up / Manage dialogs.
+// Live profile/hours/Jobber/billing APIs stay wired; copy distinguishes live writes from illustrative panels.
 import { useEffect, useRef, useState } from 'react';
 import { api } from '../lib/api.js';
 import { formatDateTime } from '../lib/format.js';
 import { can } from '../lib/session.js';
 import {
-  ActionButton, Badge, Button, DataTable, Details, Dialog, Empty, ErrorBox, Field, Note,
+  ActionButton, Badge, Button, DataTable, Details, Dialog, ErrorBox, Field, Note,
   PageHeader, Panel, PanelHead, Row, Select, Spinner, toast, useRun,
 } from '../components/index.js';
 
 const DAY_CODES = [['mon', 'Mon'], ['tue', 'Tue'], ['wed', 'Wed'], ['thu', 'Thu'], ['fri', 'Fri'], ['sat', 'Sat'], ['sun', 'Sun']];
 const SLOT_MINUTES = [15, 20, 30, 45, 60, 90, 120].map((n) => [n, `${n} minutes`]);
 const ST_RECORDS = [['customers', 'Customers'], ['jobs_appointments', 'Jobs & appointments'], ['team_availability', 'Team availability']];
+const ST_PREFERENCES = [
+  ['review_before_sync', 'Review before syncing'],
+  ['automatic', 'Automatic'],
+  ['import_only', 'Import to Rytsense only'],
+];
 const SAMPLE_ROWS = [
   ['profile', 'Business profile', 'Comfort Home Services · Austin, Texas'],
   ['hours', 'Business hours', 'Monday–Friday · 8:00 AM–5:00 PM'],
@@ -73,6 +78,12 @@ function settingsRowsFromData(data) {
   ];
 }
 
+function planTitleFromBilling(billing) {
+  if (!billing?.plan) return 'No plan assigned';
+  const name = billing.plan.name || billing.plan.text || 'Plan';
+  return String(name);
+}
+
 // ---------- Profile / hours editors (dialogs) ----------
 
 function ProfileEditor({ profile, onSaved, onClose }) {
@@ -88,7 +99,7 @@ function ProfileEditor({ profile, onSaved, onClose }) {
   });
   return (
     <div className="stack">
-      <p className="sample-label">Preview only. No live settings or integration are connected.</p>
+      <p className="sub">Changes save to your company profile.</p>
       <Field label="Company name" hint="2–120 characters.">
         <input type="text" minLength={2} maxLength={120} disabled={!writer || busy} value={name} onChange={(e) => setName(e.target.value)} />
       </Field>
@@ -102,7 +113,7 @@ function ProfileEditor({ profile, onSaved, onClose }) {
   );
 }
 
-function HoursEditor({ onClose }) {
+function HoursEditor({ onClose, onSaved }) {
   const [state, setState] = useState({ status: 'loading' });
   const [form, setForm] = useState(null);
   const [holidaysText, setHolidaysText] = useState('');
@@ -131,8 +142,7 @@ function HoursEditor({ onClose }) {
   if (state.status === 'error') {
     return (
       <div className="stack">
-        <p>Monday–Friday · 8:00 AM–5:00 PM</p>
-        <p className="sample-label">Preview only. Hours could not be loaded from the server.</p>
+        <ErrorBox error={state.error} />
         <div className="dialog-actions"><Button className="btn btn--secondary agent-btn" onClick={onClose}>Close</Button></div>
       </div>
     );
@@ -145,21 +155,33 @@ function HoursEditor({ onClose }) {
   const changed = form ? Object.fromEntries(Object.entries(nextValues).filter(([key, value]) => !sameValue(value, data.values[key]))) : {};
   const set = (key) => (value) => setForm((f) => ({ ...f, [key]: value }));
 
+  const applyHours = (out) => {
+    setState({ status: 'ready', data: out });
+    setForm(out.values);
+    setHolidaysText(holidaysToText(out.values.holidays));
+    onSaved?.(out);
+  };
+
   const save = (event) => {
     event.preventDefault();
     if (!Object.keys(changed).length) return;
     run(async () => {
       const out = await api('/v1/settings/hours', { method: 'PATCH', body: changed });
       toast('Saved.');
-      setState({ status: 'ready', data: out });
-      setForm(out.values);
-      setHolidaysText(holidaysToText(out.values.holidays));
+      applyHours(out);
     });
   };
+
+  const reset = () => run(async () => {
+    const out = await api('/v1/settings/hours', { method: 'DELETE' });
+    toast('Hours reset to your server defaults.');
+    applyHours(out);
+  });
 
   return (
     <form className="stack" noValidate onSubmit={save}>
       <p className="sub">{data.text || formatHoursSummary(form)}</p>
+      <p className="sample-label">Saving updates your live business hours.</p>
       <div className="field">
         <span className="label">Days open</span>
         <div className="row wrap">
@@ -182,14 +204,22 @@ function HoursEditor({ onClose }) {
         <Field label="Slot length" hint={overrideHint('slot_minutes')}>
           <Select options={SLOT_MINUTES} disabled={!writer || busy} value={form.slot_minutes} onChange={(e) => set('slot_minutes')(Number(e.target.value))} />
         </Field>
-        <Field label="Timezone" hint={overrideHint('timezone')}>
+        <Field label="Minimum notice (minutes)" hint={overrideHint('min_notice_minutes', '0-10080')}>
+          <input type="number" min={0} max={10080} disabled={!writer || busy} value={form.min_notice_minutes} onChange={(e) => set('min_notice_minutes')(Number(e.target.value))} />
+        </Field>
+        <Field label="Book up to how many days ahead" hint={overrideHint('max_days_ahead', '1-365')}>
+          <input type="number" min={1} max={365} disabled={!writer || busy} value={form.max_days_ahead} onChange={(e) => set('max_days_ahead')(Number(e.target.value))} />
+        </Field>
+        <Field label="Timezone" hint={overrideHint('timezone', 'An IANA name, e.g. America/Chicago')}>
           <input type="text" disabled={!writer || busy} value={form.timezone} onChange={(e) => set('timezone')(e.target.value)} />
         </Field>
       </div>
       <Field label="Holidays" hint={overrideHint('holidays', 'One YYYY-MM-DD per line')}>
         <textarea rows={3} disabled={!writer || busy} value={holidaysText} onChange={(e) => setHolidaysText(e.target.value)} />
       </Field>
+      {overridden.length ? <Note tone="neutral" text={`Customized for your company: ${overridden.join(', ')}.`} /> : null}
       <div className="dialog-actions">
+        {writer ? <ActionButton className="btn btn--ghost" action={reset}>Reset to defaults</ActionButton> : null}
         {writer ? <button type="submit" className="btn btn--primary action" disabled={busy || !Object.keys(changed).length}>Save</button> : null}
         <Button className="btn btn--secondary agent-btn" onClick={onClose}>Close</Button>
       </div>
@@ -197,7 +227,7 @@ function HoursEditor({ onClose }) {
   );
 }
 
-function SimpleListDialog({ title, text, items, columns, empty, onClose, extra }) {
+function SimpleListDialog({ title, text, items, columns, empty, onClose, extra, footnote }) {
   return (
     <Dialog title={title} onClose={onClose}>
       <div className="stack">
@@ -206,7 +236,7 @@ function SimpleListDialog({ title, text, items, columns, empty, onClose, extra }
           <DataTable label={title} head={columns} rows={items} />
         ) : <p className="sub empty-inline">{empty}</p>}
         {extra}
-        <p className="sample-label">Preview only. No live settings or integration are connected.</p>
+        {footnote ? <p className="sample-label">{footnote}</p> : null}
         <div className="dialog-actions">
           <Button className="btn btn--secondary agent-btn" onClick={onClose}>Close</Button>
         </div>
@@ -218,8 +248,29 @@ function SimpleListDialog({ title, text, items, columns, empty, onClose, extra }
 // ---------- Billing dialog ----------
 
 function BillingDialog({ billing, onClose }) {
-  const planName = billing?.plan?.name || billing?.plan?.text || 'Professional';
-  const planLabel = String(planName).includes('Example') ? planName : `${planName} · Example plan`;
+  if (!billing) {
+    return (
+      <Dialog title="Billing & payments" onClose={onClose}>
+        <div className="stack">
+          <Note text="Billing information is not available." />
+          <div className="dialog-actions">
+            <a className="btn btn--secondary agent-btn" href="#/usage">Open usage &amp; statement</a>
+            <Button className="btn btn--secondary agent-btn" onClick={onClose}>Close</Button>
+          </div>
+        </div>
+      </Dialog>
+    );
+  }
+
+  const { plan, state, provider, subscription, this_month: month, manage } = billing;
+  const planLabel = planTitleFromBilling(billing);
+  const paymentSub = provider?.connected
+    ? `${provider.name}${provider.mode ? ` (${provider.mode})` : ''} connected`
+    : (provider ? `${provider.name || 'Provider'} not connected` : 'No payment provider connected');
+  const invoiceSub = subscription?.paid_count > 0
+    ? `${subscription.paid_count} payment${subscription.paid_count === 1 ? '' : 's'} recorded${subscription.last_paid_at ? ` · last ${formatDateTime(subscription.last_paid_at)}` : ''}`
+    : (subscription ? 'No invoices yet. Receipts will appear after actual billing begins.' : 'Invoice history unavailable.');
+
   return (
     <Dialog title="Billing & payments" onClose={onClose} wide>
       <div className="stack">
@@ -229,34 +280,59 @@ function BillingDialog({ billing, onClose }) {
           <span className="badge badge--neutral">Invoices</span>
         </div>
         <h3>{planLabel}</h3>
-        <p className="sub">Recurring charges, usage, taxes, and plan pricing will be shown after a billing provider is connected.</p>
-        {billing?.plan ? (
+        {plan ? (
           <p className="sub">
-            {billing.plan.included_minutes != null ? `${billing.plan.included_minutes} minutes included` : null}
-            {billing.plan.monthly_fee ? ` · ${billing.plan.monthly_fee} / month` : null}
+            {[
+              plan.included_minutes != null ? `${plan.included_minutes} minutes included` : null,
+              plan.extra_minute_price ? `${plan.extra_minute_price} per extra minute` : null,
+              plan.monthly_fee ? `${plan.monthly_fee} / month` : null,
+            ].filter(Boolean).join(' · ') || plan.text || 'Plan details on file.'}
           </p>
+        ) : (
+          <Note tone="warn" text="No billing plan is assigned." />
+        )}
+        <CardRowStatus state={state} />
+        {subscription ? (
+          <Details rows={[
+            ['Subscription status', subscription.status || '-'],
+            ['Payments made', String(subscription.paid_count ?? 0)],
+            ['Last paid', subscription.last_paid_at ? formatDateTime(subscription.last_paid_at) : '-'],
+            ['Next charge', subscription.next_charge_at ? formatDateTime(subscription.next_charge_at) : '-'],
+          ]} />
+        ) : <p className="sub">No subscription on file.</p>}
+        {month ? (
+          <Details rows={[
+            ['Month', month.month || '-'],
+            ['Minutes used', String(month.minutes ?? 0)],
+            ['Included', String(month.included_minutes ?? 0)],
+            ['Extra minutes', String(month.extra_minutes ?? 0)],
+            ['Amount due', month.amount_due ?? '-'],
+            ['In progress', month.in_progress ? 'Yes — still running' : 'No — final'],
+          ]} />
         ) : null}
-        <Row
-          title="Payment method"
-          subtitle={billing?.provider?.connected ? `${billing.provider.name} connected` : 'No card saved'}
-          trailing={<Button className="btn btn--secondary agent-btn" onClick={() => toast('Payment setup is not connected in this preview.', 'warn')}>Add payment method</Button>}
-        />
-        <Row
-          title="Billing email"
-          subtitle={billing?.email || billing?.subscription?.email || 'Not set'}
-          trailing={<span className="sub">Edit in Usage</span>}
-        />
-        <Row title="Invoices" subtitle="No invoices yet. Receipts will appear after actual billing begins." />
+        <Row title="Payment method" subtitle={paymentSub} />
+        <Row title="Billing email" subtitle={billing.email || subscription?.email || 'Not set'} />
+        <Row title="Invoices" subtitle={invoiceSub} />
         <div className="dialog-actions">
           <a className="btn btn--secondary agent-btn" href="#/usage">Open usage &amp; statement</a>
-          {billing?.manage?.action === 'authorise' && billing.manage.url ? (
-            <a className="btn btn--primary action" href={billing.manage.url} target="_blank" rel="noopener noreferrer">Authorise billing</a>
+          {manage?.action === 'authorise' && manage.url ? (
+            <a className="btn btn--primary action" href={manage.url} target="_blank" rel="noopener noreferrer">Authorise billing</a>
           ) : null}
+          {manage?.action === 'statement' ? <Note text="See Usage & Billing for the full statement." /> : null}
           <Button className="btn btn--secondary agent-btn" onClick={onClose}>Close</Button>
         </div>
-        <p className="sample-label">Design concept only. No charges, payment methods, or subscriptions are created.</p>
       </div>
     </Dialog>
+  );
+}
+
+function CardRowStatus({ state }) {
+  if (!state) return null;
+  return (
+    <div className="row wrap">
+      <Badge text={state.state || 'unknown'} tone={state.state === 'active' ? 'good' : state.state === 'no_plan' ? 'neutral' : 'warn'} />
+      {state.detail ? <span className="sub">{state.detail}</span> : null}
+    </div>
   );
 }
 
@@ -286,7 +362,7 @@ function JobberSetupDialog({ item, onClose, onChanged }) {
   return (
     <Dialog title="Jobber integration" onClose={onClose}>
       <div className="stack">
-        <p>Connect your business account through a supported provider integration. Access, API availability, and supported records must be verified for your account.</p>
+        <p>Connect your business account through a supported provider integration.</p>
         <p className="sub">{data?.detail || 'Supported data and permissions to be confirmed with the provider.'}</p>
         {data?.state === 'connected' ? (
           <Details rows={[
@@ -303,29 +379,54 @@ function JobberSetupDialog({ item, onClose, onChanged }) {
           {writer && data?.state === 'connected' ? <ActionButton className="btn btn--ghost" action={disconnect}>Disconnect</ActionButton> : null}
           <Button className="btn btn--secondary agent-btn" onClick={onClose}>Close</Button>
         </div>
-        <p className="sample-label">Connection previews only when the provider is unavailable. Live Jobber connect uses your company credentials.</p>
+        <p className="sample-label">Live Jobber connect uses your company credentials when the provider is available.</p>
       </div>
     </Dialog>
   );
 }
 
-function ServiceTitanSetupDialog({ item, onClose }) {
+function ServiceTitanSetupDialog({ item, onClose, onSaved }) {
+  const existingPref = item?.plan?.update_preference || 'review_before_sync';
+  const [plan, setPlan] = useState(item?.plan || null);
   const [records, setRecords] = useState(item?.plan?.records || []);
-  const [preference, setPreference] = useState(item?.plan?.update_preference || 'review_before_sync');
+  const [preference, setPreference] = useState(existingPref);
   const [busy, run] = useRun();
   const writer = can('admin');
 
+  const preferenceOptions = ST_PREFERENCES.some(([v]) => v === preference)
+    ? ST_PREFERENCES
+    : [...ST_PREFERENCES, [preference, preference]];
+
   const save = () => run(async () => {
-    await api('/v1/settings/integrations/servicetitan/plan', { method: 'PUT', body: { records, update_preference: preference } });
+    const out = await api('/v1/settings/integrations/servicetitan/plan', {
+      method: 'PUT',
+      body: { records, update_preference: preference },
+    });
+    const nextPlan = out?.plan || { records, update_preference: preference, updated_at: new Date().toISOString() };
+    setPlan(nextPlan);
+    onSaved?.(nextPlan);
     toast('Saved. This only records what you want — it does not connect anything.');
-    onClose?.();
+  });
+
+  const remove = () => run(async () => {
+    await api('/v1/settings/integrations/servicetitan/plan', { method: 'DELETE' });
+    setPlan(null);
+    setRecords([]);
+    setPreference('review_before_sync');
+    onSaved?.(null);
+    toast('Removed.');
   });
 
   return (
     <Dialog title="ServiceTitan integration" onClose={onClose}>
       <div className="stack">
-        <p>Connect your business account through a supported provider integration. Access, API availability, and supported records must be verified for your account.</p>
-        <Note tone="neutral" text="ServiceTitan cannot be connected yet. This only records a sample connection plan — no credentials are collected and nothing syncs." />
+        <p>ServiceTitan cannot be connected yet. You can record a connection plan for later — no credentials are collected and nothing syncs.</p>
+        {plan ? (
+          <p className="sub">
+            Currently recorded: {(plan.records || []).join(', ') || 'nothing'}, preference: {plan.update_preference}
+            {plan.updated_at ? ` (updated ${formatDateTime(plan.updated_at)})` : ''}.
+          </p>
+        ) : null}
         {writer ? (
           <>
             <div className="field">
@@ -346,7 +447,7 @@ function ServiceTitanSetupDialog({ item, onClose }) {
             </div>
             <Field label="Update preference">
               <Select
-                options={[['review_before_sync', 'Review before sync'], ['import_only', 'Import to Rytsense only']]}
+                options={preferenceOptions}
                 disabled={busy}
                 value={preference}
                 onChange={(e) => setPreference(e.target.value)}
@@ -355,20 +456,38 @@ function ServiceTitanSetupDialog({ item, onClose }) {
           </>
         ) : null}
         <div className="dialog-actions">
-          {writer ? <ActionButton className="btn btn--primary action" disabled={!records.length} action={save}>Save sample connection plan</ActionButton> : null}
+          {writer && plan ? <ActionButton className="btn btn--ghost" action={remove}>Remove</ActionButton> : null}
+          {writer ? <ActionButton className="btn btn--primary action" disabled={!records.length} action={save}>Save connection plan</ActionButton> : null}
           <Button className="btn btn--secondary agent-btn" onClick={onClose}>Close</Button>
         </div>
-        <p className="sample-label">These are proposed options, not a statement of provider capabilities.</p>
+        <p className="sample-label">Proposed options only — not a statement of provider capabilities.</p>
       </div>
     </Dialog>
   );
 }
 
-function integrationSubtitle(item, fallbackName) {
-  if (!item) return `Not connected · Supported data and permissions to be confirmed with the provider`;
+function integrationSubtitle(item) {
+  if (!item) return 'Not connected · Supported data and permissions to be confirmed with the provider';
+  if (item.id === 'servicetitan' || item.name === 'ServiceTitan') {
+    if (item.plan) return `Plan recorded · ${item.plan.update_preference || 'review_before_sync'} · Not connected`;
+    return item.detail || 'Not connected · Supported data and permissions to be confirmed with the provider';
+  }
   const status = item.state === 'connected' ? 'Connected' : (item.state === 'needs_login' ? 'Needs login' : 'Not connected');
   const detail = item.detail || 'Supported data and permissions to be confirmed with the provider';
   return `${status} · ${detail}`;
+}
+
+function patchIntegrationsItem(data, id, patch) {
+  if (!data?.integrations) return data;
+  const items = (data.integrations.items || []).map((item) => (item.id === id ? { ...item, ...patch } : item));
+  const found = items.some((item) => item.id === id);
+  return {
+    ...data,
+    integrations: {
+      ...data.integrations,
+      items: found ? items : [...items, { id, ...patch }],
+    },
+  };
 }
 
 // ---------- Page ----------
@@ -398,7 +517,7 @@ export default function Settings() {
   if (!can('admin')) {
     return (
       <>
-        <PageHeader eyebrow="WORKSPACE" title="Settings" subtitle="Review sample workspace settings." meta={<span className="date">Preview only</span>} />
+        <PageHeader eyebrow="WORKSPACE" title="Settings" subtitle="Company profile, hours, billing, and integrations." />
         <Note tone="warn" text="Not available for your role." />
       </>
     );
@@ -407,26 +526,59 @@ export default function Settings() {
   const { status, data, error } = state;
   const rows = settingsRowsFromData(data);
   const billing = data?.billing;
-  const planName = billing?.plan?.name || billing?.plan?.text || 'Professional';
-  const planTitle = String(planName).includes('Example') || String(planName).includes('·')
-    ? String(planName)
-    : `${planName} · Example plan`;
+  const planTitle = planTitleFromBilling(billing);
   const providerConnected = !!billing?.provider?.connected;
   const stItem = data?.integrations?.items?.find((i) => i.id === 'servicetitan');
   const automationCount = data?.automation?.needs_review?.total
     ?? data?.automation_pending
     ?? null;
+  const billingBadge = billing?.state?.state === 'active'
+    ? { text: billing.state.state, tone: 'good' }
+    : (providerConnected ? { text: 'Connected', tone: 'good' } : { text: 'Demo account', tone: 'warn' });
 
   const openRow = (id) => setDialog({ kind: id });
   const close = () => setDialog(null);
+
+  const onHoursSaved = (out) => {
+    setState((s) => ({
+      ...s,
+      data: {
+        ...s.data,
+        hours: out,
+      },
+    }));
+  };
+
+  const onServiceTitanSaved = (plan) => {
+    setState((s) => ({
+      ...s,
+      data: patchIntegrationsItem(s.data, 'servicetitan', {
+        id: 'servicetitan',
+        name: 'ServiceTitan',
+        state: 'not_connected',
+        plan,
+        detail: plan
+          ? `Plan recorded · ${plan.update_preference || 'review_before_sync'}`
+          : 'Not connected · Supported data and permissions to be confirmed with the provider',
+      }),
+    }));
+  };
+
+  const onJobberChanged = (next) => {
+    setJobber(next);
+    setState((s) => ({
+      ...s,
+      data: patchIntegrationsItem(s.data, 'jobber', { ...next, id: 'jobber', name: 'Jobber' }),
+    }));
+  };
 
   return (
     <>
       <PageHeader
         eyebrow="WORKSPACE"
         title="Settings"
-        subtitle="Review sample workspace settings."
-        meta={<span className="date">Preview only</span>}
+        subtitle="Company profile, hours, notifications, billing, and integrations."
+        meta={<span className="date">Live workspace</span>}
       />
 
       {status === 'loading' && !data ? <Spinner /> : null}
@@ -448,7 +600,7 @@ export default function Settings() {
               />
             ))}
           </Panel>
-          <p className="foot">Sample settings; changes are not connected to a real business.</p>
+          <p className="foot">Profile and hours edits save to your company. Billing and integration status come from live APIs when available.</p>
 
           <Panel className="settings-panel">
             <PanelHead title="Billing & payments" subtitle="Manage your product subscription and billing details">
@@ -458,8 +610,8 @@ export default function Settings() {
             </PanelHead>
             <Row
               title={planTitle}
-              subtitle={providerConnected ? `${billing.provider.name} connected` : 'No payment provider connected'}
-              trailing={<Badge text="Demo account" tone="warn" />}
+              subtitle={providerConnected ? `${billing.provider.name} connected` : (billing?.provider ? 'No payment provider connected' : (billing ? 'No payment provider connected' : 'Billing unavailable'))}
+              trailing={<Badge text={billingBadge.text} tone={billingBadge.tone} />}
             />
           </Panel>
 
@@ -467,7 +619,7 @@ export default function Settings() {
             <PanelHead title="Integrations" subtitle="Connect your field-service software" />
             <Row
               title="ServiceTitan"
-              subtitle={integrationSubtitle(stItem, 'ServiceTitan')}
+              subtitle={integrationSubtitle(stItem)}
               trailing={(
                 <button type="button" className="btn btn--secondary agent-btn" onClick={() => setDialog({ kind: 'servicetitan' })}>
                   {stItem?.plan ? 'Manage' : 'Set up'}
@@ -476,14 +628,14 @@ export default function Settings() {
             />
             <Row
               title="Jobber"
-              subtitle={integrationSubtitle(jobber, 'Jobber')}
+              subtitle={integrationSubtitle(jobber)}
               trailing={(
                 <button type="button" className="btn btn--secondary agent-btn" onClick={() => setDialog({ kind: 'jobber' })}>
                   {jobber?.state === 'connected' ? 'Manage' : 'Set up'}
                 </button>
               )}
             />
-            <p className="sample-label settings-panel__note">Connection previews only. No account authorization or data synchronization occurs.</p>
+            <p className="sample-label settings-panel__note">ServiceTitan plans are recorded only. Jobber can connect when the provider is available.</p>
           </Panel>
 
           <Panel className="settings-panel">
@@ -502,7 +654,7 @@ export default function Settings() {
       {dialog?.kind === 'profile' ? (
         <Dialog title="Business profile" onClose={close}>
           <ProfileEditor
-            profile={data?.profile || { name: 'Comfort Home Services', name_in_texts: 'Comfort Home' }}
+            profile={data?.profile || {}}
             onSaved={(out) => setState((s) => ({ ...s, data: { ...s.data, profile: { ...s.data?.profile, ...out } } }))}
             onClose={close}
           />
@@ -510,18 +662,19 @@ export default function Settings() {
       ) : null}
       {dialog?.kind === 'hours' ? (
         <Dialog title="Business hours" onClose={close} wide>
-          <HoursEditor onClose={close} />
+          <HoursEditor onClose={close} onSaved={onHoursSaved} />
         </Dialog>
       ) : null}
       {dialog?.kind === 'notifications' ? (
         <SimpleListDialog
           title="Notifications"
-          text={data?.notifications?.text || 'Example email notifications'}
+          text={data?.notifications?.text}
           columns={['Notification', 'Detail', 'Status']}
           items={(data?.notifications?.items || []).map((n) => [
             n.name, n.detail || '-', <Badge text={n.on ? 'On' : 'Off'} tone={n.on ? 'good' : 'neutral'} />,
           ])}
           empty="No notifications configured."
+          footnote="Read-only notification configuration from your workspace."
           onClose={close}
         />
       ) : null}
@@ -534,6 +687,7 @@ export default function Settings() {
             c.name, c.detail || '-', <Badge text={c.connected ? 'Connected' : 'Not connected'} tone={c.connected ? 'good' : 'neutral'} />,
           ])}
           empty="Nothing connected yet."
+          footnote="Read-only connected-systems list from your workspace."
           onClose={close}
         />
       ) : null}
@@ -548,7 +702,7 @@ export default function Settings() {
                 ))}
               </div>
             ) : null}
-            <p className="sample-label">Preview only. No live settings or integration are connected.</p>
+            <p className="sample-label">Team members are managed on Team &amp; dispatch.</p>
             <div className="dialog-actions">
               <a className="btn btn--secondary agent-btn" href="#/team" onClick={close}>Open team management</a>
               <Button className="btn btn--secondary agent-btn" onClick={close}>Close</Button>
@@ -558,10 +712,10 @@ export default function Settings() {
       ) : null}
       {dialog?.kind === 'billing' ? <BillingDialog billing={billing} onClose={close} /> : null}
       {dialog?.kind === 'jobber' ? (
-        <JobberSetupDialog item={jobber} onClose={close} onChanged={setJobber} />
+        <JobberSetupDialog item={jobber} onClose={close} onChanged={onJobberChanged} />
       ) : null}
       {dialog?.kind === 'servicetitan' ? (
-        <ServiceTitanSetupDialog item={stItem} onClose={close} />
+        <ServiceTitanSetupDialog item={stItem} onClose={close} onSaved={onServiceTitanSaved} />
       ) : null}
     </>
   );

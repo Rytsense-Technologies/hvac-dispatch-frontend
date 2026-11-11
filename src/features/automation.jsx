@@ -1,4 +1,5 @@
 // Admin automation: nested under Settings — Needs review + Completed history matching the reference.
+// Live queue stays honest: empty means empty; samples only when "Show sample queue" is on.
 import { useEffect, useRef, useState } from 'react';
 import { api } from '../lib/api.js';
 import { timeAgo } from '../lib/format.js';
@@ -97,38 +98,49 @@ function itemSubtitle(item) {
   return detail || status || '';
 }
 
-function ReviewDialog({ item, onClose, reload }) {
+function ReviewDialog({ item, history = false, onClose, onSampleComplete, reload }) {
   const dialog = item.dialog || {};
-  const [text, setText] = useState(dialog.proposed || item.proposed?.text || '');
+  const [text, setText] = useState(dialog.proposed || item.proposed?.text || item.result || '');
   const sample = item.sample || String(item.id || '').startsWith('sample_');
   const writer = can('admin', 'dispatcher');
+  const readOnly = history || !writer;
 
   return (
-    <Dialog title={`Review · ${item.heading || item.title || 'Action'}`} onClose={onClose} wide>
+    <Dialog
+      title={`${history ? 'Action history' : 'Review'} · ${item.heading || item.title || 'Action'}`}
+      onClose={onClose}
+      wide
+    >
       <div className="stack">
         <p>
           <strong>{customerLine(dialog.customer) || itemTitle(item)}</strong>
           <br />
-          {item.line || item.text || ''}
+          {item.line || item.text || item.details || ''}
           {item.source ? <><br />Source: {item.source}</> : null}
           {item.status ? <><br />Status: {item.status.label || item.status}</> : null}
+          {history && item.decided_by ? <><br />Reviewed by {item.decided_by}{item.decided_at ? ` · ${timeAgo(item.decided_at)}` : ''}</> : null}
         </p>
-        <p className="sub">Review the proposed action. Approval records a simulated result only when the provider is not connected.</p>
-        {dialog.proposed_label ? (
-          <Field label={dialog.proposed_label}>
-            {dialog.editable !== false ? (
-              <textarea maxLength={1000} rows={5} value={text} onChange={(e) => setText(e.target.value)} />
+        {history ? (
+          <p className="sub">Read-only history. No message was sent and no business record was changed unless your live provider recorded otherwise.</p>
+        ) : (
+          <p className="sub">Review the proposed action before approving or rejecting.</p>
+        )}
+        {(dialog.proposed_label || dialog.proposed || item.proposed?.text || item.result) ? (
+          <Field label={dialog.proposed_label || (history ? 'Recorded action' : 'Proposed action or message')}>
+            {readOnly || dialog.editable === false ? (
+              <p>{text || dialog.proposed || item.result || '-'}</p>
             ) : (
-              <p>{dialog.proposed}</p>
+              <textarea maxLength={1000} rows={5} value={text} onChange={(e) => setText(e.target.value)} />
             )}
           </Field>
         ) : null}
         <div className="dialog-actions">
-          {writer ? (
+          {!history && writer ? (
             <ActionButton
               className="btn btn--primary action"
               action={async () => {
                 if (sample) {
+                  onSampleComplete?.(item.id, 'approved');
                   toast('Approved in the demo. Nothing was sent.');
                   onClose();
                   return;
@@ -139,13 +151,13 @@ function ReviewDialog({ item, onClose, reload }) {
                 await api(item.api.approve, { method: 'POST', body: dialog.editable ? { text: text.trim() } : {} });
                 toast('Done.');
                 onClose();
-                reload();
+                reload?.();
               }}
             >
-              {dialog.approve?.label || 'Approve sample action'}
+              {dialog.approve?.label || 'Approve'}
             </ActionButton>
           ) : null}
-          {writer && dialog.editable !== false ? (
+          {!history && writer && dialog.editable !== false ? (
             <ActionButton
               className="btn btn--secondary agent-btn"
               action={async () => {
@@ -159,17 +171,18 @@ function ReviewDialog({ item, onClose, reload }) {
                   toast('Saved.');
                 }
                 onClose();
-                reload();
+                reload?.();
               }}
             >
               Save edit
             </ActionButton>
           ) : null}
-          {writer ? (
+          {!history && writer ? (
             <ActionButton
               className="btn btn--secondary agent-btn"
               action={async () => {
                 if (sample) {
+                  onSampleComplete?.(item.id, 'rejected');
                   toast('Sample action rejected.');
                   onClose();
                   return;
@@ -177,7 +190,7 @@ function ReviewDialog({ item, onClose, reload }) {
                 await api(item.api.dismiss || item.api.reject, { method: 'POST', body: {} });
                 toast('Rejected.');
                 onClose();
-                reload();
+                reload?.();
               }}
             >
               {dialog.reject?.label || 'Reject'}
@@ -185,7 +198,13 @@ function ReviewDialog({ item, onClose, reload }) {
           ) : null}
           <Button className="btn btn--secondary agent-btn" onClick={onClose}>Close</Button>
         </div>
-        <p className="sample-label">No message is sent and no business record is updated unless your live automation provider is connected.</p>
+        {sample ? (
+          <p className="sample-label">Demo state only. No message is sent and no business record is updated.</p>
+        ) : history ? (
+          <p className="sample-label">Completed actions cannot be approved or rejected again from this view.</p>
+        ) : (
+          <p className="sample-label">Approving or rejecting updates your live automation queue when the API is connected.</p>
+        )}
       </div>
     </Dialog>
   );
@@ -193,19 +212,23 @@ function ReviewDialog({ item, onClose, reload }) {
 
 export default function Automation() {
   const [state, setState] = useState({ status: 'loading' });
-  const [reviewId, setReviewId] = useState(null);
+  const [reviewTarget, setReviewTarget] = useState(null); // { id, history }
+  const [demoMode, setDemoMode] = useState(false);
   const [sampleDone, setSampleDone] = useState([]);
   const latest = useRef(0);
 
   const load = async (quiet) => {
     latest.current += 1;
     const mine = latest.current;
-    if (!quiet) setState({ status: 'loading' });
+    if (!quiet) setState((s) => ({ ...s, status: 'loading' }));
     try {
       const data = await api('/v1/automation');
       if (mine === latest.current) setState({ status: 'ready', data });
     } catch (error) {
-      if (mine === latest.current) setState({ status: 'error', error, data: null });
+      // Keep prior data on quiet poll failures so the queue does not vanish; still surface the error.
+      if (mine === latest.current) {
+        setState((s) => ({ status: 'error', error, data: quiet ? s.data : null }));
+      }
     }
   };
   useEffect(() => { load(); return () => { latest.current += 1; }; }, []);
@@ -215,32 +238,29 @@ export default function Automation() {
     return (
       <>
         <p className="settings-back"><a className="link" href="#/settings">← Back to Settings</a></p>
-        <PageHeader eyebrow="OFFICE OPERATIONS" title="Admin automation" subtitle="Review actions prepared for your office." meta={<span className="date">Sample workspace</span>} />
+        <PageHeader eyebrow="OFFICE OPERATIONS" title="Admin automation" subtitle="Review actions prepared for your office." />
         <Note text="Not available for your role." tone="warn" />
       </>
     );
   }
 
-  const live = state.status === 'ready' && state.data;
+  const live = !!state.data;
   const liveReview = live ? (state.data.needs_review?.items || []) : [];
   const liveHistory = live ? (state.data.history?.items || []) : [];
-  const hasLiveItems = liveReview.length > 0 || liveHistory.length > 0;
-  // After the request settles, fall back to illustrative rows when the queue is empty or the API failed.
-  const usingSamples = state.status !== 'loading' && !hasLiveItems;
 
-  const displayReview = usingSamples
-    ? SAMPLE_REVIEW.filter((x) => !sampleDone.includes(x.id))
-    : liveReview;
-  const displayHistory = usingSamples
-    ? SAMPLE_REVIEW.filter((x) => sampleDone.includes(x.id)).map((x) => ({
-      ...x,
-      title: itemTitle(x),
-      status: 'Completed · simulated',
-      result: 'Sample only',
-      decided_by: 'James M.',
-      decided_at: new Date().toISOString(),
-    }))
-    : liveHistory;
+  const samplePending = SAMPLE_REVIEW.filter((x) => !sampleDone.includes(x.id));
+  const sampleHistory = SAMPLE_REVIEW.filter((x) => sampleDone.includes(x.id)).map((x) => ({
+    ...x,
+    title: itemTitle(x),
+    status: 'Completed · simulated',
+    result: 'Sample only',
+    decided_by: 'James M.',
+    decided_at: new Date().toISOString(),
+    history: true,
+  }));
+
+  const displayReview = demoMode ? samplePending : liveReview;
+  const displayHistory = demoMode ? sampleHistory : liveHistory;
 
   const notAvailableText = live
     ? (Array.isArray(state.data.not_available)
@@ -250,9 +270,13 @@ export default function Automation() {
         : state.data.not_available))
     : null;
 
-  const activeItem = reviewId
-    ? [...displayReview, ...displayHistory, ...SAMPLE_REVIEW].find((x) => x.id === reviewId)
+  const activeItem = reviewTarget
+    ? [...displayReview, ...displayHistory, ...SAMPLE_REVIEW].find((x) => x.id === reviewTarget.id)
     : null;
+
+  const completeSample = (id) => {
+    setSampleDone((ids) => (ids.includes(id) ? ids : [...ids, id]));
+  };
 
   return (
     <>
@@ -261,14 +285,26 @@ export default function Automation() {
         eyebrow="OFFICE OPERATIONS"
         title="Admin automation"
         subtitle="Review actions prepared for your office."
-        meta={<span className="date">Sample workspace</span>}
-      />
+        meta={demoMode ? <span className="date">Demo queue</span> : <span className="date">Live queue</span>}
+      >
+        <button
+          type="button"
+          className={`btn btn--secondary agent-btn${demoMode ? ' filter--on' : ''}`}
+          aria-pressed={demoMode}
+          onClick={() => setDemoMode((v) => !v)}
+        >
+          {demoMode ? 'Hide sample queue' : 'Show sample queue'}
+        </button>
+      </PageHeader>
 
-      {state.status === 'loading' ? <Spinner /> : null}
-      {state.status === 'error' && !usingSamples ? <ErrorBox error={state.error} /> : null}
-      {notAvailableText ? <Note text={notAvailableText} tone="neutral" /> : null}
+      {state.status === 'loading' && !state.data ? <Spinner /> : null}
+      {state.status === 'error' ? <ErrorBox error={state.error} /> : null}
+      {notAvailableText && !demoMode ? <Note text={notAvailableText} tone="neutral" /> : null}
+      {demoMode ? (
+        <Note tone="info" text="Demo queue is illustrative only. It is separate from your live automation items and does not call the API." />
+      ) : null}
 
-      {state.status !== 'loading' ? (
+      {state.status !== 'loading' || state.data || demoMode ? (
         <>
           <Panel>
             <h2 className="settings-section-title">Needs review · {displayReview.length}</h2>
@@ -282,14 +318,18 @@ export default function Automation() {
                   <button
                     type="button"
                     className="btn btn--secondary agent-btn"
-                    onClick={() => setReviewId(item.id)}
+                    onClick={() => setReviewTarget({ id: item.id, history: false })}
                     aria-label={`Review ${itemTitle(item)}`}
                   >
                     Review →
                   </button>
                 )}
               />
-            )) : <p className="sub empty-inline">All sample actions have been reviewed.</p>}
+            )) : (
+              <p className="sub empty-inline">
+                {demoMode ? 'All sample actions have been reviewed.' : 'Nothing needs review.'}
+              </p>
+            )}
           </Panel>
 
           <Panel className="settings-panel">
@@ -301,28 +341,37 @@ export default function Automation() {
                 title={h.title || itemTitle(h)}
                 subtitle={[h.result || h.line, h.status, h.decided_by, h.decided_at ? timeAgo(h.decided_at) : null].filter(Boolean).join(' · ')}
                 trailing={h.id ? (
-                  <button type="button" className="btn btn--secondary agent-btn" onClick={() => setReviewId(h.id)}>
+                  <button
+                    type="button"
+                    className="btn btn--secondary agent-btn"
+                    onClick={() => setReviewTarget({ id: h.id, history: true })}
+                  >
                     View history →
                   </button>
                 ) : null}
               />
-            )) : <p className="sub empty-inline">No completed sample actions.</p>}
+            )) : (
+              <p className="sub empty-inline">
+                {demoMode ? 'No completed sample actions.' : 'No history yet.'}
+              </p>
+            )}
           </Panel>
 
-          <p className="foot">Simulated actions only. No business system is connected.</p>
+          <p className="foot">
+            {demoMode
+              ? 'Simulated actions only. No business system is connected.'
+              : 'Live automation queue from your workspace.'}
+          </p>
         </>
       ) : null}
 
       {activeItem ? (
         <ReviewDialog
           item={activeItem}
-          onClose={() => setReviewId(null)}
-          reload={() => {
-            if (activeItem.sample) {
-              setSampleDone((ids) => (ids.includes(activeItem.id) ? ids : [...ids, activeItem.id]));
-            }
-            load(true);
-          }}
+          history={!!reviewTarget?.history}
+          onClose={() => setReviewTarget(null)}
+          onSampleComplete={completeSample}
+          reload={() => load(true)}
         />
       ) : null}
     </>
