@@ -4005,11 +4005,36 @@ button.slot.booked:hover { text-decoration: underline; }
 }
 .tracking-activity { margin-top: 16px; }
 
+.tracking-visits {
+  margin-top: 16px;
+}
+.tracking-visits .tracking-day-nav {
+  gap: 8px;
+  align-items: center;
+}
+.tracking-visits .tracking-day-nav input[type="date"] {
+  font: inherit;
+  padding: 6px 10px;
+  border: 1px solid var(--border, #d5e0e8);
+  border-radius: 8px;
+  background: var(--surface, #fff);
+  color: inherit;
+}
+.tracking-visits-stats {
+  margin: 12px 0 16px;
+}
+.team-users-page {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
 @media (max-width: 700px) {
   .team-person-actions { margin-left: 46px; width: calc(100% - 46px); }
   .team-person-actions .btn { flex: 1 1 auto; }
   .schedule-days { grid-template-columns: 1fr; }
   .tracking-layout { grid-template-columns: 1fr; }
+  .tracking-visits .tracking-day-nav { width: 100%; }
 }
 
 @media print {

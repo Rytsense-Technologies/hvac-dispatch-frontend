@@ -1,10 +1,14 @@
 // Team → Tracking nested view. Layout matches the reference schematic map + tech list + activity log.
-// Uses /v1/team/tracking when available; copy stays accurate about live vs illustrative location data.
+// Live feed: /v1/team/tracking. Day visits (booked vs actual): /v1/dispatch/tracking/summary + jobs.
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { api } from '../lib/api.js';
-import { timeAgo } from '../lib/format.js';
 import {
-  Badge, Button, Empty, ErrorBox, Panel, Spinner,
+  percent, todayIn, addDays, formatTime, lateness, PROGRESS, timeAgo,
+} from '../lib/format.js';
+import { useEvery } from '../lib/hooks.js';
+import {
+  Badge, Button, Empty, ErrorBox, Panel, PanelHead, Spinner,
+  ProgressBadge, ArrivalBadge, DataTable, StatGrid,
 } from '../components/index.js';
 
 const STATUS_TONE = {
@@ -65,6 +69,115 @@ function useTeamTracking(active) {
     return () => { seq.current += 1; };
   }, [active]);
   return state;
+}
+
+/** Pre-design dispatch tracking: booked vs actual for a chosen day. */
+function useDispatchVisits(active) {
+  const [day, setDay] = useState(todayIn);
+  const [state, setState] = useState({ status: 'idle' });
+  const latest = useRef(0);
+  const dayRef = useRef(day);
+  dayRef.current = day;
+
+  const load = async (quiet) => {
+    if (!active) return;
+    latest.current += 1;
+    const mine = latest.current;
+    const current = dayRef.current;
+    if (!quiet) setState({ status: 'loading' });
+    try {
+      const [summary, list] = await Promise.all([
+        api('/v1/dispatch/tracking/summary', { params: { date: current } }),
+        api('/v1/dispatch/jobs', { params: { date: current, limit: 500 } }),
+      ]);
+      const jobs = (list.jobs || [])
+        .filter((j) => j.status !== 'pending')
+        .sort((a, b) => (a.scheduled_at || '').localeCompare(b.scheduled_at || ''));
+      if (mine === latest.current) setState({ status: 'ready', summary, jobs });
+    } catch (error) {
+      if (mine === latest.current) setState({ status: 'error', error });
+    }
+  };
+
+  useEffect(() => {
+    if (!active) return undefined;
+    load();
+    return () => { latest.current += 1; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [active, day]);
+  useEvery(() => { if (active) load(true); }, 30000);
+
+  return { day, setDay, state };
+}
+
+function VisitsPanel({ active }) {
+  const { day, setDay, state } = useDispatchVisits(active);
+  if (!active) return null;
+
+  let body;
+  if (state.status === 'loading' || state.status === 'idle') body = <Spinner />;
+  else if (state.status === 'error') body = <ErrorBox error={state.error} />;
+  else {
+    const { summary, jobs } = state;
+    body = (
+      <>
+        <StatGrid
+          className="tracking-visits-stats"
+          items={[
+            ...Object.entries(PROGRESS).filter(([key]) => key in (summary.by_progress || {})).map(([key, [label]]) => [label, summary.by_progress[key]]),
+            ['Average lateness', summary.average_minutes_late === null || summary.average_minutes_late === undefined ? '—' : `${summary.average_minutes_late} min`],
+            [`On time (within ${summary.grace_minutes ?? '—'} min)`, percent(summary.on_time_share)],
+          ]}
+        />
+        {jobs.length ? (
+          <DataTable
+            label="Visits for the day"
+            head={['Technician', 'Customer', 'Planned', 'Progress', 'On the way', 'Arrived', 'Finished', 'Against plan']}
+            rows={jobs.map((j) => [
+              <strong key="tech">{j.technician_name || '—'}</strong>,
+              j.customer_name || '—',
+              formatTime(j.scheduled_at),
+              <ProgressBadge key="prog" progress={j.progress} />,
+              formatTime(j.en_route_at),
+              formatTime(j.arrived_at),
+              formatTime(j.completed_at),
+              j.arrived_at ? (
+                <span className="row wrap" key="late">
+                  <Badge
+                    text={lateness(j.minutes_late)}
+                    tone={j.within_window === false || j.minutes_late > summary.grace_minutes ? 'bad' : 'good'}
+                  />
+                  <ArrivalBadge check={j.arrival_check} metres={j.arrival_distance_meters} />
+                </span>
+              ) : '—',
+            ])}
+          />
+        ) : <Empty text="No booked visits on this day." />}
+      </>
+    );
+  }
+
+  return (
+    <Panel className="tracking-visits" as="section">
+      <PanelHead
+        title="Today's visits"
+        subtitle="Booked against actual, updated as technicians report in"
+      >
+        <div className="tracking-day-nav row wrap">
+          <Button className="btn btn--secondary agent-btn" aria-label="Previous day" onClick={() => setDay((d) => addDays(d, -1))}>‹</Button>
+          <input
+            type="date"
+            aria-label="Day"
+            value={day}
+            onChange={(e) => { if (e.target.value) setDay(e.target.value); }}
+          />
+          <Button className="btn btn--secondary agent-btn" aria-label="Next day" onClick={() => setDay((d) => addDays(d, 1))}>›</Button>
+          <Button className="btn btn--secondary agent-btn" onClick={() => setDay(todayIn())}>Today</Button>
+        </div>
+      </PanelHead>
+      {body}
+    </Panel>
+  );
 }
 
 /**
@@ -197,7 +310,7 @@ export default function TeamTracking({ onBack, active = true }) {
         <div className="page-header__copy">
           <p className="page-header__eyebrow">TEAM &amp; DISPATCH</p>
           <h1>Technician tracking</h1>
-          <p className="muted page-header__subtitle">Follow location freshness and service status in one place.</p>
+          <p className="muted page-header__subtitle">Follow location freshness, service status, and booked visits in one place.</p>
         </div>
         <div className="page-actions">
           <Button className="btn btn--secondary agent-btn" onClick={onBack}>Back to team</Button>
@@ -274,8 +387,10 @@ export default function TeamTracking({ onBack, active = true }) {
         </>
       ) : null}
 
+      <VisitsPanel active={active} />
+
       <p className="page-foot">
-        Real tracking requires a technician app, location permission, a secure backend, and a location feed.
+        Location feed uses the team tracking API. Visit progress uses dispatch tracking summary and jobs for the selected day. Real GPS requires a technician app, location permission, and a secure location feed.
       </p>
     </div>
   );

@@ -16,6 +16,7 @@ export const SECTIONS = [
   { id: 'tasks', label: 'Tasks', icon: 'work', view: lazy(() => import('../features/tasks.jsx')), hideNav: true, sectionGroup: 'work', crumbParent: 'Work' },
   { id: 'appointments', label: 'Appointments', icon: 'work', view: lazy(() => import('../features/appointments.jsx')), hideNav: true, sectionGroup: 'work', crumbParent: 'Work' },
   { id: 'team', label: 'Team & dispatch', icon: 'team', view: lazy(() => import('../features/team.jsx')) },
+  { id: 'users', label: 'Accounts & technicians', icon: 'team', view: lazy(() => import('../features/users.jsx')), hideNav: true, crumbParent: 'Team & dispatch' },
   { id: 'customers', label: 'Customers', icon: 'customers', view: lazy(() => import('../features/customers.jsx')) },
 
   // MANAGE
@@ -33,7 +34,7 @@ export const NAV_ITEMS = [
   { id: 'campaigns', label: 'Campaigns', icon: 'campaigns', href: '#/campaigns', match: ['campaigns'] },
   { id: 'calls', label: 'Calls', icon: 'calls', href: '#/calls', match: ['calls', 'numbers'] },
   { id: 'work', label: 'Work', icon: 'work', href: '#/work', match: ['tasks', 'appointments'] },
-  { id: 'team', label: 'Team & dispatch', icon: 'team', href: '#/team', match: ['team'] },
+  { id: 'team', label: 'Team & dispatch', icon: 'team', href: '#/team', match: ['team', 'users'] },
   { id: 'customers', label: 'Customers', icon: 'customers', href: '#/customers', match: ['customers'] },
   { id: 'copilot', label: 'AI Coworker', icon: 'copilot', href: '#/copilot', group: 'manage', match: ['copilot'] },
   { id: 'reports', label: 'Reports', icon: 'reports', href: '#/reports', group: 'manage', match: ['reports'] },
@@ -55,7 +56,7 @@ export const MOBILE_PRIMARY = [
   { id: 'overview', label: 'Home', icon: 'overview', href: '#/overview', match: ['overview'] },
   { id: 'work', label: 'Work', icon: 'work', href: '#/work', match: ['tasks', 'appointments'] },
   { id: 'calls', label: 'Calls', icon: 'calls', href: '#/calls', match: ['calls', 'numbers'] },
-  { id: 'team', label: 'Team', icon: 'team', href: '#/team', match: ['team'] },
+  { id: 'team', label: 'Team', icon: 'team', href: '#/team', match: ['team', 'users'] },
 ];
 
 export const MOBILE_MORE = [
@@ -75,6 +76,8 @@ const HASH_ALIASES = {
   'work/appointments': 'appointments',
   'calls/history': 'calls',
   'calls/numbers': 'numbers',
+  'team/users': 'users',
+  users: 'users',
 };
 
 /** Resolve location.hash to a SECTIONS id. */

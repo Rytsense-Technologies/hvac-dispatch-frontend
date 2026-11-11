@@ -19,4 +19,5 @@ export const SECTION_ROLES = {
   numbers: ['admin'],
   automation: ['admin'],
   settings: ['admin'],
+  users: ['admin'],
 };
