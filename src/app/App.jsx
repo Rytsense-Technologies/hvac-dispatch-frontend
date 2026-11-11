@@ -32,6 +32,7 @@ function crumbFor(section) {
   }
   if (section.id === 'automation') return { root, strong: 'Settings / Admin automation' };
   if (section.id === 'usage') return { root, strong: 'Settings / Usage & Billing' };
+  if (section.id === 'approvals') return { root, strong: 'Work / Approvals' };
   if (section.id === 'users') return { root, strong: 'Team & dispatch / Accounts' };
   return { root, strong: section.label };
 }

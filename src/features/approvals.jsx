@@ -33,7 +33,7 @@ export function describe(approval, { technicians = {}, jobs = {} }) {
 
 // A person may not decide their own request: the server refuses it, the screen says so up front.
 export const isOwn = (approval, actor) => !!actor && approval.requested_by === actor;
-function ApprovalCard({ approva12l, names, jobs, reload }) {
+function ApprovalCard({ approval, names, jobs, reload }) {
   const { title, items } = describe(approval, { technicians: names, jobs });
   const [reason, setReason] = useState('');
   const empty = !reason.trim();
@@ -100,7 +100,12 @@ export default function Approvals() {
 
   return (
     <>
-      <PageHeader title="Approvals" subtitle="A proposal becomes a booking only when a person other than the requester approves it.">
+      <PageHeader
+        eyebrow="WORK"
+        title="Approvals"
+        subtitle="A proposal becomes a booking only when a person other than the requester approves it."
+        meta={<span className="date">Live proposals</span>}
+      >
         {ready && state.list.length ? <Badge text={`${state.list.length} waiting`} tone="warn" /> : null}
       </PageHeader>
       <div className="stack">{body}</div>
