@@ -1,6 +1,6 @@
-// Campaigns: Outbound campaigns — visual parity with the Rytsense reference.
-// Eyebrow + H1 + subtitle, panel of rows (circle, progress, Active/Draft tags, View campaign).
-import { useCallback, useEffect, useState } from 'react';
+// Campaigns: Outbound campaigns — reference design chrome with live API flows.
+// Samples appear only when Sample workspace (demo) is explicitly on.
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { api } from '../lib/api.js';
 import { formatDateTime } from '../lib/format.js';
 import { can } from '../lib/session.js';
@@ -11,6 +11,14 @@ import {
 
 const STATUS_TONE = { active: 'good', paused: 'warn', finished: 'neutral', draft: 'warn' };
 const STATUS_LABEL = { active: 'Active', paused: 'Paused', finished: 'Finished', draft: 'Draft' };
+
+/** `#/campaigns?demo=1` (or demo=true) opens Sample workspace explicitly. */
+function demoFromHash(hash = typeof location !== 'undefined' ? location.hash : '') {
+  const q = String(hash).split('?')[1] || '';
+  const params = new URLSearchParams(q);
+  const v = params.get('demo');
+  return v === '1' || v === 'true';
+}
 
 const SAMPLE_CAMPAIGNS = [
   {
@@ -61,6 +69,10 @@ const SAMPLE_CAMPAIGNS = [
   },
 ];
 
+function isSampleId(id) {
+  return String(id || '').startsWith('sample_');
+}
+
 function formatCampaignSub(c) {
   const audienceStr = c.audience?.text
     || (c.audience?.count ? `${c.audience.count} ${c.audience?.label || 'past customers'}` : (c.audience?.label || ''));
@@ -75,19 +87,6 @@ function formatCampaignSub(c) {
 function readiness(c) {
   if (c.status !== 'draft') return null;
   return c.reviewed_at ? 'Reviewed: ready to start' : 'Ready for review';
-}
-
-function useLoader(fetcher) {
-  const [state, setState] = useState({});
-  const load = useCallback(async () => {
-    try {
-      const data = await fetcher();
-      setState({ data });
-    } catch (error) {
-      setState({ error });
-    }
-  }, [fetcher]);
-  return [state, load];
 }
 
 function CreateDialog({ reload, onClose }) {
@@ -174,12 +173,18 @@ function EditForm({ campaign, reload }) {
 
 const OWNER_TONE = { 'AI assistant (call-back)': 'info', 'Office team': 'neutral' };
 
-function InterestedList({ interested }) {
+function InterestedList({ interested, sample }) {
   if (!interested?.length) {
-    return <p className="sub empty-inline">No responses yet. Interested leads will appear here after outreach.</p>;
+    return (
+      <p className="sub empty-inline">
+        {sample
+          ? 'No responses yet in this sample campaign.'
+          : 'No responses yet. Interested leads will appear here after outreach.'}
+      </p>
+    );
   }
   // Sample campaigns use a short prose line matching the reference dialog.
-  if (interested.every((p) => p.summary)) {
+  if (sample && interested.every((p) => p.summary)) {
     return (
       <div className="stack">
         {interested.map((p, i) => (
@@ -211,27 +216,28 @@ function InterestedList({ interested }) {
   );
 }
 
-function CampaignDialog({ id, reload, onClose }) {
+function CampaignDialog({ id, reload, onClose, onSamplePatch, sampleSeed }) {
   const [state, setState] = useState({});
   const writer = can('admin', 'dispatcher');
+  const sample = isSampleId(id);
 
   const load = useCallback(async () => {
-    if (id && id.startsWith('sample_')) {
-      const sample = SAMPLE_CAMPAIGNS.find((s) => s.id === id);
-      if (sample) {
-        setState({ data: sample });
+    if (sample) {
+      const found = sampleSeed || SAMPLE_CAMPAIGNS.find((s) => s.id === id);
+      if (found) {
+        setState({ data: { ...found } });
         return;
       }
+      setState({ error: { message: 'Sample campaign not found.' } });
+      return;
     }
     try {
       const data = await api(`/v1/leads/campaigns/${id}`);
       setState({ data });
     } catch (error) {
-      const sample = SAMPLE_CAMPAIGNS.find((s) => s.id === id);
-      if (sample) setState({ data: sample });
-      else setState({ error });
+      setState({ error });
     }
-  }, [id]);
+  }, [id, sample, sampleSeed]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -239,9 +245,11 @@ function CampaignDialog({ id, reload, onClose }) {
   const bump = () => { load(); reload(); };
 
   const review = async () => {
-    if (id.startsWith('sample_')) {
+    if (sample) {
+      const next = { ...c, reviewed_at: new Date().toISOString() };
+      setState({ data: next });
+      onSamplePatch?.(id, { reviewed_at: next.reviewed_at });
       toast('Sample campaign marked reviewed.');
-      setState((prev) => ({ ...prev, data: { ...prev.data, reviewed_at: new Date().toISOString() } }));
       return;
     }
     await api(`/v1/leads/campaigns/${id}/review`, { method: 'POST' });
@@ -249,14 +257,16 @@ function CampaignDialog({ id, reload, onClose }) {
     bump();
   };
 
+  // Start / pause / resume / finish — Start is the live "send" (outreach begins).
   const setStatus = (status) => async () => {
-    if (id.startsWith('sample_')) {
-      toast(`Sample campaign status changed to ${status}.`);
+    if (sample) {
       setState((prev) => ({ ...prev, data: { ...prev.data, status } }));
+      onSamplePatch?.(id, { status });
+      toast(`Sample campaign status changed to ${status}.`);
       return;
     }
     await api(`/v1/leads/campaigns/${id}/status`, { method: 'POST', body: { status } });
-    toast(`Campaign ${status}.`);
+    toast(status === 'active' ? 'Campaign started — outreach can run.' : `Campaign ${status}.`);
     bump();
   };
 
@@ -294,14 +304,14 @@ function CampaignDialog({ id, reload, onClose }) {
 
         {c.script ? (
           <div className="agent-banner">
-            <strong>{id.startsWith('sample_') ? 'Sample outreach script' : 'Outreach script'}</strong>
+            <strong>{sample ? 'Sample outreach script' : 'Outreach script'}</strong>
             <br />
             {c.script}
           </div>
         ) : null}
 
         <h3>Interested lead follow-up</h3>
-        <InterestedList interested={c.interested} />
+        <InterestedList interested={c.interested} sample={sample} />
 
         <div className="dialog-actions">
           {primaryAction}
@@ -311,18 +321,18 @@ function CampaignDialog({ id, reload, onClose }) {
           <Button className="btn btn--secondary agent-btn" onClick={onClose}>Close</Button>
         </div>
 
-        {writer && c.status !== 'finished' && !id.startsWith('sample_') ? (
+        {writer && c.status !== 'finished' && !sample ? (
           <EditForm campaign={c} reload={bump} />
         ) : null}
 
-        {!id.startsWith('sample_') ? (
+        {!sample ? (
           <Details rows={[
             ['Reviewed', c.reviewed_at ? `${formatDateTime(c.reviewed_at)}${c.reviewed_by ? ` by ${c.reviewed_by}` : ''}` : 'Not yet'],
           ]} />
         ) : null}
 
         <p className="sample-label">
-          {id.startsWith('sample_')
+          {sample
             ? 'Demo state only; no actual outreach is scheduled or sent.'
             : 'Status and review actions update this campaign in your workspace.'}
         </p>
@@ -339,19 +349,55 @@ function CampaignDialog({ id, reload, onClose }) {
 
 export default function Campaigns() {
   const [dialog, setDialog] = useState(null);
+  const [demoMode, setDemoMode] = useState(() => demoFromHash());
+  const [sampleOverrides, setSampleOverrides] = useState({});
+  const [list, setList] = useState({ status: 'loading', data: null, error: null });
+  const listLatest = useRef(0);
   const writer = can('admin', 'dispatcher');
 
-  const [list, load] = useLoader(useCallback(async () => {
+  const load = useCallback(async () => {
+    listLatest.current += 1;
+    const mine = listLatest.current;
+    setList((prev) => ({ ...prev, status: prev.data ? 'refreshing' : 'loading', error: null }));
     try {
       const res = await api('/v1/leads/campaigns');
-      return res.campaigns || [];
-    } catch {
-      return [];
+      if (mine !== listLatest.current) return;
+      setList({ status: 'ready', data: res.campaigns || [], error: null });
+    } catch (error) {
+      if (mine !== listLatest.current) return;
+      setList((prev) => ({ status: 'error', data: prev.data, error }));
     }
-  }, []));
+  }, []);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    if (demoMode) {
+      listLatest.current += 1; // invalidate in-flight live loads while in sample workspace
+      return undefined;
+    }
+    load();
+    return () => { listLatest.current += 1; };
+  }, [load, demoMode]);
+
+  // Honor `#/campaigns?demo=1` (and clear demo when the query is removed).
+  useEffect(() => {
+    const sync = () => setDemoMode(demoFromHash());
+    window.addEventListener('hashchange', sync);
+    return () => window.removeEventListener('hashchange', sync);
+  }, []);
+
+  const setWorkspaceDemo = (on) => {
+    setDemoMode(on);
+    setDialog(null);
+    const path = (location.hash.split('?')[0] || '#/campaigns');
+    const next = on ? `${path}?demo=1` : path;
+    if (location.hash !== next) location.hash = next;
+  };
+
   const close = () => setDialog(null);
+
+  const patchSample = (id, patch) => {
+    setSampleOverrides((prev) => ({ ...prev, [id]: { ...(prev[id] || {}), ...patch } }));
+  };
 
   if (!can('admin', 'dispatcher', 'approver')) {
     return (
@@ -366,15 +412,24 @@ export default function Campaigns() {
     );
   }
 
-  // Prefer live campaigns; fall back to reference sample list for visual parity.
-  const usingSamples = !(list.data && list.data.length > 0);
-  const campaigns = usingSamples ? SAMPLE_CAMPAIGNS : list.data;
-  const loading = list.data === undefined && !list.error;
+  const liveCampaigns = list.data || [];
+  const sampleCampaigns = SAMPLE_CAMPAIGNS.map((c) => ({ ...c, ...(sampleOverrides[c.id] || {}) }));
+  const campaigns = demoMode ? sampleCampaigns : liveCampaigns;
+  const loading = !demoMode && list.status === 'loading' && !list.data;
+  const showError = !demoMode && list.status === 'error' && !!list.error;
 
   const headerMeta = (
     <>
-      {usingSamples ? <span className="date">Sample workspace</span> : null}
-      {writer ? (
+      <span className="date">{demoMode ? 'Sample workspace' : 'Live workspace'}</span>
+      <button
+        type="button"
+        className={`btn btn--secondary agent-btn${demoMode ? ' filter--on' : ''}`}
+        aria-pressed={demoMode}
+        onClick={() => setWorkspaceDemo(!demoMode)}
+      >
+        {demoMode ? 'Exit sample workspace' : 'Sample workspace'}
+      </button>
+      {writer && !demoMode ? (
         <button
           type="button"
           className="btn btn--secondary agent-btn"
@@ -395,17 +450,30 @@ export default function Campaigns() {
         meta={headerMeta}
       />
 
+      {demoMode ? (
+        <Note tone="info" text="Sample workspace is illustrative only. It does not call the API or schedule outreach." />
+      ) : null}
+
       <Panel>
         <PanelHead
           title="Campaigns"
-          subtitle="Select a campaign to review its audience, script and leads"
+          subtitle={demoMode
+            ? 'Sample list matching the reference layout'
+            : 'Select a campaign to review its audience, script and leads'}
         />
 
-        {list.error && !campaigns.length ? <ErrorBox error={list.error} /> : null}
+        {showError ? <ErrorBox error={list.error} /> : null}
+        {showError && liveCampaigns.length ? (
+          <Note tone="warn" text="Showing the last loaded list. Refresh failed — try again." />
+        ) : null}
         {loading ? <Spinner /> : null}
 
         {!loading && !campaigns.length ? (
-          <p className="sub empty-inline">No campaigns yet. Create a draft to get started.</p>
+          <p className="sub empty-inline">
+            {demoMode
+              ? 'No sample campaigns.'
+              : (showError ? 'Could not load campaigns.' : 'No campaigns yet. Create a draft to get started.')}
+          </p>
         ) : null}
 
         {!loading && campaigns.length ? (
@@ -438,14 +506,24 @@ export default function Campaigns() {
         ) : null}
       </Panel>
 
-      {usingSamples ? (
+      {demoMode ? (
         <p className="foot">Illustrative campaigns. No calls or messages are made.</p>
       ) : (
-        <p className="foot">Live campaigns · Outreach follows each campaign’s status and schedule.</p>
+        <p className="foot">Live campaigns · Create, edit, review, and start outreach from each campaign.</p>
       )}
 
-      {dialog?.kind === 'create' ? <CreateDialog onClose={close} reload={load} /> : null}
-      {dialog?.kind === 'view' ? <CampaignDialog id={dialog.id} onClose={close} reload={load} /> : null}
+      {dialog?.kind === 'create' && !demoMode ? (
+        <CreateDialog onClose={close} reload={load} />
+      ) : null}
+      {dialog?.kind === 'view' ? (
+        <CampaignDialog
+          id={dialog.id}
+          onClose={close}
+          reload={demoMode ? () => {} : load}
+          onSamplePatch={demoMode ? patchSample : undefined}
+          sampleSeed={demoMode ? sampleCampaigns.find((c) => c.id === dialog.id) : undefined}
+        />
+      ) : null}
     </>
   );
 }
