@@ -4,6 +4,7 @@
 // MANAGE nav: AI Coworker, Reports, Settings
 // Work → Tasks | Appointments (section tabs). Calls → history | phone numbers.
 // Automation is reachable via #/automation (Settings deep-link), not top-level nav.
+// Approvals (#/approvals) is a Work deep-link for live dispatch proposals from Coworker confirm.
 import { lazy } from 'react';
 
 export const SECTIONS = [
@@ -15,6 +16,8 @@ export const SECTIONS = [
   { id: 'numbers', label: 'Phone numbers', icon: 'calls', view: lazy(() => import('../features/numbers.jsx')), hideNav: true, sectionGroup: 'calls', crumbParent: 'Calls' },
   { id: 'tasks', label: 'Tasks', icon: 'work', view: lazy(() => import('../features/tasks.jsx')), hideNav: true, sectionGroup: 'work', crumbParent: 'Work' },
   { id: 'appointments', label: 'Appointments', icon: 'work', view: lazy(() => import('../features/appointments.jsx')), hideNav: true, sectionGroup: 'work', crumbParent: 'Work' },
+  // Live dispatch proposals (opened from Coworker confirm / Attention / Plan). Hidden from nav per reference IA.
+  { id: 'approvals', label: 'Approvals', icon: 'approvals', hideNav: true, crumbParent: 'Work', view: lazy(() => import('../features/approvals.jsx')) },
   { id: 'team', label: 'Team & dispatch', icon: 'team', view: lazy(() => import('../features/team.jsx')) },
   { id: 'customers', label: 'Customers', icon: 'customers', view: lazy(() => import('../features/customers.jsx')) },
 
@@ -32,7 +35,7 @@ export const NAV_ITEMS = [
   { id: 'agents', label: 'AI agents', icon: 'agents', href: '#/agents', match: ['agents'] },
   { id: 'campaigns', label: 'Campaigns', icon: 'campaigns', href: '#/campaigns', match: ['campaigns'] },
   { id: 'calls', label: 'Calls', icon: 'calls', href: '#/calls', match: ['calls', 'numbers'] },
-  { id: 'work', label: 'Work', icon: 'work', href: '#/work', match: ['tasks', 'appointments'] },
+  { id: 'work', label: 'Work', icon: 'work', href: '#/work', match: ['tasks', 'appointments', 'approvals'] },
   { id: 'team', label: 'Team & dispatch', icon: 'team', href: '#/team', match: ['team'] },
   { id: 'customers', label: 'Customers', icon: 'customers', href: '#/customers', match: ['customers'] },
   { id: 'copilot', label: 'AI Coworker', icon: 'copilot', href: '#/copilot', group: 'manage', match: ['copilot'] },
@@ -53,7 +56,7 @@ export const SECTION_TABS = {
 
 export const MOBILE_PRIMARY = [
   { id: 'overview', label: 'Home', icon: 'overview', href: '#/overview', match: ['overview'] },
-  { id: 'work', label: 'Work', icon: 'work', href: '#/work', match: ['tasks', 'appointments'] },
+  { id: 'work', label: 'Work', icon: 'work', href: '#/work', match: ['tasks', 'appointments', 'approvals'] },
   { id: 'calls', label: 'Calls', icon: 'calls', href: '#/calls', match: ['calls', 'numbers'] },
   { id: 'team', label: 'Team', icon: 'team', href: '#/team', match: ['team'] },
 ];

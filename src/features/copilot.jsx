@@ -20,11 +20,17 @@ import {
   Panel,
 } from '../components/index.js';
 
-const SUGGESTION_CHIPS = [
-  { label: 'Who is available for the AC repair?', question: 'Who is available for the AC repair?' },
-  { label: 'Admin actions to review', question: 'What admin actions need review?' },
-  { label: 'Show existing lead campaigns', question: 'Show existing lead campaigns' },
-];
+// Live starter prompts (pre-design Co-pilot). Chips POST to /v1/copilot/messages.
+function liveSuggestionChips() {
+  return [
+    { label: 'List technicians', question: 'List technicians' },
+    { label: "List today's jobs", question: "List today's jobs" },
+    ...(can('approver', 'admin')
+      ? [{ label: 'Show pending approvals', question: 'Show pending approvals' }]
+      : []),
+    { label: 'Show open problems', question: 'Show open problems' },
+  ];
+}
 
 // Illustrative sample rows — CTAs are section navigation (not deep links to named records).
 const SUGGESTED_ACTIONS = [
@@ -243,9 +249,23 @@ const makeMessage = (role, content, data, names) => {
   return { id: messageCounter, role, content, data, names, time: new Date() };
 };
 
-function applyChip(label, question, setText, submit) {
+function applyChip(question, setText, submit) {
   setText(question);
   submit(question);
+}
+
+function normalizeSuggestionChips(payload) {
+  const raw = payload?.suggestions || payload?.starter || payload?.questions || payload;
+  if (!Array.isArray(raw)) return null;
+  const chips = raw
+    .map((item) => {
+      if (typeof item === 'string') return { label: item, question: item };
+      const question = item?.question || item?.prompt || item?.label || item?.text;
+      if (!question) return null;
+      return { label: item.label || item.text || question, question };
+    })
+    .filter(Boolean);
+  return chips.length ? chips : null;
 }
 
 export default function Copilot() {
@@ -262,6 +282,7 @@ export default function Copilot() {
   const logEl = useRef(null);
   const openSeq = useRef(0);
   const threadsSeq = useRef(0);
+  const [suggestionChips, setSuggestionChips] = useState(() => liveSuggestionChips());
 
   const setThread = (id) => {
     threadRef.current = id;
@@ -341,6 +362,14 @@ export default function Copilot() {
         namesRef.current = Object.fromEntries(technicians.map((t) => [t.id, t.name]));
       })
       .catch(() => {});
+    api('/v1/copilot/suggestions')
+      .then((payload) => {
+        const chips = normalizeSuggestionChips(payload);
+        if (chips) setSuggestionChips(chips);
+      })
+      .catch(() => {
+        setSuggestionChips(liveSuggestionChips());
+      });
     return () => {
       openSeq.current += 1;
       threadsSeq.current += 1;
@@ -358,7 +387,7 @@ export default function Copilot() {
   if (log.kind === 'intro') {
     conversationBody = (
       <div className="agent-banner">
-        Ask about the AC repair, admin reviews, or existing campaigns.
+        Ask about technician availability, today&apos;s jobs, pending approvals, or open scheduling problems.
       </div>
     );
   } else if (log.kind === 'loading') {
@@ -389,8 +418,8 @@ export default function Copilot() {
       <PageHeader
         eyebrow="YOUR AI WORKSPACE"
         title="AI Coworker"
-        subtitle="Ask questions about the sample workspace."
-        meta={<span className="date">Concept demo</span>}
+        subtitle="Query live schedules, inspect technician rosters, and preview route proposals."
+        meta={<span className="date">Live workspace</span>}
       />
 
       <div className="layout coworker-layout">
@@ -417,13 +446,13 @@ export default function Copilot() {
           </div>
 
           <div className="filters coworker-filters" role="group" aria-label="Suggested questions">
-            {SUGGESTION_CHIPS.map((chip) => (
+            {suggestionChips.map((chip) => (
               <button
                 key={chip.label}
                 type="button"
                 className="filter"
                 disabled={waiting}
-                onClick={() => applyChip(chip.label, chip.question, setText, submit)}
+                onClick={() => applyChip(chip.question, setText, submit)}
               >
                 {chip.label}
               </button>
@@ -441,7 +470,7 @@ export default function Copilot() {
               type="text"
               id="coworker-ask-input"
               aria-label="Ask the AI Coworker"
-              placeholder="Ask about sample jobs or campaigns"
+              placeholder="Ask about a job, technician schedule, or request route changes…"
               maxLength={4000}
               value={text}
               onChange={(e) => setText(e.target.value)}
@@ -458,7 +487,7 @@ export default function Copilot() {
           </form>
 
           <p className="sample-label">
-            Suggested chips and action rows are illustrative samples. Chat, threads, and confirmations use connected APIs — confirming a change creates a live Approvals proposal.
+            Suggestion chips, chat, threads, and confirmations use live APIs — confirming a change creates a live Approvals proposal at #/approvals. Suggested action rows on the right are illustrative section navigation only.
           </p>
 
           {threads && threads.length ? (
