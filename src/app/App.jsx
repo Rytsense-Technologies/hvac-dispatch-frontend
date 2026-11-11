@@ -27,6 +27,7 @@ function crumbFor(section) {
   if (section.sectionGroup === 'work') return { root, strong: 'Work' };
   if (section.sectionGroup === 'calls') return { root, strong: 'Calls' };
   if (section.id === 'automation') return { root, strong: 'Settings / Admin automation' };
+  if (section.id === 'usage') return { root, strong: 'Settings / Usage & Billing' };
   return { root, strong: section.label };
 }
 
@@ -323,7 +324,7 @@ function Shell({ timezone, onSignOut }) {
   const manageNav = visibleNav.filter((item) => item.group === 'manage');
   const mobilePrimary = MOBILE_PRIMARY.filter(itemAllowed);
   const mobileMore = MOBILE_MORE.filter(itemAllowed);
-  const moreActive = mobileMore.some((item) => item.id === section.id || (item.id === 'settings' && section.id === 'automation'));
+  const moreActive = mobileMore.some((item) => item.id === section.id || (item.id === 'settings' && (section.id === 'automation' || section.id === 'usage')));
   const visibleSectionTabs = sectionTabs
     ? sectionTabs.filter((tab) => allowedIn(findSection(tab.id)))
     : null;
