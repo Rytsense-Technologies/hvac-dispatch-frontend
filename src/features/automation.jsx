@@ -1,386 +1,417 @@
-// Admin automation: actions prepared for the office to review, approve, or reject.
-// Exact Reference UI matching reference design with live backend integration and fallback sample records.
+// Admin automation: nested under Settings — Needs review + Completed history matching the reference.
+// Live queue stays honest: empty means empty; samples only when "Show sample queue" is on.
 import { useEffect, useRef, useState } from 'react';
 import { api } from '../lib/api.js';
 import { can } from '../lib/session.js';
-import { toast } from '../components/index.js';
-import { Icon } from '../components/Icon.jsx';
+import { useEvery } from '../lib/hooks.js';
+import {
+  ActionButton, Button, Dialog, ErrorBox, Field, Note,
+  PageHeader, Panel, Row, Spinner, toast,
+} from '../components/index.js';
 
-// Sample actions matching reference screenshot 1
-const SAMPLE_ACTIONS = [
+const SAMPLE_REVIEW = [
   {
-    id: 'sample-act-1',
-    isSample: true,
-    title: 'Invoice follow-up',
+    id: 'sample_invoice',
+    heading: 'Invoice follow-up',
     customer: 'Sarah Mitchell',
-    displayName: 'Invoice follow-up · Sarah Mitchell',
-    subtitle: 'Invoice #1048 · $240 overdue · Needs approval',
-    headerLine: 'Sarah Mitchell · Invoice #1048 · $240 overdue',
-    source: 'Sample invoice record',
-    status: 'Needs approval',
-    proposed: 'Hi Sarah, this is a friendly reminder that invoice #1048 for $240 is overdue. Please contact our office if you have questions.',
+    line: 'Invoice #1048 · $240 overdue',
+    status: { label: 'Needs approval' },
+    dialog: {
+      customer: { name: 'Sarah Mitchell' },
+      proposed_label: 'Proposed action or message',
+      proposed: 'Hi Sarah, this is a friendly reminder that invoice #1048 for $240 is overdue. Please contact our office if you have questions.',
+      editable: true,
+      approve: { label: 'Approve sample action' },
+      reject: { label: 'Reject' },
+    },
+    sample: true,
   },
   {
-    id: 'sample-act-2',
-    isSample: true,
-    title: 'Customer record update',
+    id: 'sample_customer',
+    heading: 'Customer record update',
     customer: 'David Rodriguez',
-    displayName: 'Customer record update · David Rodriguez',
-    subtitle: 'Contact details extracted from a call · Needs review',
-    headerLine: 'David Rodriguez · Contact details extracted from a call',
-    source: 'Sample call transcription',
-    status: 'Needs review',
-    proposed: 'Update primary contact phone number to (512) 555-0189 and record customer preference for morning appointments.',
+    line: 'Contact details extracted from a call',
+    status: { label: 'Needs review' },
+    dialog: {
+      customer: { name: 'David Rodriguez' },
+      proposed_label: 'Proposed action or message',
+      proposed: 'Update customer contact details based on the reviewed call summary.',
+      editable: true,
+      approve: { label: 'Approve sample action' },
+      reject: { label: 'Reject' },
+    },
+    sample: true,
   },
   {
-    id: 'sample-act-3',
-    isSample: true,
-    title: 'Job documentation',
+    id: 'sample_docs',
+    heading: 'Job documentation',
     customer: 'William Brooks',
-    displayName: 'Job documentation · William Brooks',
-    subtitle: 'Service notes prepared for office review · Needs review',
-    headerLine: 'William Brooks · Service notes prepared for office review',
-    source: 'Sample technician notes',
-    status: 'Needs review',
-    proposed: 'Technician diagnostic notes: main pressure relief valve requires replacement. Estimated repair cost: $450 parts and labor.',
+    line: 'Service notes prepared for office review',
+    status: { label: 'Needs review' },
+    dialog: {
+      customer: { name: 'William Brooks' },
+      proposed_label: 'Proposed action or message',
+      proposed: 'Organize the service notes for the office team.',
+      editable: true,
+      approve: { label: 'Approve sample action' },
+      reject: { label: 'Reject' },
+    },
+    sample: true,
   },
   {
-    id: 'sample-act-4',
-    isSample: true,
-    title: 'Estimate follow-up',
+    id: 'sample_estimate',
+    heading: 'Estimate follow-up',
     customer: 'Jessica Taylor',
-    displayName: 'Estimate follow-up · Jessica Taylor',
-    subtitle: 'Open estimate · Follow up requested · Needs approval',
-    headerLine: 'Jessica Taylor · Open estimate · Follow up requested',
-    source: 'Sample estimate record',
-    status: 'Needs approval',
-    proposed: 'Hi Jessica, following up on your heat pump replacement estimate from Apex Air Solutions. We have seasonal manufacturer rebates expiring soon if you wish to proceed.',
+    line: 'Open estimate · Follow-up requested',
+    status: { label: 'Needs approval' },
+    dialog: {
+      customer: { name: 'Jessica Taylor' },
+      proposed_label: 'Proposed action or message',
+      proposed: 'Hi Jessica, would you like to discuss your service estimate? Please let us know a convenient time.',
+      editable: true,
+      approve: { label: 'Approve sample action' },
+      reject: { label: 'Reject' },
+    },
+    sample: true,
   },
 ];
 
-// Detail Modal matching reference screenshot 2
-function ActionReviewModal({ action, onClose, onApprove, onReject, onSaveEdit }) {
-  const [proposedText, setProposedText] = useState(action.proposed || '');
+function customerLine(c) {
+  if (!c) return '';
+  if (typeof c === 'object') return [c.name, c.phone].filter(Boolean).join(' · ');
+  return String(c);
+}
 
-  const handleApprove = async () => {
-    onApprove(action.id);
-    if (!action.isSample && action.raw?.api?.approve) {
-      try {
-        await api(action.raw.api.approve, {
-          method: 'POST',
-          body: { text: proposedText.trim() },
-        });
-      } catch (err) {
-        console.error('Failed to approve via API:', err);
-      }
-    }
-    toast('Sample action approved.');
-    onClose();
-  };
+function itemTitle(item) {
+  const heading = item.heading || item.title || 'Action';
+  const customer = typeof item.customer === 'string'
+    ? item.customer
+    : (item.customer?.name || item.dialog?.customer?.name || '');
+  return customer ? `${heading} · ${customer}` : heading;
+}
 
-  const handleReject = async () => {
-    onReject(action.id);
-    if (!action.isSample && (action.raw?.api?.reject || action.raw?.api?.dismiss)) {
-      try {
-        await api(action.raw.api.reject || action.raw.api.dismiss, { method: 'POST' });
-      } catch (err) {
-        console.error('Failed to reject via API:', err);
-      }
-    }
-    toast('Sample action rejected.');
-    onClose();
-  };
+function itemSubtitle(item) {
+  const detail = item.line || item.text || item.details || '';
+  const status = item.status?.label || item.status || '';
+  if (detail && status) return `${detail} · ${status}`;
+  return detail || status || '';
+}
 
-  const handleSaveEdit = async () => {
-    onSaveEdit(action.id, proposedText);
-    if (!action.isSample && action.raw?.api?.edit) {
-      try {
-        await api(action.raw.api.edit, {
-          method: 'POST',
-          body: { text: proposedText.trim() },
-        });
-      } catch (err) {
-        console.error('Failed to save edit via API:', err);
-      }
-    }
-    toast('Edit saved.');
-  };
+function ReviewDialog({ item, history = false, onClose, onSampleComplete, reload }) {
+  const dialog = item.dialog || {};
+  const [text, setText] = useState(dialog.proposed || item.proposed?.text || item.result || '');
+  const sample = item.sample || String(item.id || '').startsWith('sample_');
+  const writer = can('admin', 'dispatcher');
+  const readOnly = history || !writer;
 
   return (
-    <div className="automation-modal-overlay" onClick={onClose}>
-      <div className="automation-modal-card" onClick={(e) => e.stopPropagation()}>
-        <div className="automation-modal-head">
-          <div>
-            <div className="automation-modal-eyebrow">SAMPLE WORKSPACE</div>
-            <h2 className="automation-modal-title">
-              Review · {action.title}
-            </h2>
-          </div>
-          <button
-            type="button"
-            className="automation-modal-close"
-            onClick={onClose}
-            aria-label="Close"
-          >
-            ✕
-          </button>
-        </div>
-
-        {/* Content details matching Screenshot 2 */}
-        <div className="automation-modal-header-line">
-          <strong>{action.customer}</strong>
-          {action.headerLine && action.headerLine.includes(' · ') ? (
-            <span style={{ color: '#64748b' }}>
-              {' · ' + action.headerLine.split(' · ').slice(1).join(' · ')}
-            </span>
+    <Dialog
+      title={`${history ? 'Action history' : 'Review'} · ${item.heading || item.title || 'Action'}`}
+      onClose={onClose}
+      wide
+    >
+      <div className="stack">
+        <p>
+          <strong>{customerLine(dialog.customer) || itemTitle(item)}</strong>
+          <br />
+          {item.line || item.text || item.details || ''}
+          {item.source ? <><br />Source: {item.source}</> : null}
+          {item.status ? <><br />Status: {item.status.label || item.status}</> : null}
+          {history && item.decided_by ? <><br />Reviewed by {item.decided_by}{item.decided_at ? ` · ${timeAgo(item.decided_at)}` : ''}</> : null}
+        </p>
+        {history ? (
+          <p className="sub">Read-only history. No message was sent and no business record was changed unless your live provider recorded otherwise.</p>
+        ) : (
+          <p className="sub">Review the proposed action before approving or rejecting.</p>
+        )}
+        {(dialog.proposed_label || dialog.proposed || item.proposed?.text || item.result) ? (
+          <Field label={dialog.proposed_label || (history ? 'Recorded action' : 'Proposed action or message')}>
+            {readOnly || dialog.editable === false ? (
+              <p>{text || dialog.proposed || item.result || '-'}</p>
+            ) : (
+              <textarea maxLength={1000} rows={5} value={text} onChange={(e) => setText(e.target.value)} />
+            )}
+          </Field>
+        ) : null}
+        <div className="dialog-actions">
+          {!history && writer ? (
+            <ActionButton
+              className="btn btn--primary action"
+              action={async () => {
+                if (sample) {
+                  onSampleComplete?.(item.id, 'approved');
+                  toast('Approved in the demo. Nothing was sent.');
+                  onClose();
+                  return;
+                }
+                if (dialog.editable && item.api?.edit && text !== (dialog.proposed || item.proposed?.text || '')) {
+                  await api(item.api.edit, { method: 'POST', body: { text: text.trim() } });
+                }
+                await api(item.api.approve, { method: 'POST', body: dialog.editable ? { text: text.trim() } : {} });
+                toast('Done.');
+                onClose();
+                reload?.();
+              }}
+            >
+              {dialog.approve?.label || 'Approve'}
+            </ActionButton>
           ) : null}
+          {!history && writer && dialog.editable !== false ? (
+            <ActionButton
+              className="btn btn--secondary agent-btn"
+              action={async () => {
+                if (sample) {
+                  toast('Sample draft saved for review.');
+                  onClose();
+                  return;
+                }
+                if (item.api?.edit) {
+                  await api(item.api.edit, { method: 'POST', body: { text: text.trim() } });
+                  toast('Saved.');
+                }
+                onClose();
+                reload?.();
+              }}
+            >
+              Save edit
+            </ActionButton>
+          ) : null}
+          {!history && writer ? (
+            <ActionButton
+              className="btn btn--secondary agent-btn"
+              action={async () => {
+                if (sample) {
+                  onSampleComplete?.(item.id, 'rejected');
+                  toast('Sample action rejected.');
+                  onClose();
+                  return;
+                }
+                await api(item.api.dismiss || item.api.reject, { method: 'POST', body: {} });
+                toast('Rejected.');
+                onClose();
+                reload?.();
+              }}
+            >
+              {dialog.reject?.label || 'Reject'}
+            </ActionButton>
+          ) : null}
+          <Button className="btn btn--secondary agent-btn" onClick={onClose}>Close</Button>
         </div>
-        <div className="automation-modal-meta">Source: {action.source}</div>
-        <div className="automation-modal-meta">Status: {action.status}</div>
-
-        <div className="automation-modal-section-title">
-          Proposed message or action
-        </div>
-        <textarea
-          className="automation-modal-textarea"
-          value={proposedText}
-          onChange={(e) => setProposedText(e.target.value)}
-        />
-
-        {/* Action buttons matching Screenshot 2 */}
-        <div className="automation-modal-actions">
-          <button
-            type="button"
-            className="automation-btn-primary"
-            onClick={handleApprove}
-          >
-            Approve sample action
-          </button>
-          <button
-            type="button"
-            className="automation-btn-outline"
-            onClick={handleSaveEdit}
-          >
-            Save edit
-          </button>
-          <button
-            type="button"
-            className="automation-btn-outline"
-            onClick={handleReject}
-          >
-            Reject
-          </button>
-        </div>
-
-        <div className="automation-modal-disclaimer">
-          Simulated only. No message is sent and no real record is updated.
-        </div>
+        {sample ? (
+          <p className="sample-label">Demo state only. No message is sent and no business record is updated.</p>
+        ) : history ? (
+          <p className="sample-label">Completed actions cannot be approved or rejected again from this view.</p>
+        ) : (
+          <p className="sample-label">Approving or rejecting updates your live automation queue when the API is connected.</p>
+        )}
       </div>
-    </div>
+    </Dialog>
   );
 }
 
 export default function Automation() {
-  const allowed = can('admin', 'dispatcher', 'approver');
-  const [data, setData] = useState(null); // Real backend automation items
-  const [activeActions, setActiveActions] = useState(SAMPLE_ACTIONS);
-  const [completedHistory, setCompletedHistory] = useState([]);
-  const [selectedAction, setSelectedAction] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const initialized = useRef(false);
+  const [state, setState] = useState({ status: 'loading' });
+  const [reviewTarget, setReviewTarget] = useState(null); // { id, history }
+  const [demoMode, setDemoMode] = useState(false);
+  const [sampleDone, setSampleDone] = useState([]);
+  const latest = useRef(0);
 
-  // Load real backend automation items
-  useEffect(() => {
-    if (!allowed) return;
-    let active = true;
-    setLoading(true);
-
-    (async () => {
-      try {
-        const res = await api('/v1/automation');
-        if (!active) return;
-        setData(res);
-        const reviewItems = res?.needs_review?.items || [];
-        if (reviewItems.length > 0 && !initialized.current) {
-          const mapped = reviewItems.map((item) => {
-            const customerName = item.dialog?.customer?.name
-              || (typeof item.dialog?.customer === 'string' ? item.dialog.customer : '')
-              || '';
-            const actionTitle = item.heading || item.title || 'Office action';
-            return {
-              id: String(item.id),
-              isSample: false,
-              title: actionTitle,
-              customer: customerName,
-              displayName: customerName ? `${actionTitle} · ${customerName}` : actionTitle,
-              subtitle: item.line || item.text || (item.status ? `${item.source || 'Office record'} · ${item.status.label || item.status}` : 'Needs review'),
-              headerLine: customerName ? `${customerName} · ${item.line || item.text || actionTitle}` : actionTitle,
-              source: item.source || 'Sample office record',
-              status: item.status?.label || item.status || 'Needs review',
-              proposed: item.dialog?.proposed || item.proposed?.text || '',
-              raw: item,
-            };
-          });
-          setActiveActions(mapped);
-          initialized.current = true;
-        }
-        setLoading(false);
-      } catch (err) {
-        if (!active) return;
-        setLoading(false);
+  const load = async (quiet) => {
+    latest.current += 1;
+    const mine = latest.current;
+    if (!quiet) setState((s) => ({ ...s, status: 'loading' }));
+    try {
+      const data = await api('/v1/automation');
+      if (mine === latest.current) setState({ status: 'ready', data });
+    } catch (error) {
+      // Keep prior data on quiet poll failures so the queue does not vanish; still surface the error.
+      if (mine === latest.current) {
+        setState((s) => ({ status: 'error', error, data: quiet ? s.data : null }));
       }
-    })();
-
-    return () => { active = false; };
-  }, [allowed]);
-
-  if (!allowed) {
-    return (
-      <div className="card">
-        <h1>Not available for your role</h1>
-        <p className="muted">Ask an administrator if you need this section.</p>
-      </div>
-    );
-  }
-
-  const handleApprove = (id) => {
-    const item = activeActions.find((a) => a.id === id);
-    if (!item) return;
-    setActiveActions((prev) => prev.filter((a) => a.id !== id));
-    setCompletedHistory((prev) => [
-      {
-        ...item,
-        completedAt: new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }),
-        decision: 'Approved',
-      },
-      ...prev,
-    ]);
+    }
   };
+  useEffect(() => { load(); return () => { latest.current += 1; }; }, []);
+  useEvery(() => load(true), 30000);
 
-  const handleReject = (id) => {
-    const item = activeActions.find((a) => a.id === id);
-    if (!item) return;
-    setActiveActions((prev) => prev.filter((a) => a.id !== id));
-    setCompletedHistory((prev) => [
-      {
-        ...item,
-        completedAt: new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }),
-        decision: 'Rejected',
-      },
-      ...prev,
-    ]);
-  };
+  (async () => {
+    try {
+      const res = await api('/v1/automation');
+      if (!active) return;
+      setData(res);
+      const reviewItems = res?.needs_review?.items || [];
+      if (reviewItems.length > 0 && !initialized.current) {
+        const mapped = reviewItems.map((item) => {
+          const customerName = item.dialog?.customer?.name
+            || (typeof item.dialog?.customer === 'string' ? item.dialog.customer : '')
+            || '';
+          const actionTitle = item.heading || item.title || 'Office action';
+          return {
+            id: String(item.id),
+            isSample: false,
+            title: actionTitle,
+            customer: customerName,
+            displayName: customerName ? `${actionTitle} · ${customerName}` : actionTitle,
+            subtitle: item.line || item.text || (item.status ? `${item.source || 'Office record'} · ${item.status.label || item.status}` : 'Needs review'),
+            headerLine: customerName ? `${customerName} · ${item.line || item.text || actionTitle}` : actionTitle,
+            source: item.source || 'Sample office record',
+            status: item.status?.label || item.status || 'Needs review',
+            proposed: item.dialog?.proposed || item.proposed?.text || '',
+            raw: item,
+          };
+        });
+        setActiveActions(mapped);
+        initialized.current = true;
+      }
+      setLoading(false);
+    } catch (err) {
+      if (!active) return;
+      setLoading(false);
+    }
+  })();
 
-  const handleSaveEdit = (id, newText) => {
-    setActiveActions((prev) => prev.map((a) => (a.id === id ? { ...a, proposed: newText } : a)));
-  };
+  return () => { active = false; };
+}, [allowed]);
 
+if (!allowed) {
   return (
     <>
-      {/* Header matching Reference Image 1 */}
-      <div className="automation-head">
-        <div>
-          <div className="automation-eyebrow">OFFICE OPERATIONS</div>
-          <h1 className="automation-title">Admin automation</h1>
-          <p className="automation-subtitle">
-            Review actions prepared for your office.
-          </p>
-        </div>
-        <button
-          type="button"
-          className="automation-workspace-btn"
-          onClick={() => {}}
-        >
-          Sample workspace
-        </button>
-      </div>
+      <p className="settings-back"><a className="link" href="#/settings">← Back to Settings</a></p>
+      <PageHeader eyebrow="OFFICE OPERATIONS" title="Admin automation" subtitle="Review actions prepared for your office." />
+      <Note text="Not available for your role." tone="warn" />
+    </>
+  );
+}
 
-      {/* Card 1: Needs review · {count} */}
-      <div className="automation-card">
-        <h2 className="automation-card-title">
-          Needs review · {activeActions.length}
-        </h2>
-        {activeActions.length === 0 ? (
-          <p className="automation-history-empty">All review items have been processed.</p>
-        ) : (
-          <div className="automation-list">
-            {activeActions.map((action) => (
-              <div key={action.id} className="automation-row">
-                <div className="automation-row-left">
-                  <span className="automation-row-icon">
-                    <Icon name="agents" />
-                  </span>
-                  <div className="automation-row-info">
-                    <span className="automation-row-name">
-                      {action.displayName}
-                    </span>
-                    <span className="automation-row-sub">
-                      {action.subtitle}
-                    </span>
-                  </div>
-                </div>
+const live = !!state.data;
+const liveReview = live ? (state.data.needs_review?.items || []) : [];
+const liveHistory = live ? (state.data.history?.items || []) : [];
+
+const samplePending = SAMPLE_REVIEW.filter((x) => !sampleDone.includes(x.id));
+const sampleHistory = SAMPLE_REVIEW.filter((x) => sampleDone.includes(x.id)).map((x) => ({
+  ...x,
+  title: itemTitle(x),
+  status: 'Completed · simulated',
+  result: 'Sample only',
+  decided_by: 'James M.',
+  decided_at: new Date().toISOString(),
+  history: true,
+}));
+
+const displayReview = demoMode ? samplePending : liveReview;
+const displayHistory = demoMode ? sampleHistory : liveHistory;
+
+const notAvailableText = live
+  ? (Array.isArray(state.data.not_available)
+    ? state.data.not_available.join(' ')
+    : (state.data.not_available && typeof state.data.not_available === 'object'
+      ? (state.data.not_available.text || Object.values(state.data.not_available).join(' '))
+      : state.data.not_available))
+  : null;
+
+const activeItem = reviewTarget
+  ? [...displayReview, ...displayHistory, ...SAMPLE_REVIEW].find((x) => x.id === reviewTarget.id)
+  : null;
+
+const completeSample = (id) => {
+  setSampleDone((ids) => (ids.includes(id) ? ids : [...ids, id]));
+};
+
+return (
+  <>
+    <p className="settings-back"><a className="link" href="#/settings">← Back to Settings</a></p>
+    <PageHeader
+      eyebrow="OFFICE OPERATIONS"
+      title="Admin automation"
+      subtitle="Review actions prepared for your office."
+      meta={demoMode ? <span className="date">Demo queue</span> : <span className="date">Live queue</span>}
+    >
+      <button
+        type="button"
+        className={`btn btn--secondary agent-btn${demoMode ? ' filter--on' : ''}`}
+        aria-pressed={demoMode}
+        onClick={() => setDemoMode((v) => !v)}
+      >
+        {demoMode ? 'Hide sample queue' : 'Show sample queue'}
+      </button>
+    </PageHeader>
+
+    {state.status === 'loading' && !state.data ? <Spinner /> : null}
+    {state.status === 'error' ? <ErrorBox error={state.error} /> : null}
+    {notAvailableText && !demoMode ? <Note text={notAvailableText} tone="neutral" /> : null}
+    {demoMode ? (
+      <Note tone="info" text="Demo queue is illustrative only. It is separate from your live automation items and does not call the API." />
+    ) : null}
+
+    {state.status !== 'loading' || state.data || demoMode ? (
+      <>
+        <Panel>
+          <h2 className="settings-section-title">Needs review · {displayReview.length}</h2>
+          {displayReview.length ? displayReview.map((item) => (
+            <Row
+              key={item.id}
+              leading="✦"
+              title={itemTitle(item)}
+              subtitle={itemSubtitle(item)}
+              trailing={(
                 <button
                   type="button"
-                  className="automation-review-btn"
-                  onClick={() => setSelectedAction(action)}
+                  className="btn btn--secondary agent-btn"
+                  onClick={() => setReviewTarget({ id: item.id, history: false })}
+                  aria-label={`Review ${itemTitle(item)}`}
                 >
                   Review →
                 </button>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
+              )}
+            />
+          )) : (
+            <p className="sub empty-inline">
+              {demoMode ? 'All sample actions have been reviewed.' : 'Nothing needs review.'}
+            </p>
+          )}
+        </Panel>
 
-      {/* Card 2: Completed history */}
-      <div className="automation-card">
-        <h2 className="automation-card-title">Completed history</h2>
-        {completedHistory.length === 0 ? (
-          <p className="automation-history-empty">No completed sample actions.</p>
-        ) : (
-          <div className="automation-list">
-            {completedHistory.map((h) => (
-              <div key={h.id} className="automation-row">
-                <div className="automation-row-left">
-                  <span
-                    className="automation-row-icon"
-                    style={{
-                      background: h.decision === 'Approved' ? '#ecfdf5' : '#f1f5f9',
-                      color: h.decision === 'Approved' ? '#047857' : '#64748b',
-                    }}
-                  >
-                    <Icon name={h.decision === 'Approved' ? 'checkCircle' : 'tasks'} />
-                  </span>
-                  <div className="automation-row-info">
-                    <span className="automation-row-name">
-                      {h.displayName}
-                    </span>
-                    <span className="automation-row-sub">
-                      {h.decision} · {h.completedAt}
-                    </span>
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
+        <Panel className="settings-panel">
+          <h2 className="settings-section-title">Completed history</h2>
+          {displayHistory.length ? displayHistory.map((h) => (
+            <Row
+              key={h.id || `${h.title}-${h.decided_at}`}
+              leading="✦"
+              title={h.title || itemTitle(h)}
+              subtitle={[h.result || h.line, h.status, h.decided_by, h.decided_at ? timeAgo(h.decided_at) : null].filter(Boolean).join(' · ')}
+              trailing={h.id ? (
+                <button
+                  type="button"
+                  className="btn btn--secondary agent-btn"
+                  onClick={() => setReviewTarget({ id: h.id, history: true })}
+                >
+                  View history →
+                </button>
+              ) : null}
+            />
+          )) : (
+            <p className="sub empty-inline">
+              {demoMode ? 'No completed sample actions.' : 'No history yet.'}
+            </p>
+          )}
+        </Panel>
 
-      {/* Bottom disclaimer matching Reference Image 1 */}
-      <div className="automation-disclaimer">
-        Simulated actions only. No business system is connected.
-      </div>
+        <p className="foot">
+          {demoMode
+            ? 'Simulated actions only. No business system is connected.'
+            : 'Live automation queue from your workspace.'}
+        </p>
+      </>
+    ) : null}
 
-      {/* Review Modal matching Reference Image 2 */}
-      {selectedAction && (
-        <ActionReviewModal
-          action={selectedAction}
-          onClose={() => setSelectedAction(null)}
-          onApprove={handleApprove}
-          onReject={handleReject}
-          onSaveEdit={handleSaveEdit}
-        />
-      )}
-    </>
-  );
+    {activeItem ? (
+      <ReviewDialog
+        item={activeItem}
+        history={!!reviewTarget?.history}
+        onClose={() => setReviewTarget(null)}
+        onSampleComplete={completeSample}
+        reload={() => load(true)}
+      />
+    ) : null}
+  </>
+);
 }

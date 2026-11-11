@@ -538,9 +538,12 @@ export default function Usage() {
 
   return (
     <>
+      <p className="settings-back"><a className="link" href="#/settings">← Back to Settings</a></p>
       <PageHeader
+        eyebrow="BILLING"
         title="Usage & Billing"
         subtitle="Voice minutes, subscription billing, and statement charges across your account."
+        meta={<span className="date">Live statement</span>}
       >
         <div className="usage-header-bar">
           <div className="usage-month-nav" aria-label="Month navigator">
@@ -573,14 +576,14 @@ export default function Usage() {
             </button>
           </div>
           <a
-            className="btn btn--outline"
+            className="btn btn--secondary agent-btn"
             href={`/v1/product-billing/statement.csv?month=${month}`}
             download=""
             title="Download CSV statement for selected month"
           >
             Download CSV
           </a>
-          <Button className="btn btn--outline" onClick={() => window.print()}>
+          <Button className="btn btn--secondary agent-btn" onClick={() => window.print()}>
             Print
           </Button>
         </div>

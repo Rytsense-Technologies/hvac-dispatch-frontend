@@ -1,60 +1,57 @@
-// Appointments: visits on the schedule - who's coming, when, and whether the customer has confirmed.
-// Exact Reference UI matching reference design with live backend integration and fallback sample records.
-import { useEffect, useRef, useState } from 'react';
+// Work → Appointments: upcoming visits with confirmation tags + detail dialog.
+// Visual parity with the Rytsense reference; live API with sample fallback.
+import { useEffect, useState } from 'react';
 import { api } from '../lib/api.js';
 import { formatDateTime } from '../lib/format.js';
 import { can } from '../lib/session.js';
-import { toast } from '../components/index.js';
-import { Icon } from '../components/Icon.jsx';
+import {
+  Badge, Button, Dialog, Spinner, toast, Panel, Row,
+} from '../components/index.js';
+import { WorkChrome, WorkFoot } from './workChrome.jsx';
 
-// Sample appointments matching reference screenshot exactly
 const SAMPLE_APPOINTMENTS = [
   {
     id: 'sample-1',
     isSample: true,
     customerName: 'Sarah Mitchell',
     service: 'AC repair',
-    time: 'Wed, Nov 11 · 1 PM - 3 PM',
+    time: 'Wed, Nov 11 · 1 PM–3 PM',
     technician: 'Unassigned',
     address: '1206 Oak Street, Austin, TX',
     status: 'Confirmed',
     statusCode: 'confirmed',
     history: 'Appointment requested by phone.',
-    customerId: 'cust-1',
   },
   {
     id: 'sample-2',
     isSample: true,
     customerName: 'David Rodriguez',
     service: 'HVAC maintenance',
-    time: 'Wed, Nov 11 · 3:30 PM - 4:30 PM',
+    time: 'Wed, Nov 11 · 3:30 PM–4:30 PM',
     technician: 'Mike Rodriguez',
     address: '742 Evergreen Terrace, Austin, TX',
     status: 'Confirmed',
     statusCode: 'confirmed',
-    history: 'Scheduled via customer service call.',
-    customerId: 'cust-2',
+    history: 'Maintenance appointment confirmed.',
   },
   {
     id: 'sample-3',
     isSample: true,
     customerName: 'William Brooks',
     service: 'Plumbing inspection',
-    time: 'Thu, Nov 12 · 9 AM - 10 AM',
+    time: 'Thu, Nov 12 · 9 AM–10 AM',
     technician: 'Unassigned',
     address: '4508 Riverbend Road, Austin, TX',
     status: 'Needs confirmation',
     statusCode: 'needs_confirmation',
-    history: 'Online booking request awaiting customer confirmation.',
-    customerId: 'cust-3',
+    history: 'Inspection requested.',
   },
 ];
 
-// Detail Modal matching reference screenshot 2
-function AppointmentDetailModal({ appointment, onClose, onUpdateStatus }) {
+function AppointmentDetail({ appointment, onClose, onUpdateStatus }) {
   const [currentStatus, setCurrentStatus] = useState(appointment.status);
-  const [currentTech, setCurrentTech] = useState(appointment.technician);
   const [currentTime, setCurrentTime] = useState(appointment.time);
+  const currentTech = appointment.technician;
 
   const handleConfirm = async () => {
     setCurrentStatus('Confirmed');
@@ -70,7 +67,7 @@ function AppointmentDetailModal({ appointment, onClose, onUpdateStatus }) {
   };
 
   const handleReschedule = async () => {
-    const newTime = 'Fri, Nov 13 · 2 PM - 4 PM';
+    const newTime = 'Fri, Nov 13 · 2 PM–4 PM';
     setCurrentTime(newTime);
     onUpdateStatus(appointment.id, currentStatus, appointment.statusCode, newTime);
     if (!appointment.isSample && appointment.raw?.api?.reschedule) {
@@ -80,7 +77,7 @@ function AppointmentDetailModal({ appointment, onClose, onUpdateStatus }) {
         console.error('Failed to reschedule via API:', err);
       }
     }
-    toast('Appointment rescheduled to Fri, Nov 13 · 2 PM - 4 PM.');
+    toast('Appointment rescheduled to Fri, Nov 13 · 2 PM–4 PM.');
   };
 
   const handleCancel = async () => {
@@ -97,99 +94,49 @@ function AppointmentDetailModal({ appointment, onClose, onUpdateStatus }) {
   };
 
   return (
-    <div className="appointment-modal-overlay" onClick={onClose}>
-      <div className="appointment-modal-card" onClick={(e) => e.stopPropagation()}>
-        <div className="appointment-modal-head">
-          <div>
-            <div className="appointment-modal-eyebrow">SAMPLE WORKSPACE</div>
-            <h2 className="appointment-modal-title">
-              Appointment · {appointment.customerName}
-            </h2>
-          </div>
-          <button
-            type="button"
-            className="appointment-modal-close"
-            onClick={onClose}
-            aria-label="Close"
-          >
-            ✕
-          </button>
-        </div>
-
-        {/* Content details matching Screenshot 2 */}
-        <div className="appointment-modal-service">{appointment.service}</div>
-        <div className="appointment-modal-meta">{currentTime}</div>
-        <div className="appointment-modal-meta">{appointment.address}</div>
-        <div className="appointment-modal-meta">Technician: {currentTech}</div>
-        <div className="appointment-modal-meta">Status: {currentStatus}</div>
-
-        <div className="appointment-modal-section-title">History</div>
-        <div className="appointment-modal-history">{appointment.history}</div>
-
-        {/* Action buttons matching Screenshot 2 */}
-        <div className="appointment-modal-actions">
-          <div className="appointment-modal-btn-row">
-            <a
-              href="#/customers"
-              className="appointment-modal-btn"
-              onClick={onClose}
-            >
-              View customer
-            </a>
-            <a
-              href="#/tasks"
-              className="appointment-modal-btn"
-              onClick={onClose}
-            >
-              View task
-            </a>
-            <button
-              type="button"
-              className="appointment-modal-btn"
-              onClick={handleConfirm}
-            >
-              Confirm
-            </button>
-            <button
-              type="button"
-              className="appointment-modal-btn"
-              onClick={handleReschedule}
-            >
-              Reschedule
-            </button>
-          </div>
-          <div className="appointment-modal-btn-row">
-            <button
-              type="button"
-              className="appointment-modal-btn"
-              onClick={handleCancel}
-            >
-              Cancel appointment
-            </button>
-          </div>
-        </div>
-
-        <div className="appointment-modal-disclaimer">
-          Sample changes stay in this browser session. No customer is notified.
-        </div>
+    <Dialog title={`Appointment · ${appointment.customerName}`} onClose={onClose}>
+      <p className="work-dialog-eyebrow">Sample workspace</p>
+      <p>
+        <strong>{appointment.service}</strong>
+        <br />
+        {currentTime}
+        <br />
+        {appointment.address}
+        <br />
+        Technician: {currentTech}
+        <br />
+        Status: {currentStatus}
+      </p>
+      <p>
+        <strong>History</strong>
+        <br />
+        {appointment.history}
+      </p>
+      <div className="work-dialog-actions">
+        <a href="#/customers" className="btn btn--secondary" onClick={onClose}>View customer</a>
+        <a href="#/work" className="btn btn--secondary" onClick={onClose}>View task</a>
+        <Button className="btn btn--secondary" onClick={handleConfirm}>Confirm</Button>
+        <Button className="btn btn--secondary" onClick={handleReschedule}>Reschedule</Button>
+        <Button className="btn btn--secondary" onClick={handleCancel}>Cancel appointment</Button>
       </div>
-    </div>
+      <p className="work-sample-label">
+        Sample changes stay in this browser session. No customer is notified.
+      </p>
+    </Dialog>
   );
 }
 
 export default function Appointments() {
   const allowed = can('admin', 'dispatcher', 'approver');
-  const [data, setData] = useState(null); // Real backend appointments
+  const [data, setData] = useState(null);
   const [localOverrides, setLocalOverrides] = useState({});
-  const [selectedAppointment, setSelectedAppointment] = useState(null);
+  const [selected, setSelected] = useState(null);
   const [loading, setLoading] = useState(true);
 
-  // Load real backend appointments
   useEffect(() => {
-    if (!allowed) return;
+    if (!allowed) return undefined;
     let active = true;
     setLoading(true);
-
     (async () => {
       try {
         const out = await api('/v1/appointments/schedule', {
@@ -197,27 +144,27 @@ export default function Appointments() {
         });
         if (!active) return;
         setData({ items: Array.isArray(out?.visits) ? out.visits : [] });
-        setLoading(false);
-      } catch (err) {
+      } catch {
         if (!active) return;
         setData({ items: [] });
-        setLoading(false);
+      } finally {
+        if (active) setLoading(false);
       }
     })();
-
     return () => { active = false; };
   }, [allowed]);
 
   if (!allowed) {
     return (
-      <div className="card">
-        <h1>Not available for your role</h1>
-        <p className="muted">Ask an administrator if you need this section.</p>
-      </div>
+      <WorkChrome tab="appointments" eyebrow="Schedule" subtitle="Review visits, technicians, and confirmation status.">
+        <Panel>
+          <h2>Not available for your role</h2>
+          <p className="muted">Ask an administrator if you need this section.</p>
+        </Panel>
+      </WorkChrome>
     );
   }
 
-  // Combine real backend data or fallback to sample appointments
   const realVisits = data?.items || [];
   const baseAppointments = realVisits.length > 0
     ? realVisits.map((v) => {
@@ -244,7 +191,6 @@ export default function Appointments() {
     })
     : SAMPLE_APPOINTMENTS;
 
-  // Apply any session status/time updates made in the browser
   const displayAppointments = baseAppointments.map((appt) => {
     const override = localOverrides[appt.id];
     if (!override) return appt;
@@ -269,83 +215,55 @@ export default function Appointments() {
   };
 
   return (
-    <>
-      {/* Header matching Reference Image 1 */}
-      <div className="appointments-head">
-        <div>
-          <div className="appointments-eyebrow">SCHEDULE</div>
-          <h1 className="appointments-title">Appointments</h1>
-          <p className="appointments-subtitle">
-            Review visits, technicians, and confirmation status.
-          </p>
-        </div>
-        <button
-          type="button"
-          className="appointments-workspace-btn"
-          onClick={() => {}}
-        >
-          Sample workspace
-        </button>
-      </div>
+    <WorkChrome
+      tab="appointments"
+      eyebrow="Schedule"
+      subtitle="Review visits, technicians, and confirmation status."
+    >
+      <Panel>
+        <h2 className="work-panel-title">Upcoming appointments</h2>
+        {loading ? (
+          <Spinner />
+        ) : (
+          <div className="work-rows">
+            {displayAppointments.map((item) => (
+              <Row
+                key={item.id}
+                leading="▣"
+                title={`${item.customerName} · ${item.service}`}
+                subtitle={`${item.time} · ${item.technician}`}
+                trailing={(
+                  <>
+                    <Badge
+                      text={item.status}
+                      tone={item.statusCode === 'confirmed' ? 'good' : item.statusCode === 'needs_confirmation' ? 'warn' : 'neutral'}
+                    />
+                    <Button
+                      className="btn btn--secondary"
+                      onClick={() => setSelected(item)}
+                      aria-label={`View appointment for ${item.customerName}`}
+                    >
+                      View details →
+                    </Button>
+                  </>
+                )}
+              />
+            ))}
+          </div>
+        )}
+      </Panel>
 
-      {/* Main Card: Upcoming appointments */}
-      <div className="appointments-card">
-        <h2 className="appointments-card-title">Upcoming appointments</h2>
-        <div className="appointments-list">
-          {displayAppointments.map((item) => (
-            <div key={item.id} className="appointments-row">
-              <div className="appointments-row-left">
-                <span className="appointments-row-icon">
-                  <Icon name="appointments" />
-                </span>
-                <div className="appointments-row-info">
-                  <span className="appointments-row-name">
-                    {item.customerName} · {item.service}
-                  </span>
-                  <span className="appointments-row-sub">
-                    {item.time} · {item.technician}
-                  </span>
-                </div>
-              </div>
-
-              <div className="appointments-row-actions">
-                <span
-                  className={`appointments-status-pill appointments-status-pill--${
-                    item.statusCode === 'confirmed'
-                      ? 'confirmed'
-                      : item.statusCode === 'needs_confirmation'
-                        ? 'needs_confirmation'
-                        : 'cancelled'
-                  }`}
-                >
-                  {item.status}
-                </span>
-                <button
-                  type="button"
-                  className="appointments-view-btn"
-                  onClick={() => setSelectedAppointment(item)}
-                >
-                  View details →
-                </button>
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      {/* Bottom disclaimer matching Reference Image 1 */}
-      <div className="appointments-disclaimer">
+      <WorkFoot>
         Sample records · Session changes only · No real scheduling or notifications.
-      </div>
+      </WorkFoot>
 
-      {/* Detail Modal matching Reference Image 2 */}
-      {selectedAppointment && (
-        <AppointmentDetailModal
-          appointment={selectedAppointment}
-          onClose={() => setSelectedAppointment(null)}
+      {selected ? (
+        <AppointmentDetail
+          appointment={selected}
+          onClose={() => setSelected(null)}
           onUpdateStatus={handleUpdateStatus}
         />
-      )}
-    </>
+      ) : null}
+    </WorkChrome>
   );
 }

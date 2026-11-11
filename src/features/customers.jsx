@@ -2,9 +2,13 @@
 // Exact Reference UI matching reference design with live backend integration and fallback sample records.
 import { useEffect, useRef, useState } from 'react';
 import { api } from '../lib/api.js';
-import { formatDateTime } from '../lib/format.js';
-import { Empty, Note, Overlay, toast } from '../components/index.js';
-import { Icon } from '../components/Icon.jsx';
+import { CHANNELS, formatDateTime, short } from '../lib/format.js';
+import { useEvery } from '../lib/hooks.js';
+import { can } from '../lib/session.js';
+import {
+  ActionButton, Button, DataTable, Details, Dialog, Empty, ErrorBox, Field, Icon, Note, Panel,
+  PageHeader, ProgressBadge, Row, Select, Spinner, StatusBadge, toast,
+} from '../components/index.js';
 
 const PAGE = 50;
 const MAX_IMPORT_BYTES = 2 * 1024 * 1024;
@@ -85,75 +89,189 @@ const SAMPLE_CUSTOMERS = [
   },
 ];
 
-// Customer Detail Modal matching Reference Screenshot
-function CustomerModal({ customer, onClose }) {
-  const serviceName = customer.service || 'AC repair';
-  const historySub = customer.historySubtitle
-    || (customer.last_request_at
-      ? `${formatDateTime(customer.last_request_at)} · Confirmed · Unassigned`
-      : 'Wed, Nov 11 · 1 PM · Confirmed · Unassigned');
+function customerSubtitle(c) {
+  const place = c.location || c.city || c.address || '';
+  const service = c.latest_service || c.service || '';
+  if (place && service) return `${place} · ${service}`;
+  return place || service || (c.phone ? c.phone : 'No service history yet');
+}
+
+// ---------- the list ----------
+
+function CustomerList({ customers, open }) {
+  return (
+    <ul className="customers-list" aria-label="Customers">
+      {customers.map((c) => (
+        <li key={c.id}>
+          <Row
+            leading={<Icon name="customers" />}
+            title={c.name || 'Unknown'}
+            subtitle={customerSubtitle(c)}
+            trailing={(
+              <Button
+                className="btn agent-btn"
+                type="button"
+                aria-label={`View customer ${c.name || ''}`.trim()}
+                onClick={() => open(c)}
+              >
+                View customer
+              </Button>
+            )}
+          />
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+// ---------- the dialog for one customer ----------
+
+function CustomerDetail({ id, onClose }) {
+  const [state, setState] = useState({});
+  const seq = useRef(0);
+
+  <div className="customer-modal-service-row">
+    <div>
+      <div className="customer-modal-service-name">{serviceName}</div>
+      <div className="customer-modal-service-sub">{historySub}</div>
+    </div>
+    <a
+      href="#/appointments"
+      className="customer-modal-btn"
+      onClick={onClose}
+    >
+      View appointment
+    </a>
+  </div>
+
+  const c = state.customer;
+  let content;
+  if (state.error) content = <ErrorBox error={state.error} />;
+  else if (!c) content = <Spinner text="Loading customer…" />;
+  else {
+    const showCalls = can('admin', 'dispatcher', 'approver') && Array.isArray(c.calls);
+    content = (
+      <div className="stack">
+        <p className="muted">
+          {[c.address || c.location, c.latest_service].filter(Boolean).join(' · ') || 'No contact details on file.'}
+        </p>
+
+        <h3>Contact</h3>
+        <Details rows={[
+          ['Phone', c.phone],
+          ['Email', c.email],
+          ['Address', c.address],
+          ['Location', c.location],
+          ['Latest service', c.latest_service],
+          ['Requests', String(c.requests ?? 0)],
+          ['Last activity', c.last_request_at ? formatDateTime(c.last_request_at) : ''],
+        ]} />
+
+        <h3>Service history</h3>
+        {c.history?.length ? (
+          <div className="customers-history">
+            {c.history.map((h) => (
+              <Row
+                key={h.id}
+                title={[h.service, h.category].filter(Boolean).join(' · ') || 'Service request'}
+                subtitle={[
+                  h.created_at ? formatDateTime(h.created_at) : null,
+                  h.priority,
+                  h.is_emergency ? 'Emergency' : null,
+                  h.status,
+                  h.appointment
+                    ? `${h.appointment.status}, ${formatDateTime(h.appointment.start_at)} – ${formatDateTime(h.appointment.end_at)}`
+                    : 'Not booked',
+                ].filter(Boolean).join(' · ')}
+                trailing={<StatusBadge status={h.status} />}
+              />
+            ))}
+          </div>
+        ) : <Empty text="No service requests yet." />}
+
+        <h3>Open work</h3>
+        {c.tasks?.length ? (
+          <div className="customers-history">
+            {c.tasks.map((t) => (
+              <Row
+                key={t.id || `${t.service}-${t.window_start}`}
+                title={t.service || 'Open task'}
+                subtitle={[
+                  t.technician || 'Unassigned',
+                  t.window_start ? `${formatDateTime(t.window_start)} – ${formatDateTime(t.window_end)}` : null,
+                ].filter(Boolean).join(' · ')}
+                trailing={<ProgressBadge progress={t.status} />}
+              />
+            ))}
+          </div>
+        ) : <Empty text="No open work." />}
+
+        {/* Calls are personal data: only shown when the server actually sends them (admin, dispatcher, approver). */}
+        {showCalls && (
+          <>
+            <h3>Recent calls</h3>
+            {c.calls.length ? (
+              <DataTable
+                head={['Channel', 'Direction', 'When', 'Duration', 'Request']}
+                rows={c.calls.map((call) => [
+                  CHANNELS[call.channel] || call.channel,
+                  call.direction,
+                  formatDateTime(call.started_at),
+                  call.duration_seconds != null ? `${Math.round(call.duration_seconds / 60)} min` : '-',
+                  call.service_request_id ? `#${short(call.service_request_id)}` : '-',
+                ])}
+                label="Calls"
+              />
+            ) : <Empty text="No calls recorded." />}
+          </>
+        )}
+      </div>
+    );
+  }
 
   return (
-    <div className="customer-modal-overlay" onClick={onClose}>
-      <div className="customer-modal-card" onClick={(e) => e.stopPropagation()}>
-        <div className="customer-modal-head">
-          <div>
-            <div className="customer-modal-eyebrow">SAMPLE WORKSPACE</div>
-            <h2 className="customer-modal-title">
-              Customer · {customer.name}
-            </h2>
-          </div>
-          <button
-            type="button"
-            className="customer-modal-close"
-            onClick={onClose}
-            aria-label="Close"
-          >
-            ✕
-          </button>
-        </div>
+    <Dialog title={c?.name ? `Customer · ${c.name}` : 'Customer'} wide onClose={onClose}>
+      {content}
+    </Dialog>
+  );
+}
 
-        <div className="customer-modal-meta">
-          {customer.address || customer.location || '1206 Oak Street, Austin, TX'}
-        </div>
-        <div className="customer-modal-meta" style={{ marginBottom: 18 }}>
-          {serviceName}
-        </div>
+// ---------- import leads/customers (admin, dispatcher only) ----------
 
-        <div className="customer-modal-section-title">Service history</div>
+function fieldsFor(meta, type) {
+  if (!meta) return [];
+  if (Array.isArray(meta.record_types)) return meta.record_types.find((r) => r.id === type)?.fields || [];
+  const list = (meta.fields && meta.fields[type]) || meta[type];
+  return Array.isArray(list) ? list : [];
+}
 
-        <div className="customer-modal-service-row">
-          <div>
-            <div className="customer-modal-service-name">{serviceName}</div>
-            <div className="customer-modal-service-sub">{historySub}</div>
-          </div>
-          <a
-            href="#/appointments"
-            className="customer-modal-btn"
-            onClick={onClose}
-          >
-            View appointment
-          </a>
-        </div>
+function recordTypeOptions(meta) {
+  if (Array.isArray(meta?.record_types) && meta.record_types.length) return meta.record_types.map((r) => [r.id, r.label || r.id]);
+  return [['customers', 'Customers'], ['leads', 'Leads']];
+}
 
-        <div className="customer-modal-actions">
-          <a
-            href="#/calls"
-            className="customer-modal-btn"
-            onClick={onClose}
-          >
-            View calls
-          </a>
-          <a
-            href="#/tasks"
-            className="customer-modal-btn"
-            onClick={onClose}
-          >
-            View tasks
-          </a>
-        </div>
-      </div>
-    </div>
+function CountsStrip({ counts }) {
+  if (!counts) return null;
+  return (
+    <Details rows={[
+      ['Rows in file', String(counts.rows ?? 0)],
+      ['Will import', String(counts.will_import ?? 0)],
+      ['Already exist', String(counts.already_exist ?? 0)],
+      ['Invalid', String(counts.invalid ?? 0)],
+      ['Duplicates in file', String(counts.duplicates_in_file ?? 0)],
+    ]} />
+  );
+}
+
+function ProblemsList({ problems, total }) {
+  if (!problems?.length) return null;
+  return (
+    <>
+      <ul className="plain">
+        {problems.slice(0, 10).map((p, i) => <li key={i} className="small">{`Line ${p.line}: ${p.problem}${p.kind ? ` (${p.kind})` : ''}`}</li>)}
+      </ul>
+      {total > Math.min(problems.length, 10) ? <p className="muted small">{`${total} problems in total; showing the first ${Math.min(problems.length, 10)}.`}</p> : null}
+    </>
   );
 }
 
@@ -184,16 +302,35 @@ function ImportWizard({ onClose, reload }) {
   };
 
   return (
-    <Overlay title="Import leads or customers" wide onClose={onClose}>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-        <p style={{ margin: 0, fontSize: '0.86rem', color: '#64748b' }}>
-          Upload a CSV spreadsheet with customer contacts, service requests, or past leads.
-        </p>
+    <Dialog title="Import leads or customers" wide onClose={onClose}>
+      <div className="stack">
+        <p className="muted">Upload a CSV, map your columns, and review valid records before importing.</p>
+        <p className="muted small">{`Step ${step} of 3`}</p>
 
-        <Note
-          tone="neutral"
-          text="At most 2 MB and 1,000 rows. The first row must contain column headers (Name, Phone, City, Service)."
-        />
+        {step === 1 && (
+          <div className="stack">
+            {metaError ? <ErrorBox error={metaError} /> : null}
+            {meta?.limits ? (
+              <Note tone="neutral" text={`At most ${meta.limits.max_size_mb ?? 2} MB and ${meta.limits.max_rows ?? 1000} rows. The first row must be the column names.${meta.note ? ` ${meta.note}` : ''}`} />
+            ) : (
+              <Note tone="neutral" text="At most 2 MB and 1,000 rows. The first row must be the column names." />
+            )}
+            <Field label="Record type"><Select options={recordTypeOptions(meta)} value={recordType} onChange={(e) => { setRecordType(e.target.value); setPreview(null); setMapping({}); }} /></Field>
+            <Field label="CSV file" hint={fileName || 'No file chosen yet.'}><input type="file" accept=".csv,text/csv" onChange={onFile} /></Field>
+            <p className="sub">Suggested columns: name, email, phone, city, service.</p>
+            <div className="right">
+              <ActionButton
+                className="btn btn--primary"
+                disabled={!csv.trim()}
+                action={async () => {
+                  if (!csv.trim()) { toast('Choose a CSV file first.', 'bad'); return; }
+                  await runPreview(null);
+                  setStep(2);
+                }}
+              >Continue to mapping</ActionButton>
+            </div>
+          </div>
+        )}
 
         <div>
           <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, color: '#0f172a', marginBottom: 6 }}>
@@ -216,7 +353,7 @@ function ImportWizard({ onClose, reload }) {
           </button>
         </div>
       </div>
-    </Overlay>
+    </Dialog>
   );
 }
 
@@ -230,133 +367,54 @@ export default function Customers() {
   useEffect(() => {
     let active = true;
 
-    (async () => {
-      try {
-        const out = await api('/v1/customers', { params: { search, limit: PAGE, offset: 0 } });
-        if (!active) return;
-        setData(out);
-      } catch {
-        if (!active) return;
-      }
-    })();
+    const customers = data ? data.customers : [];
+    let list;
+    if (loading) list = <Spinner />;
+    else if (error) list = <ErrorBox error={error} />;
+    else if (!customers.length) list = <Empty text={search ? 'No matching customers.' : 'No customers yet.'} />;
+    else list = <CustomerList customers={customers} open={(c) => setOpenId(c.id)} />;
 
-    return () => { active = false; };
-  }, [search]);
+    const showPager = data && (data.offset > 0 || data.customers.length >= PAGE);
 
-  // Combine real backend customers or fallback to sample customers
-  const realList = data?.customers || [];
-  const baseCustomers = realList.length > 0
-    ? realList.map((c) => ({
-      id: String(c.id),
-      isSample: false,
-      name: c.name || 'Customer',
-      location: c.location || 'Austin, TX',
-      service: c.latest_service || 'Service inquiry',
-      subtitle: `${c.location || 'Austin, TX'} · ${c.latest_service || 'Service inquiry'}`,
-      phone: c.phone || 'Not provided',
-      email: c.email || '',
-      address: c.address || `${c.location || 'Austin, TX'}`,
-      historySubtitle: c.last_request_at
-        ? `${formatDateTime(c.last_request_at)} · Confirmed · Unassigned`
-        : 'Wed, Nov 11 · 1 PM · Confirmed · Unassigned',
-      raw: c,
-    }))
-    : SAMPLE_CUSTOMERS;
-
-  // Filter by search string
-  const displayCustomers = baseCustomers.filter((c) => {
-    if (!search.trim()) return true;
-    const q = search.toLowerCase();
     return (
-      c.name.toLowerCase().includes(q) ||
-      (c.location && c.location.toLowerCase().includes(q)) ||
-      (c.service && c.service.toLowerCase().includes(q)) ||
-      (c.subtitle && c.subtitle.toLowerCase().includes(q))
-    );
-  });
-
-  return (
-    <>
-      {/* Header matching Reference */}
-      <div className="customers-head">
-        <div>
-          <div className="customers-eyebrow">CUSTOMERS</div>
-          <h1 className="customers-title">Customers</h1>
-          <p className="customers-subtitle">
-            Find a customer and review their service history.
-          </p>
-        </div>
-        <button
-          type="button"
-          className="customers-import-btn"
-          onClick={() => setImportOpen(true)}
+      <>
+        <PageHeader
+          eyebrow="CUSTOMERS"
+          title="Customers"
+          subtitle="Find a customer and review their service history."
         >
-          Import leads or customers
-        </button>
-      </div>
+          {canImport && (
+            <Button className="btn btn--primary" onClick={() => setImportOpen(true)}>
+              Import leads or customers
+            </Button>
+          )}
+        </PageHeader>
 
-      {/* Main Card */}
-      <div className="customers-card">
-        <label className="customers-search-label" htmlFor="customer-search-input">
-          Search customers
-        </label>
-        <input
-          id="customer-search-input"
-          type="text"
-          className="customers-search-input"
-          placeholder="Name, city, or service"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-        />
+        <Panel className="customers-panel" aria-label="Customer search">
+          <Field label="Search customers">
+            <input
+              type="search"
+              className="customers-search"
+              placeholder="Name, city, or service"
+              value={search}
+              onChange={(e) => { setSearch(e.target.value); setOffset(0); }}
+              autoComplete="off"
+            />
+          </Field>
+          {list}
+          {showPager ? (
+            <div className="customers-pager row between">
+              <Button className="btn btn--ghost" aria-label="Previous page" disabled={data.offset === 0} onClick={() => setOffset((o) => Math.max(0, o - PAGE))}>‹ Previous</Button>
+              <span className="muted small">{data.customers.length ? `${data.offset + 1}–${data.offset + data.customers.length}` : '0'}</span>
+              <Button className="btn btn--ghost" aria-label="Next page" disabled={data.customers.length < PAGE} onClick={() => setOffset((o) => o + PAGE)}>Next ›</Button>
+            </div>
+          ) : null}
+        </Panel>
 
-        {displayCustomers.length === 0 ? (
-          <Empty text="No customer matches that search." />
-        ) : (
-          <div className="customers-list">
-            {displayCustomers.map((customer) => (
-              <div key={customer.id} className="customers-row">
-                <div className="customers-row-left">
-                  <span className="customers-row-icon">
-                    <Icon name="customers" />
-                  </span>
-                  <div className="customers-row-info">
-                    <span className="customers-row-name">{customer.name}</span>
-                    <span className="customers-row-sub">{customer.subtitle}</span>
-                  </div>
-                </div>
-
-                <button
-                  type="button"
-                  className="customers-view-btn"
-                  onClick={() => setSelectedCustomer(customer)}
-                >
-                  View customer
-                </button>
-              </div>
-            ))}
-          </div>
+        {openId && <CustomerDetail id={openId} onClose={() => setOpenId(null)} />}
+        {importOpen && canImport && (
+          <ImportWizard onClose={() => setImportOpen(false)} reload={() => load(true)} />
         )}
-      </div>
-
-      {/* Bottom disclaimer matching Reference */}
-      <div className="customers-disclaimer">
-        Illustrative customer information only.
-      </div>
-
-      {/* Modal matching Screenshot */}
-      {selectedCustomer && (
-        <CustomerModal
-          customer={selectedCustomer}
-          onClose={() => setSelectedCustomer(null)}
-        />
-      )}
-
-      {importOpen && (
-        <ImportWizard
-          onClose={() => setImportOpen(false)}
-          reload={() => {}}
-        />
-      )}
-    </>
-  );
-}
+      </>
+    );
+  }
