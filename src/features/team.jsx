@@ -116,16 +116,13 @@ function ExtensionsPanel({ active }) {
     <Panel className="team-extensions" as="section">
       <PanelHead
         title="Technician time extensions"
-        subtitle="Shared sample updates from the technician view in this browser"
+        subtitle="Job-time updates reported from the technician view"
       >
         <Badge text={`${count} update${count === 1 ? '' : 's'}`} tone={count ? 'warn' : 'good'} />
       </PanelHead>
       {state.status === 'loading' ? <Spinner /> : null}
-      {state.status === 'error' && state.error?.status && state.error.status >= 500 ? (
-        <ErrorBox error={state.error} />
-      ) : null}
-      {(state.status === 'ready' && !count)
-        || (state.status === 'error' && !(state.error?.status >= 500)) ? (
+      {state.status === 'error' ? <ErrorBox error={state.error} /> : null}
+      {state.status === 'ready' && !count ? (
         <p className="sub">No extensions yet. Open a current technician job, advance it to Arrived or In progress, then choose Extend job time.</p>
       ) : null}
       {count ? entries.map((x, i) => (
@@ -144,7 +141,9 @@ function ExtensionsPanel({ active }) {
           />
         </div>
       )) : null}
-      <p className="sample-label">Same-browser demo sync only. Other appointments keep their original times.</p>
+      {state.status === 'ready' ? (
+        <p className="sample-label">Extensions come from the team extensions API. Other appointments keep their original times until reviewed.</p>
+      ) : null}
     </Panel>
   );
 }
@@ -202,7 +201,7 @@ function PeopleTab({ active, onEditRole, onTimeOff }) {
         }) : <Empty text="No team members yet." />}
       </Panel>
       <p className="page-foot">
-        Interactive design concept · Changes stay in this browser session and do not invite people, enforce access, or schedule real work.
+        Adding people, editing roles, and time off use your live account and dispatch APIs. The extensions panel only lists job-time updates shared from the technician view.
       </p>
       <ExtensionsPanel active={active} />
     </div>
@@ -344,25 +343,23 @@ export default function Team() {
   const allowed = can('admin', 'dispatcher', 'approver');
   const canManageUsers = can('admin');
 
-  const reloadPeople = () => {
-    setDialog(null);
-    setPeopleTick((n) => n + 1);
-  };
-
-  if (tab === 'tracking') {
-    return <TeamTracking active onBack={() => setTab('people')} />;
-  }
+  // Refresh the People list without unmounting an open dialog (AddTechnician
+  // reloads after creating the tech record, before the optional sign-in step).
+  const refreshPeople = () => setPeopleTick((n) => n + 1);
+  const closeDialog = () => setDialog(null);
 
   let body;
-  if (tab === 'roles') {
+  if (!allowed && tab !== 'roles') {
+    body = <Forbidden />;
+  } else if (tab === 'tracking') {
+    body = <TeamTracking active onBack={() => setTab('people')} />;
+  } else if (tab === 'roles') {
     body = (
       <RolesTab
         active
         onReview={(role) => setDialog({ kind: 'role', role })}
       />
     );
-  } else if (!allowed) {
-    body = <Forbidden />;
   } else if (tab === 'people') {
     body = (
       <PeopleTab
@@ -378,7 +375,10 @@ export default function Team() {
     body = null;
   }
 
-  const close = () => setDialog(null);
+  // Tracking is a nested full-page view (no Team chrome) once allowed.
+  if (tab === 'tracking' && allowed) {
+    return body;
+  }
 
   return (
     <div className="team-page">
@@ -405,17 +405,17 @@ export default function Team() {
 
       {dialog?.kind === 'add' ? (
         <AddMemberChooser
-          onClose={close}
+          onClose={closeDialog}
           onPick={(kind) => setDialog({ kind: kind === 'admin' ? 'addAdmin' : 'addTech' })}
         />
       ) : null}
-      {dialog?.kind === 'addAdmin' ? <AddAdminDialog onClose={close} reload={reloadPeople} /> : null}
-      {dialog?.kind === 'addTech' ? <AddTechnicianDialog onClose={close} reload={reloadPeople} /> : null}
-      {dialog?.kind === 'edit' ? <EditDialog user={dialog.user} onClose={close} reload={reloadPeople} /> : null}
+      {dialog?.kind === 'addAdmin' ? <AddAdminDialog onClose={closeDialog} reload={refreshPeople} /> : null}
+      {dialog?.kind === 'addTech' ? <AddTechnicianDialog onClose={closeDialog} reload={refreshPeople} /> : null}
+      {dialog?.kind === 'edit' ? <EditDialog user={dialog.user} onClose={closeDialog} reload={refreshPeople} /> : null}
       {dialog?.kind === 'timeoff' ? (
-        <TimeOffDialog tech={dialog.tech} reload={reloadPeople} onClose={close} />
+        <TimeOffDialog tech={dialog.tech} reload={refreshPeople} onClose={closeDialog} />
       ) : null}
-      {dialog?.kind === 'role' ? <RoleReviewDialog role={dialog.role} onClose={close} /> : null}
+      {dialog?.kind === 'role' ? <RoleReviewDialog role={dialog.role} onClose={closeDialog} /> : null}
     </div>
   );
 }
