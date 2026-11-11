@@ -6,7 +6,7 @@ import { api } from '../lib/api.js';
 import {
   Badge, Spinner, ErrorBox, Note, PageHeader, Field, Button, Dialog, toast, Panel, PanelHead, Row,
 } from '../components/index.js';
-import { ConnectDialog, SipCard } from './sipTrunks.jsx';
+import { ConnectDialog, SettingsDialog, SipCard } from './sipTrunks.jsx';
 
 function formatUs(digits) {
   return `+1 (${digits.slice(0, 3)}) ${digits.slice(3, 6)}-${digits.slice(6)}`;
@@ -390,10 +390,9 @@ export default function Numbers() {
         sip?.enabled && sip?.ready ? (
           <ConnectDialog
             onClose={() => setWizard(null)}
-            onConnected={() => {
+            onConnected={(made) => {
               load();
-              setWizard(null);
-              toast('Number connected.');
+              setWizard({ kind: 'sip-created', trunk: made });
             }}
           />
         ) : (
@@ -404,6 +403,13 @@ export default function Numbers() {
             </div>
           </Dialog>
         )
+      ) : null}
+      {wizard?.kind === 'sip-created' ? (
+        <SettingsDialog
+          trunk={wizard.trunk}
+          title="Now enter this at your provider"
+          onClose={() => setWizard(null)}
+        />
       ) : null}
       {wizard?.detail != null ? (
         <NumberDetailDialog

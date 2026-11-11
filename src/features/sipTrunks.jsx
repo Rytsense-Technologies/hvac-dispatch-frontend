@@ -17,9 +17,9 @@ function CopyField({ label, value }) {
 }
 
 // What the company types into its provider. The password is present only when it was just made.
-function SettingsDialog({ trunk, title, onClose }) {
+export function SettingsDialog({ trunk, title, onClose }) {
   return (
-    <Overlay title={title} onClose={onClose}>
+    <Dialog title={title} onClose={onClose}>
       <div className="stack">
         <CopyField label="Send calls to (SIP address)" value={trunk.sip_uri} />
         <CopyField label="Server" value={trunk.host} />
@@ -35,9 +35,9 @@ function SettingsDialog({ trunk, title, onClose }) {
             ) : <p className="muted">The password was shown when you connected. If you lost it, choose "New password".</p>}
           </>
         ) : <p className="muted">{`Only calls from ${trunk.allowed_addresses.join(', ')} are accepted.`}</p>}
-        <div className="right"><Button className="btn btn--primary" onClick={onClose}>Done</Button></div>
+        <div className="dialog-actions"><Button className="btn btn--primary action" onClick={onClose}>Done</Button></div>
       </div>
-    </Overlay>
+    </Dialog>
   );
 }
 
