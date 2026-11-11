@@ -23,6 +23,7 @@ export const SECTIONS = [
   { id: 'reports', label: 'Reports', icon: 'reports', group: 'manage', view: lazy(() => import('../features/reports.jsx')) },
   { id: 'settings', label: 'Settings', icon: 'settings', group: 'manage', view: lazy(() => import('../features/settings.jsx')) },
   { id: 'automation', label: 'Admin automation', icon: 'automation', group: 'manage', hideNav: true, crumbParent: 'Settings', view: lazy(() => import('../features/automation.jsx')) },
+  { id: 'usage', label: 'Usage & Billing', icon: 'settings', group: 'manage', hideNav: true, crumbParent: 'Settings', view: lazy(() => import('../features/usage.jsx')) },
 ];
 
 /** Sidebar entries (order + href). `match` lists section ids that keep this item active. */
@@ -36,7 +37,7 @@ export const NAV_ITEMS = [
   { id: 'customers', label: 'Customers', icon: 'customers', href: '#/customers', match: ['customers'] },
   { id: 'copilot', label: 'AI Coworker', icon: 'copilot', href: '#/copilot', group: 'manage', match: ['copilot'] },
   { id: 'reports', label: 'Reports', icon: 'reports', href: '#/reports', group: 'manage', match: ['reports'] },
-  { id: 'settings', label: 'Settings', icon: 'settings', href: '#/settings', group: 'manage', match: ['settings', 'automation'] },
+  { id: 'settings', label: 'Settings', icon: 'settings', href: '#/settings', group: 'manage', match: ['settings', 'automation', 'usage'] },
 ];
 
 export const SECTION_TABS = {
