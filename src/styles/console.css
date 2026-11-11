@@ -1223,6 +1223,10 @@ tr.clickable:hover, tr.clickable:focus { background: #f1f5f9; }
   background: var(--warn-bg);
   color: var(--warn-text);
 }
+.agent-status.off {
+  background: var(--neutral-soft);
+  color: var(--muted);
+}
 .agent-metric {
   border-top: 1px solid #edf1f4;
   padding-top: 13px;

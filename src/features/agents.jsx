@@ -446,7 +446,9 @@ export default function Agents() {
         <div className="agent-grid">
           {shown.map((agent) => {
             const statusKey = agent.status;
-            const needsReview = statusKey === 'needs_review' || statusKey === 'paused';
+            const statusClass = statusKey === 'off'
+              ? ' off'
+              : (statusKey === 'needs_review' || statusKey === 'paused' ? ' review' : '');
             const statusLabel = STATUS_LABEL[statusKey] || statusKey;
             const metric = agent.metric
               || agent.choices
@@ -457,7 +459,7 @@ export default function Agents() {
                   <span className="agent-symbol" aria-hidden="true">
                     <Icon name={agentIcon(agent)} />
                   </span>
-                  <span className={`agent-status${needsReview ? ' review' : ''}`}>
+                  <span className={`agent-status${statusClass}`}>
                     <span aria-hidden="true">●</span>
                     {' '}
                     <span>{statusLabel}</span>
