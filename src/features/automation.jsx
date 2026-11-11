@@ -136,26 +136,29 @@ function ReviewDialog({ item, history = false, onClose, onSampleComplete, reload
         ) : null}
         <div className="dialog-actions">
           {!history && writer ? (
-            <ActionButton
-              className="btn btn--primary action"
-              action={async () => {
-                if (sample) {
-                  onSampleComplete?.(item.id, 'approved');
-                  toast('Approved in the demo. Nothing was sent.');
+            <div className="stack">
+              <ActionButton
+                className="btn btn--primary action"
+                action={async () => {
+                  if (sample) {
+                    onSampleComplete?.(item.id, 'approved');
+                    toast('Approved in the demo. Nothing was sent.');
+                    onClose();
+                    return;
+                  }
+                  if (dialog.editable && item.api?.edit && text !== (dialog.proposed || item.proposed?.text || '')) {
+                    await api(item.api.edit, { method: 'POST', body: { text: text.trim() } });
+                  }
+                  await api(item.api.approve, { method: 'POST', body: dialog.editable ? { text: text.trim() } : {} });
+                  toast('Done.');
                   onClose();
-                  return;
-                }
-                if (dialog.editable && item.api?.edit && text !== (dialog.proposed || item.proposed?.text || '')) {
-                  await api(item.api.edit, { method: 'POST', body: { text: text.trim() } });
-                }
-                await api(item.api.approve, { method: 'POST', body: dialog.editable ? { text: text.trim() } : {} });
-                toast('Done.');
-                onClose();
-                reload?.();
-              }}
-            >
-              {dialog.approve?.label || 'Approve'}
-            </ActionButton>
+                  reload?.();
+                }}
+              >
+                {dialog.approve?.label || 'Approve'}
+              </ActionButton>
+              {dialog.approve?.does ? <small className="muted small">{dialog.approve.does}</small> : null}
+            </div>
           ) : null}
           {!history && writer && dialog.editable !== false ? (
             <ActionButton
@@ -178,23 +181,26 @@ function ReviewDialog({ item, history = false, onClose, onSampleComplete, reload
             </ActionButton>
           ) : null}
           {!history && writer ? (
-            <ActionButton
-              className="btn btn--secondary agent-btn"
-              action={async () => {
-                if (sample) {
-                  onSampleComplete?.(item.id, 'rejected');
-                  toast('Sample action rejected.');
+            <div className="stack">
+              <ActionButton
+                className="btn btn--secondary agent-btn"
+                action={async () => {
+                  if (sample) {
+                    onSampleComplete?.(item.id, 'rejected');
+                    toast('Sample action rejected.');
+                    onClose();
+                    return;
+                  }
+                  await api(item.api.dismiss || item.api.reject, { method: 'POST', body: {} });
+                  toast('Rejected.');
                   onClose();
-                  return;
-                }
-                await api(item.api.dismiss || item.api.reject, { method: 'POST', body: {} });
-                toast('Rejected.');
-                onClose();
-                reload?.();
-              }}
-            >
-              {dialog.reject?.label || 'Reject'}
-            </ActionButton>
+                  reload?.();
+                }}
+              >
+                {dialog.reject?.label || 'Reject'}
+              </ActionButton>
+              {dialog.reject?.does ? <small className="muted small">{dialog.reject.does}</small> : null}
+            </div>
           ) : null}
           <Button className="btn btn--secondary agent-btn" onClick={onClose}>Close</Button>
         </div>
