@@ -72,10 +72,7 @@ async function fetchVoiceToken(userId) {
   return res.json();
 }
 
-// ---------- text-message test ----------
-// Type a text as the customer and see what the SMS assistant would answer. Signed in as an admin (the console's session cookie);
-// nothing is sent to anyone and staff are not alerted.
-const SMS_PHONE_STORAGE_KEY = "sms_test_phone";
+// ---------- shared API helper ----------
 async function smsApi(path, { method = "GET", body, csrf } = {}) {
   const res = await fetch(`${API_BASE}${path}`, {
     method,
@@ -93,82 +90,8 @@ async function smsApi(path, { method = "GET", body, csrf } = {}) {
   return data;
 }
 
-function SmsTest() {
-  const [phone, setPhone] = useState(() => safeStorageGet(SMS_PHONE_STORAGE_KEY) || "");
-  const [text, setText] = useState("");
-  const [items, setItems] = useState([]);
-  const [busy, setBusy] = useState(false);
-  const [note, setNote] = useState("");
-  const [signedIn, setSignedIn] = useState(null);
-  const csrf = useRef(null);
-  const box = useRef(null);
-  const counter = useRef(0);
-
-  useEffect(() => {
-    smsApi("/v1/auth/me").then((data) => { csrf.current = data.csrf_token; setSignedIn(true); }).catch(() => setSignedIn(false));
-  }, []);
-  useEffect(() => { box.current.scrollTop = box.current.scrollHeight; }, [items]);
-
-  const add = (mine, message, flag) => setItems((prev) => [...prev, { id: counter.current++, mine, message, flag }]);
-
-  async function send(event) {
-    event.preventDefault();
-    const message = text.trim();
-    if (!message || busy) return;
-    if (phone.replace(/\D/g, "").length < 7) { setNote("Enter the customer's phone number, with the country code."); return; }
-    safeStorageSet(SMS_PHONE_STORAGE_KEY, phone.trim());
-    setBusy(true);
-    setNote("");
-    add(true, message);
-    setText("");
-    try {
-      const out = await smsApi("/v1/sms-bot/test", { method: "POST", body: { phone: phone.trim(), message }, csrf: csrf.current });
-      if (out.reply) add(false, out.reply, out.needs_a_person ? "A real text would also alert your team." : "");
-      else setNote(out.note || "No reply.");
-    } catch (error) {
-      if (error.status === 401) setSignedIn(false);
-      setNote(error.message);
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  return (
-    <>
-      <section className="card">
-        <label htmlFor="smsPhone">Customer's phone number</label>
-        <input id="smsPhone" type="text" inputMode="tel" placeholder="+1 803 555 0101" autoComplete="off" value={phone} onChange={(e) => setPhone(e.target.value)} />
-        <p className="muted small">The assistant answers from the visits it finds for this number. This is a test box: nothing is sent to anyone and your team is not alerted.</p>
-      </section>
-
-      <section className="card">
-        <div className="transcript-header">
-          <h2>Text conversation</h2>
-          <button className="link-btn" type="button" onClick={() => { setItems([]); setNote(""); }}>Clear</button>
-        </div>
-        <div className="transcript" aria-live="polite" ref={box}>
-          {items.length === 0 ? <p className="muted empty-hint">Type a text as the customer, for example "What time is my technician coming?"</p> : null}
-          {items.map((item) => (
-            <div key={item.id} className={`bubble ${item.mine ? "user" : "agent"}`}>
-              <span className="who">{item.mine ? "Customer" : "Assistant"}</span>
-              <span className="body">{item.message}</span>
-              {item.flag ? <span className="flag">{item.flag}</span> : null}
-            </div>
-          ))}
-        </div>
-        <form className="sms-form" onSubmit={send}>
-          <input type="text" aria-label="Text message" placeholder="Type a text message" maxLength={1000} autoComplete="off" value={text} onChange={(e) => setText(e.target.value)} disabled={signedIn === false} />
-          <button className="send-btn" type="submit" disabled={busy || signedIn === false || !text.trim()}>Send</button>
-        </form>
-        {signedIn === false ? <p className="muted small">Sign in to the console first, then reload this page. <a href="index.html">Open the console</a></p> : null}
-        <p className="muted small status-line" role="status">{note}</p>
-      </section>
-    </>
-  );
-}
-
-// ---------- text test ----------
-// The real phone assistant tested by typing (the "Text test" tab). The browser only sends and receives plain text over HTTP: no call, no microphone and no media connection.
+// ---------- SMS texts tab ----------
+// The real phone assistant run as a text conversation (the "SMS texts" tab). The browser only sends and receives plain text over HTTP: no call, no microphone and no media connection.
 // The server plays the tester and runs the same assistant as a phone call: the same instructions, tools, database and endings (voice/text_chat.py), so it costs no speech-to-text, no text-to-speech and no Twilio minutes.
 // Inbound = you are a customer who phoned in; outbound = you are the lead the assistant is calling. Admin only (the console's session cookie plus its CSRF token). Everything the server sends is shown as text.
 const TEXT_CALL_PHONE_KEY = "text_call_phone";
@@ -293,21 +216,21 @@ function TextCall() {
 
   const running = sessionId !== null;
   const emptyHint = outbound
-    ? "Start the test. The assistant opens the way it does when it phones a lead; answer as the lead, for example \"Yes, this is Jordan\"."
-    : "Start the test. The assistant answers the way it does when a customer phones in; then say what is wrong, for example \"My AC is not cooling\".";
+    ? "Start the test. The assistant opens the way it does when it contacts a lead; answer as the lead, for example \"Yes, this is Jordan\"."
+    : "Start the test. The assistant answers the way it does when a customer contacts us; then say what is wrong, for example \"My AC is not cooling\".";
 
   return (
     <>
       <section className="card">
-        <h2>Text test: the same phone assistant, by typing</h2>
-        <p className="muted small">This tests the real phone assistant with plain text, with no call and no microphone. It uses the same instructions, tools, database and endings as a phone call, so it costs no speech-to-text,
+        <h2>SMS texts: the same assistant as a phone call, by text</h2>
+        <p className="muted small">This runs the real phone assistant as a text conversation, with no call and no microphone. It uses the same instructions, tools, database and endings as a phone call, so it costs no speech-to-text,
           no text-to-speech and no Twilio minutes. Like a real call, its tools work on real records for the number you enter (it can book a visit and send the confirmation text), so use a test number.
           It is not billed as a call and saves no memory.</p>
         <div className="mode-tabs direction" role="group" aria-label="Call direction">
-          <button type="button" className="mode-tab" aria-pressed={String(!outbound)} disabled={running} onClick={() => chooseDirection(false)}>Inbound: a customer phones us</button>
-          <button type="button" className="mode-tab" aria-pressed={String(outbound)} disabled={running} onClick={() => chooseDirection(true)}>Outbound: we phone a lead</button>
+          <button type="button" className="mode-tab" aria-pressed={String(!outbound)} disabled={running} onClick={() => chooseDirection(false)}>Inbound: a customer texts us</button>
+          <button type="button" className="mode-tab" aria-pressed={String(outbound)} disabled={running} onClick={() => chooseDirection(true)}>Outbound: we text a lead</button>
         </div>
-        <label htmlFor="tcPhone">{outbound ? "The lead's phone number (the number being called)" : "The customer's phone number (the number calling us)"}</label>
+        <label htmlFor="tcPhone">{outbound ? "The lead's phone number (the number we text)" : "The customer's phone number (the number texting us)"}</label>
         <input id="tcPhone" type="text" inputMode="tel" placeholder="+1 803 555 0101" autoComplete="off" value={phone} disabled={running} onChange={(e) => setPhone(e.target.value)} />
         {outbound ? (
           <div className="lead-row">
@@ -338,7 +261,7 @@ function TextCall() {
         </div>
         {ended ? <p className="ended-banner" role="status">{ended}</p> : null}
         <form className="sms-form" onSubmit={send}>
-          <input type="text" aria-label="What you say on the call" placeholder="Type what you say on the call" maxLength={1000} autoComplete="off" value={text} disabled={!running || waiting} onChange={(e) => setText(e.target.value)} />
+          <input type="text" aria-label="Your text message" placeholder="Type your text message" maxLength={1000} autoComplete="off" value={text} disabled={!running || waiting} onChange={(e) => setText(e.target.value)} />
           <button className="send-btn" type="submit" disabled={!running || waiting || !text.trim()}>Send</button>
         </form>
         <p className="muted small status-line" role="status">{note}</p>
@@ -552,7 +475,6 @@ function CallPage() {
 
         <div className="mode-tabs" role="group" aria-label="Test mode">
           <button type="button" className="mode-tab" aria-pressed={String(mode === "voice")} onClick={() => setMode("voice")}>Voice call</button>
-          <button type="button" className="mode-tab" aria-pressed={String(mode === "textcall")} onClick={() => setMode("textcall")}>Text test</button>
           <button type="button" className="mode-tab" aria-pressed={String(mode === "sms")} onClick={() => setMode("sms")}>SMS texts</button>
         </div>
 
@@ -599,8 +521,7 @@ function CallPage() {
           </div>
         </section>
 
-        {mode === "textcall" ? <TextCall /> : null}
-        {mode === "sms" ? <SmsTest /> : null}
+        {mode === "sms" ? <TextCall /> : null}
 
       </main>
 
