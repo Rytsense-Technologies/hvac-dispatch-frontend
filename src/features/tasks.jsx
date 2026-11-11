@@ -1,19 +1,19 @@
 // Work → Tasks: metric cards + unassigned / assigned / office follow-up panels.
 // Visual parity with the Rytsense reference; assign + review wired to live APIs.
+// Sample rows appear only in explicit Sample workspace (demo) mode.
 import { useEffect, useRef, useState } from 'react';
 import { api } from '../lib/api.js';
 import { timeAgo } from '../lib/format.js';
 import { can } from '../lib/session.js';
 import { useEvery } from '../lib/hooks.js';
 import {
-  Spinner, ErrorBox, Note, Badge, StatGrid, Dialog, Field,
+  Spinner, ErrorBox, Note, Badge, StatGrid, Dialog, Field, DataTable, FilterChips,
   ActionButton, Button, toast, Panel, PanelHead, Row,
 } from '../components/index.js';
 import { WorkChrome, WorkFoot } from './workChrome.jsx';
 
 const DEFAULT_REASON = 'Picked from the Tasks assignment dialog.';
 
-// Sample rows matching ref-work.png when the API queue is empty (session-only).
 const SAMPLE_UNASSIGNED = [
   {
     id: 'sample-u1',
@@ -65,6 +65,12 @@ function followUpSubtitle(item) {
   return [name, hint].filter(Boolean).join(' · ');
 }
 
+function canAssignJob(item) {
+  if (!can('admin', 'dispatcher')) return false;
+  if (item.isSample) return true;
+  return Boolean(item.api?.choices);
+}
+
 // ---------- assign dialog ----------
 
 function AssignDialog({ job, onClose, onDone }) {
@@ -72,8 +78,12 @@ function AssignDialog({ job, onClose, onDone }) {
 
   useEffect(() => {
     let current = true;
-    if (job.isSample || !job.api?.choices) {
+    if (job.isSample) {
       setState({ phase: 'sample' });
+      return () => { current = false; };
+    }
+    if (!job.api?.choices) {
+      setState({ phase: 'unavailable' });
       return () => { current = false; };
     }
     (async () => {
@@ -90,7 +100,9 @@ function AssignDialog({ job, onClose, onDone }) {
   let body;
   if (state.phase === 'loading') body = <Spinner text="Working out who can take this job…" />;
   else if (state.phase === 'error') body = <ErrorBox error={state.error} />;
-  else if (state.phase === 'sample') {
+  else if (state.phase === 'unavailable') {
+    body = <p className="muted">Assignment choices are not available for this job yet.</p>;
+  } else if (state.phase === 'sample') {
     body = (
       <div className="stack">
         <p className="muted">Sample workspace · no live technicians to assign.</p>
@@ -149,7 +161,11 @@ function AssignDialog({ job, onClose, onDone }) {
   return (
     <Dialog title={`Assign: ${job.title || job.text || 'Job'}`} onClose={onClose} wide>
       <div className="stack">{body}</div>
-      <p className="work-sample-label">No real job is scheduled and no notification is sent for sample rows.</p>
+      <p className="work-sample-label">
+        {job.isSample
+          ? 'No real job is scheduled and no notification is sent for sample rows.'
+          : 'Choosing a technician submits a real assignment request.'}
+      </p>
     </Dialog>
   );
 }
@@ -228,66 +244,101 @@ function FollowUpReview({ item, onClose, onDone }) {
   );
 }
 
+function FollowUpHistory({ items }) {
+  if (!items.length) return <p className="muted work-empty">No history yet.</p>;
+  return (
+    <DataTable
+      head={['Task', 'Status', 'Result', 'Decided by', 'When']}
+      rows={items.map((h) => [
+        h.title,
+        h.status,
+        h.sent_text || h.note || '-',
+        h.decided_by || '-',
+        h.decided_at ? timeAgo(h.decided_at) : '-',
+      ])}
+      label="Follow-up history"
+    />
+  );
+}
+
 // ---------- page ----------
 
 export default function Tasks() {
+  const [demoMode, setDemoMode] = useState(false);
   const [state, setState] = useState({ status: 'loading' });
+  const [followSub, setFollowSub] = useState('open');
   const [followUps, setFollowUps] = useState({ status: 'loading', items: [] });
   const [assigning, setAssigning] = useState(null);
   const [reviewing, setReviewing] = useState(null);
-  const latest = useRef(0);
+  const tasksLatest = useRef(0);
+  const followLatest = useRef(0);
 
   const loadTasks = async (quiet) => {
-    latest.current += 1;
-    const mine = latest.current;
+    tasksLatest.current += 1;
+    const mine = tasksLatest.current;
     if (!quiet) setState({ status: 'loading' });
     try {
       const data = await api('/v1/tasks');
-      if (mine === latest.current) setState({ status: 'ready', data });
+      if (mine === tasksLatest.current) setState({ status: 'ready', data });
     } catch (error) {
-      if (mine === latest.current) setState({ status: 'error', error });
+      if (mine === tasksLatest.current) setState({ status: 'error', error });
     }
   };
 
   const loadFollowUps = async (quiet) => {
+    followLatest.current += 1;
+    const mine = followLatest.current;
+    if (!quiet) setFollowUps((prev) => ({ ...prev, status: 'loading' }));
     try {
-      const data = await api('/v1/tasks/follow-ups', { params: { status: 'open' } });
-      setFollowUps({ status: 'ready', items: data.items || [] });
+      const data = await api('/v1/tasks/follow-ups', { params: { status: followSub } });
+      if (mine === followLatest.current) {
+        setFollowUps({ status: 'ready', items: data.items || [] });
+      }
     } catch (error) {
+      if (mine !== followLatest.current) return;
       if (!quiet) setFollowUps({ status: 'error', items: [], error });
-      else setFollowUps((prev) => ({ ...prev, status: 'ready' }));
+      // Quiet poll failure: keep prior items; do not invent samples.
     }
   };
 
   useEffect(() => {
     loadTasks();
-    loadFollowUps();
-    return () => { latest.current += 1; };
+    return () => { tasksLatest.current += 1; };
   }, []);
-  useEvery(() => { loadTasks(true); loadFollowUps(true); }, 30000);
+
+  useEffect(() => {
+    loadFollowUps();
+    return () => { followLatest.current += 1; };
+  }, [followSub]);
+
+  useEvery(() => {
+    if (demoMode) return;
+    loadTasks(true);
+    loadFollowUps(true);
+  }, 30000);
+
+  const chrome = (body) => (
+    <WorkChrome
+      tab="tasks"
+      eyebrow="Your work queue"
+      subtitle="See work that needs attention and assign the right person."
+      demoMode={demoMode}
+      onToggleDemo={() => setDemoMode((v) => !v)}
+    >
+      {body}
+    </WorkChrome>
+  );
 
   if (!can('admin', 'dispatcher', 'approver')) {
-    return (
-      <WorkChrome tab="tasks" eyebrow="Your work queue" subtitle="See work that needs attention and assign the right person.">
-        <Note text="Not available for your role." tone="warn" />
-      </WorkChrome>
-    );
+    return chrome(<Note text="Not available for your role." tone="warn" />);
   }
 
-  if (state.status === 'loading' && followUps.status === 'loading') {
-    return (
-      <WorkChrome tab="tasks" eyebrow="Your work queue" subtitle="See work that needs attention and assign the right person.">
-        <Spinner />
-      </WorkChrome>
-    );
+  if (!demoMode && state.status === 'loading' && followUps.status === 'loading') {
+    return chrome(<Spinner />);
   }
 
-  if (state.status === 'error') {
-    return (
-      <WorkChrome tab="tasks" eyebrow="Your work queue" subtitle="See work that needs attention and assign the right person.">
-        <ErrorBox error={state.error} />
-      </WorkChrome>
-    );
+  if (!demoMode && state.status === 'error') {
+    return chrome(<ErrorBox error={state.error} />);
   }
 
   const data = state.data || {};
@@ -295,37 +346,31 @@ export default function Tasks() {
   const apiAssigned = data.assigned_work?.items || [];
   const apiFollowUps = followUps.items || [];
 
-  const usingSampleWork = apiUnassigned.length === 0 && apiAssigned.length === 0;
-  const unassigned = usingSampleWork ? SAMPLE_UNASSIGNED : apiUnassigned;
-  const assigned = usingSampleWork ? [] : apiAssigned;
-  const usingSampleFollowUps = apiFollowUps.length === 0;
-  const officeItems = usingSampleFollowUps ? SAMPLE_FOLLOWUPS : apiFollowUps;
+  const unassigned = demoMode ? SAMPLE_UNASSIGNED : apiUnassigned;
+  const assigned = demoMode ? [] : apiAssigned;
+  const officeItems = demoMode && followSub === 'open' ? SAMPLE_FOLLOWUPS : (demoMode ? [] : apiFollowUps);
 
   const counters = data.counters || {};
-  const unassignedCount = usingSampleWork
+  const unassignedCount = demoMode
     ? unassigned.length
     : (counters.unassigned_work?.value ?? unassigned.length);
-  const assignedCount = usingSampleWork
+  const assignedCount = demoMode
     ? assigned.length
     : (counters.assigned_jobs?.value ?? assigned.length);
-  const followUpCount = usingSampleFollowUps
-    ? officeItems.length
-    : (counters.office_follow_ups?.value ?? officeItems.length);
+  const followUpCount = demoMode
+    ? (followSub === 'open' ? officeItems.length : 0)
+    : (followSub === 'open'
+      ? (counters.office_follow_ups?.value ?? officeItems.length)
+      : officeItems.length);
 
-  const canAssign = can('admin', 'dispatcher');
-
-  return (
-    <WorkChrome
-      tab="tasks"
-      eyebrow="Your work queue"
-      subtitle="See work that needs attention and assign the right person."
-    >
+  return chrome(
+    <>
       <StatGrid
         className="work-metrics"
         items={[
           ['Unassigned work', unassignedCount, 'Ready for assignment'],
-          ['Assigned jobs', assignedCount, usingSampleWork ? 'In this example queue' : 'Currently assigned'],
-          ['Office follow-ups', followUpCount, usingSampleFollowUps ? 'Sample tasks' : 'Awaiting review'],
+          ['Assigned jobs', assignedCount, demoMode ? 'In this example queue' : 'Currently assigned'],
+          ['Office follow-ups', followUpCount, demoMode ? 'Sample tasks' : (followSub === 'open' ? 'Awaiting review' : 'Past decisions')],
         ]}
       />
 
@@ -344,7 +389,7 @@ export default function Tasks() {
                 trailing={(
                   <>
                     <Badge text="Unassigned" tone="warn" />
-                    {canAssign ? (
+                    {canAssignJob(item) ? (
                       <Button className="btn btn--secondary" onClick={() => setAssigning(item)}>
                         Assign technician →
                       </Button>
@@ -359,7 +404,10 @@ export default function Tasks() {
         </Panel>
 
         <Panel>
-          <PanelHead title="Assigned work" subtitle="Sample jobs with a technician" />
+          <PanelHead
+            title="Assigned work"
+            subtitle={demoMode ? 'Sample jobs with a technician' : 'Jobs with a technician'}
+          />
           {assigned.length ? (
             assigned.map((item) => (
               <Row
@@ -379,49 +427,78 @@ export default function Tasks() {
           <PanelHead
             title="Office follow-ups"
             subtitle="AI actions awaiting review and campaign callbacks"
-          />
-          {officeItems.length ? (
-            officeItems.map((item) => (
-              <Row
-                key={item.id || item.title}
-                leading="✦"
-                title={item.title}
-                subtitle={followUpSubtitle(item)}
-                trailing={(
-                  <Button
-                    className="btn btn--secondary"
-                    onClick={() => setReviewing(item)}
-                    aria-label={`Review ${item.title}${item.subject?.name ? ` for ${item.subject.name}` : ''}`}
-                  >
-                    Review
-                  </Button>
-                )}
-              />
-            ))
-          ) : (
-            <p className="muted work-empty">No AI actions need review.</p>
-          )}
+          >
+            <FilterChips
+              label="Follow-up view"
+              value={followSub}
+              onChange={setFollowSub}
+              options={[['open', 'Open'], ['history', 'History']]}
+            />
+          </PanelHead>
+
+          {demoMode && followSub === 'history' ? (
+            <p className="muted work-empty">No history yet.</p>
+          ) : null}
+
+          {!demoMode && followUps.status === 'loading' ? <Spinner /> : null}
+          {!demoMode && followUps.status === 'error' ? <ErrorBox error={followUps.error} /> : null}
+
+          {(!demoMode && followUps.status === 'ready' && followSub === 'history') ? (
+            <FollowUpHistory items={officeItems} />
+          ) : null}
+
+          {(demoMode || followUps.status === 'ready') && followSub === 'open' ? (
+            officeItems.length ? (
+              officeItems.map((item) => (
+                <Row
+                  key={item.id || item.title}
+                  leading="✦"
+                  title={item.title}
+                  subtitle={followUpSubtitle(item)}
+                  trailing={(
+                    <Button
+                      className="btn btn--secondary"
+                      onClick={() => setReviewing(item)}
+                      aria-label={`Review ${item.title}${item.subject?.name ? ` for ${item.subject.name}` : ''}`}
+                    >
+                      Review
+                    </Button>
+                  )}
+                />
+              ))
+            ) : (
+              <p className="muted work-empty">No AI actions need review.</p>
+            )
+          ) : null}
         </Panel>
       </div>
 
       <WorkFoot>
-        Design concept · Assignments are sample data and last only for this browser session.
+        {demoMode
+          ? 'Design concept · Assignments are sample data and last only for this browser session.'
+          : 'Live workspace · Choosing Assign submits a real technician assignment.'}
       </WorkFoot>
 
       {assigning ? (
         <AssignDialog
           job={assigning}
           onClose={() => setAssigning(null)}
-          onDone={() => { setAssigning(null); loadTasks(true); }}
+          onDone={() => { setAssigning(null); if (!demoMode) loadTasks(true); }}
         />
       ) : null}
       {reviewing ? (
         <FollowUpReview
           item={reviewing}
           onClose={() => setReviewing(null)}
-          onDone={() => { setReviewing(null); loadFollowUps(true); loadTasks(true); }}
+          onDone={() => {
+            setReviewing(null);
+            if (!demoMode) {
+              loadFollowUps(true);
+              loadTasks(true);
+            }
+          }}
         />
       ) : null}
-    </WorkChrome>
+    </>,
   );
 }

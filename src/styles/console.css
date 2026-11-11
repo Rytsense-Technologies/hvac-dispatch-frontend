@@ -4227,6 +4227,11 @@ button.row-item { cursor: pointer; }
 .work-sample-btn {
   white-space: nowrap;
 }
+.work-sample-btn--on {
+  background: var(--accent-active-bg);
+  border-color: var(--accent);
+  color: var(--accent-strong);
+}
 .work-sample-label,
 .work-dialog-eyebrow {
   margin: 10px 0 0;

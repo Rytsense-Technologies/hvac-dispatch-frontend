@@ -4,11 +4,17 @@
 import { PageHeader, SectionTabs } from '../components/index.js';
 import { SECTION_TABS } from '../app/routes.js';
 
-export function WorkChrome({ tab, eyebrow, subtitle, children }) {
+export function WorkChrome({ tab, eyebrow, subtitle, demoMode = false, onToggleDemo, children }) {
   return (
     <>
       <PageHeader eyebrow={eyebrow} title="Work" subtitle={subtitle}>
-        <button type="button" className="btn btn--secondary work-sample-btn">
+        <button
+          type="button"
+          className={`btn btn--secondary work-sample-btn${demoMode ? ' work-sample-btn--on' : ''}`}
+          onClick={onToggleDemo}
+          aria-pressed={demoMode ? 'true' : 'false'}
+          title={demoMode ? 'Exit sample workspace' : 'Show sample workspace data'}
+        >
           Sample workspace
         </button>
       </PageHeader>
