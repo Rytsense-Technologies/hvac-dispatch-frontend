@@ -291,6 +291,7 @@ function getInitials(name) {
 
 function Shell({ timezone, onSignOut }) {
   const [hash, setHash] = useState(location.hash);
+  const [agents, setAgents] = useState(null); // {active, total} once /v1/agents answers; stays null (hidden counts) on any failure
   const [menuOpen, setMenuOpen] = useState(false);
   const [moreOpen, setMoreOpen] = useState(false);
   const menuRef = useRef(null);
@@ -303,6 +304,19 @@ function Shell({ timezone, onSignOut }) {
     };
     window.addEventListener('hashchange', onHash);
     return () => window.removeEventListener('hashchange', onHash);
+  }, []);
+
+  // Quiet status pill — real counts from /v1/agents, once per sign-in. Never invent numbers.
+  useEffect(() => {
+    let live = true;
+    api('/v1/agents')
+      .then((data) => {
+        if (live) setAgents({ active: data.active, total: data.total });
+      })
+      .catch(() => {});
+    return () => {
+      live = false;
+    };
   }, []);
 
   useEffect(() => {
@@ -362,7 +376,11 @@ function Shell({ timezone, onSignOut }) {
           <div className="topbar__right">
             <a href="#/agents" className="topbar__status-pill" title="AI agents">
               <span className="topbar__status-dot" aria-hidden="true" />
-              <span>AI team active</span>
+              <span>
+                {agents
+                  ? `${agents.active} of ${agents.total} AI agents active`
+                  : 'AI team active'}
+              </span>
             </a>
             <a href="#/team" className="topbar__icon-btn" title="Team & dispatch" aria-label="Team & dispatch">
               <Icon name="team" />

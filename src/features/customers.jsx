@@ -1,26 +1,39 @@
 // Customers: the people the AI has taken calls and texts from - who they are, what they have asked for,
 // and (for staff who may see it) the calls and open work tied to them. Also where leads/customers are
 // imported from a spreadsheet, for the roles allowed to bring in a list.
+// Live API only: empty list/detail/leads stay empty — never replaced with sample rows.
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { api } from '../lib/api.js';
 import { CHANNELS, formatDateTime, short } from '../lib/format.js';
 import { useEvery } from '../lib/hooks.js';
 import { can } from '../lib/session.js';
 import {
-  ActionButton, Button, DataTable, Details, Dialog, Empty, ErrorBox, Field, Icon, Note, Panel,
+  ActionButton, Badge, Button, DataTable, Details, Dialog, Empty, ErrorBox, Field, Icon, Note, Panel,
   PageHeader, ProgressBadge, Row, Select, Spinner, StatusBadge, toast,
 } from '../components/index.js';
 
 const PAGE = 50;
 const MAX_IMPORT_BYTES = 2 * 1024 * 1024;
+const LEADS_PREVIEW = 20;
 
 const priorityTone = (p, emergency) => (emergency ? 'bad' : p === 'high' ? 'warn' : 'neutral');
+
+function asList(value) {
+  return Array.isArray(value) ? value : [];
+}
 
 function customerSubtitle(c) {
   const place = c.location || c.city || c.address || '';
   const service = c.latest_service || c.service || '';
   if (place && service) return `${place} · ${service}`;
   return place || service || (c.phone ? c.phone : 'No service history yet');
+}
+
+function leadSubtitle(l) {
+  const contact = l.email || l.phone || l.city || l.address || '';
+  const interest = l.interest || l.status || '';
+  if (contact && interest) return `${contact} · ${interest}`;
+  return contact || interest || 'Lead';
 }
 
 // ---------- the list ----------
@@ -48,6 +61,35 @@ function CustomerList({ customers, open }) {
         </li>
       ))}
     </ul>
+  );
+}
+
+function RecentLeadsPanel({ leads, loading, error }) {
+  let body;
+  if (loading && !leads) body = <Spinner text="Loading leads…" />;
+  else if (error) body = <ErrorBox error={error} />;
+  else if (!leads?.length) body = <Empty text="No leads yet." />;
+  else {
+    body = (
+      <ul className="customers-list" aria-label="Recent leads">
+        {leads.map((l) => (
+          <li key={l.id}>
+            <Row
+              leading={<Icon name="leads" />}
+              title={l.name || 'Lead'}
+              subtitle={leadSubtitle(l)}
+            />
+          </li>
+        ))}
+      </ul>
+    );
+  }
+  return (
+    <Panel className="customers-imported" aria-label="Recent leads">
+      <h2>{`Recent leads${leads?.length ? ` · ${leads.length}` : ''}`}</h2>
+      <p className="muted small">From the live leads API after import or refresh. Empty means none on the server.</p>
+      {body}
+    </Panel>
   );
 }
 
@@ -100,17 +142,20 @@ function CustomerDetail({ id, onClose }) {
             {c.history.map((h) => (
               <Row
                 key={h.id}
-                title={[h.service, h.category].filter(Boolean).join(' · ') || 'Service request'}
+                title={`#${short(h.id)} · ${[h.service, h.category].filter(Boolean).join(' · ') || 'Service request'}`}
                 subtitle={[
                   h.created_at ? formatDateTime(h.created_at) : null,
-                  h.priority,
-                  h.is_emergency ? 'Emergency' : null,
-                  h.status,
                   h.appointment
                     ? `${h.appointment.status}, ${formatDateTime(h.appointment.start_at)} – ${formatDateTime(h.appointment.end_at)}`
                     : 'Not booked',
                 ].filter(Boolean).join(' · ')}
-                trailing={<StatusBadge status={h.status} />}
+                trailing={(
+                  <span className="row wrap" style={{ gap: 6, justifyContent: 'flex-end' }}>
+                    <Badge text={h.priority || 'normal'} tone={priorityTone(h.priority, h.is_emergency)} />
+                    {h.is_emergency ? <Badge text="Emergency" tone="bad" /> : null}
+                    <StatusBadge status={h.status} />
+                  </span>
+                )}
               />
             ))}
           </div>
@@ -202,7 +247,7 @@ function ProblemsList({ problems, total }) {
   );
 }
 
-function ImportWizard({ onClose, reload }) {
+function ImportWizard({ onClose, reload, onImported }) {
   const [step, setStep] = useState(1);
   const [meta, setMeta] = useState(null);
   const [metaError, setMetaError] = useState(null);
@@ -331,6 +376,8 @@ function ImportWizard({ onClose, reload }) {
                     const out = await api('/v1/imports', { method: 'POST', body: { record_type: recordType, csv, mapping } });
                     setResult(out);
                     reload();
+                    // Refresh leads from the live API after a leads import — never use preview.sample.
+                    if (recordType === 'leads') onImported?.(out);
                     toast(`Imported ${out.imported ?? 0}.`);
                   }}
                 >Confirm import</ActionButton>
@@ -369,8 +416,12 @@ export default function Customers() {
   const [error, setError] = useState(null);
   const [openId, setOpenId] = useState(null);
   const [importOpen, setImportOpen] = useState(false);
+  const [leads, setLeads] = useState(null);
+  const [leadsLoading, setLeadsLoading] = useState(false);
+  const [leadsError, setLeadsError] = useState(null);
   const canImport = can('admin', 'dispatcher');
   const seq = useRef(0);
+  const leadsSeq = useRef(0);
   const latest = useRef({});
   latest.current = { search, offset };
 
@@ -381,7 +432,8 @@ export default function Customers() {
     try {
       const out = await api('/v1/customers', { params: { search: s, limit: PAGE, offset: o } });
       if (n !== seq.current) return;
-      setData({ customers: out.customers, offset: o });
+      // Live empties stay empty — never inject illustrative customers.
+      setData({ customers: asList(out?.customers), offset: o });
       setError(null);
       setLoading(false);
     } catch (e) {
@@ -391,11 +443,35 @@ export default function Customers() {
     }
   }, []);
 
+  const loadLeads = useCallback(async (quiet) => {
+    if (!canImport) return;
+    const n = ++leadsSeq.current;
+    if (!quiet) setLeadsLoading(true);
+    try {
+      const out = await api('/v1/leads', { params: { limit: LEADS_PREVIEW } });
+      if (n !== leadsSeq.current) return;
+      setLeads(asList(out?.leads));
+      setLeadsError(null);
+      setLeadsLoading(false);
+    } catch (e) {
+      if (n !== leadsSeq.current) return;
+      setLeadsError(e);
+      setLeadsLoading(false);
+    }
+  }, [canImport]);
+
   useEffect(() => {
     const id = setTimeout(load, 250);
     return () => clearTimeout(id);
   }, [search, offset, load]);
   useEvery(() => load(true), 30000);
+
+  useEffect(() => {
+    if (!canImport) return undefined;
+    loadLeads();
+    return undefined;
+  }, [canImport, loadLeads]);
+  useEvery(() => { if (canImport) loadLeads(true); }, 30000);
 
   const customers = data ? data.customers : [];
   let list;
@@ -404,7 +480,8 @@ export default function Customers() {
   else if (!customers.length) list = <Empty text={search ? 'No matching customers.' : 'No customers yet.'} />;
   else list = <CustomerList customers={customers} open={(c) => setOpenId(c.id)} />;
 
-  const showPager = data && (data.offset > 0 || data.customers.length >= PAGE);
+  // Same pagination surface as pre-design main: always available once a live page has loaded.
+  const showPager = Boolean(data);
 
   return (
     <>
@@ -441,9 +518,19 @@ export default function Customers() {
         ) : null}
       </Panel>
 
+      {canImport ? (
+        <div style={{ marginTop: 18 }}>
+          <RecentLeadsPanel leads={leads} loading={leadsLoading} error={leadsError} />
+        </div>
+      ) : null}
+
       {openId && <CustomerDetail id={openId} onClose={() => setOpenId(null)} />}
       {importOpen && canImport && (
-        <ImportWizard onClose={() => setImportOpen(false)} reload={() => load(true)} />
+        <ImportWizard
+          onClose={() => setImportOpen(false)}
+          reload={() => load(true)}
+          onImported={() => loadLeads()}
+        />
       )}
     </>
   );

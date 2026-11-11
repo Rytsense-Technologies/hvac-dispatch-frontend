@@ -17,14 +17,6 @@ const ST_PREFERENCES = [
   ['automatic', 'Automatic'],
   ['import_only', 'Import to Rytsense only'],
 ];
-const SAMPLE_ROWS = [
-  ['profile', 'Business profile', 'Comfort Home Services · Austin, Texas'],
-  ['hours', 'Business hours', 'Monday–Friday · 8:00 AM–5:00 PM'],
-  ['notifications', 'Notifications', 'Example email notifications'],
-  ['connected', 'Connected systems', 'No systems connected'],
-  ['team', 'Team access', '3 sample members'],
-];
-
 function sameValue(a, b) { return JSON.stringify(a) === JSON.stringify(b); }
 function holidaysToText(list) { return (list || []).join('\n'); }
 function textToHolidays(text) { return [...new Set(String(text || '').split('\n').map((s) => s.trim()).filter(Boolean))]; }
@@ -50,25 +42,25 @@ function formatHoursSummary(values) {
 }
 
 function settingsRowsFromData(data) {
-  if (!data) return SAMPLE_ROWS.map(([id, title, subtitle]) => ({ id, title, subtitle }));
+  if (!data) return [];
   const profile = data.profile;
   const profileSub = [profile?.name, profile?.city || profile?.location || profile?.name_in_texts]
-    .filter(Boolean).join(' · ') || profile?.text || SAMPLE_ROWS[0][2];
-  const hoursSub = formatHoursSummary(data.hours?.values) || data.hours?.text || SAMPLE_ROWS[1][2];
+    .filter(Boolean).join(' · ') || profile?.text || 'No profile details yet';
+  const hoursSub = formatHoursSummary(data.hours?.values) || data.hours?.text || 'Hours not configured';
   const notif = data.notifications;
   const notifSub = notif?.items?.length
-    ? `${notif.items.filter((n) => n.on).length} of ${notif.items.length} on · ${notif.email_ready ? 'Email ready' : 'Email not set up'}`
-    : (notif?.text || SAMPLE_ROWS[2][2]);
+    ? `${notif.items.filter((n) => n.on).length} of ${notif.items.length} on · ${notif.email_ready ? 'Email ready' : 'Email not set up'}${notif.text_ready != null ? ` · ${notif.text_ready ? 'Text ready' : 'Text not set up'}` : ''}`
+    : (notif?.text || 'No notifications configured');
   const connected = data.connected;
   const connectedCount = connected?.items?.filter((c) => c.connected)?.length || 0;
   const connectedSub = connected?.items?.length
     ? (connectedCount ? `${connectedCount} connected` : 'No systems connected')
-    : (connected?.text || SAMPLE_ROWS[3][2]);
+    : (connected?.text || 'No systems connected');
   const team = data.team;
   const teamCount = team?.total ?? (team?.by_role ? Object.values(team.by_role).reduce((a, b) => a + Number(b || 0), 0) : null);
   const teamSub = teamCount != null
     ? `${teamCount} ${teamCount === 1 ? 'member' : 'members'}`
-    : (team?.text || SAMPLE_ROWS[4][2]);
+    : (team?.text || 'No team summary yet');
   return [
     { id: 'profile', title: 'Business profile', subtitle: profileSub },
     { id: 'hours', title: 'Business hours', subtitle: hoursSub },
@@ -338,6 +330,8 @@ function CardRowStatus({ state }) {
 
 // ---------- Integrations ----------
 
+const JOBBER_TONE = { connected: 'good', not_connected: 'neutral', needs_login: 'warn', unavailable: 'bad', unknown: 'neutral' };
+
 function JobberSetupDialog({ item, onClose, onChanged }) {
   const [data, setData] = useState(item);
   const writer = can('admin');
@@ -362,6 +356,9 @@ function JobberSetupDialog({ item, onClose, onChanged }) {
   return (
     <Dialog title="Jobber integration" onClose={onClose}>
       <div className="stack">
+        <div className="row wrap">
+          {data?.state ? <Badge text={data.state} tone={JOBBER_TONE[data.state] || 'neutral'} /> : null}
+        </div>
         <p>Connect your business account through a supported provider integration.</p>
         <p className="sub">{data?.detail || 'Supported data and permissions to be confirmed with the provider.'}</p>
         {data?.state === 'connected' ? (
@@ -369,8 +366,11 @@ function JobberSetupDialog({ item, onClose, onChanged }) {
             ['Account', data.account_name || '-'],
             ['Connected since', data.connected_since ? formatDateTime(data.connected_since) : '-'],
             ['Last synced', data.last_synced_at ? formatDateTime(data.last_synced_at) : '-'],
+            ['Last error', data.last_error || '-'],
           ]} />
         ) : null}
+        {data?.syncs ? <p className="sub">{data.syncs}</p> : null}
+        {data?.not_yet ? <p className="sub">{data.not_yet}</p> : null}
         <div className="dialog-actions">
           {writer && data?.available && (data.state === 'not_connected' || data.state === 'needs_login') ? (
             <ActionButton className="btn btn--primary action" action={connect}>Connect Jobber</ActionButton>
@@ -509,7 +509,8 @@ export default function Settings() {
       const jb = data.integrations?.items?.find((i) => i.id === 'jobber');
       setJobber(jb || null);
     } catch (error) {
-      if (mine === seq.current) setState({ status: 'error', error });
+      // Keep prior data when a reload fails so live rows do not flip to invented samples.
+      if (mine === seq.current) setState((s) => ({ status: 'error', error, data: s.data }));
     }
   };
   useEffect(() => { load(); return () => { seq.current += 1; }; }, []);
@@ -532,9 +533,16 @@ export default function Settings() {
   const automationCount = data?.automation?.needs_review?.total
     ?? data?.automation_pending
     ?? null;
-  const billingBadge = billing?.state?.state === 'active'
-    ? { text: billing.state.state, tone: 'good' }
-    : (providerConnected ? { text: 'Connected', tone: 'good' } : { text: 'Demo account', tone: 'warn' });
+  const billingState = billing?.state?.state;
+  const billingBadge = billingState === 'active'
+    ? { text: billingState, tone: 'good' }
+    : billingState === 'no_plan'
+      ? { text: billingState, tone: 'neutral' }
+      : providerConnected
+        ? { text: 'Connected', tone: 'good' }
+        : billing
+          ? { text: billingState || 'unknown', tone: 'warn' }
+          : { text: 'Unavailable', tone: 'neutral' };
 
   const openRow = (id) => setDialog({ kind: id });
   const close = () => setDialog(null);
@@ -582,9 +590,9 @@ export default function Settings() {
       />
 
       {status === 'loading' && !data ? <Spinner /> : null}
-      {status === 'error' && !data ? <ErrorBox error={error} /> : null}
+      {status === 'error' ? <ErrorBox error={error} /> : null}
 
-      {(data || status !== 'loading') ? (
+      {data ? (
         <>
           <Panel>
             {rows.map((row) => (
@@ -674,6 +682,12 @@ export default function Settings() {
             n.name, n.detail || '-', <Badge text={n.on ? 'On' : 'Off'} tone={n.on ? 'good' : 'neutral'} />,
           ])}
           empty="No notifications configured."
+          extra={(
+            <p className="sub row wrap">
+              <span>{`Email: ${data?.notifications?.email_ready ? 'ready' : 'not set up'}`}</span>
+              <span>{`Text: ${data?.notifications?.text_ready ? 'ready' : 'not set up'}`}</span>
+            </p>
+          )}
           footnote="Read-only notification configuration from your workspace."
           onClose={close}
         />
