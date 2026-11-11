@@ -187,11 +187,11 @@ export function Overlay({ title, wide = false, onClose, children }) {
 
 // Centered modal matching the reference dialog (prefer for agent/call/settings flows).
 //   {open && <Dialog title="..." onClose={() => setOpen(false)}>...</Dialog>}
-export function Dialog({ title, onClose, children, wide = false }) {
+export function Dialog({ title, onClose, children, wide = false, className = '' }) {
   const panel = useModalClose(onClose);
   return createPortal(
     <div className="backdrop backdrop--dialog" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose?.(); }}>
-      <section ref={panel} className={`dialog ${wide ? 'dialog--wide' : ''}`} role="dialog" aria-modal="true" aria-label={title}>
+      <section ref={panel} className={`dialog ${wide ? 'dialog--wide' : ''} ${className}`.trim()} role="dialog" aria-modal="true" aria-label={title}>
         <header className="dialog__head">
           <h2>{title}</h2>
           <button className="dialog-close" type="button" aria-label="Close" onClick={() => onClose?.()}>×</button>

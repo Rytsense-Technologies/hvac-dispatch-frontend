@@ -10,13 +10,18 @@ const FILTERS = [
   ['growth', 'Growth'],
 ];
 
+const STATUS_LABEL = {
+  active: 'Active',
+  needs_review: 'Needs review',
+};
+
 const AGENTS = [
   {
     id: 'lead_reactivation',
     name: 'Lead Reactivation Agent',
     group: 'growth',
     icon: 'campaigns',
-    status: 'Active',
+    status: 'active',
     summary: 'Reaches out to older leads and helps turn past inquiries into new opportunities.',
     metric: '18 old leads contacted this week',
     does: [
@@ -31,7 +36,7 @@ const AGENTS = [
     name: 'AI Receptionist',
     group: 'customer',
     icon: 'phone',
-    status: 'Active',
+    status: 'active',
     summary: 'Answers calls, understands service needs, and captures customer details.',
     metric: '24 calls answered today',
     does: [
@@ -46,7 +51,7 @@ const AGENTS = [
     name: 'Scheduling Agent',
     group: 'office',
     icon: 'appointments',
-    status: 'Active',
+    status: 'active',
     summary: 'Helps book, confirm, and coordinate service appointments.',
     metric: '8 appointments booked today',
     does: [
@@ -61,7 +66,7 @@ const AGENTS = [
     name: 'Estimate Follow-up Agent',
     group: 'growth',
     icon: 'campaigns',
-    status: 'Needs review',
+    status: 'needs_review',
     summary: 'Keeps open estimates moving with timely customer follow-up.',
     metric: '3 estimates ready for follow-up',
     does: [
@@ -76,7 +81,7 @@ const AGENTS = [
     name: 'Office Admin Agent',
     group: 'office',
     icon: 'tasks',
-    status: 'Active',
+    status: 'active',
     summary: 'Organizes incoming requests and routine administrative work.',
     metric: '6 tasks organized today',
     does: [
@@ -91,7 +96,7 @@ const AGENTS = [
     name: 'Maintenance Outreach Agent',
     group: 'growth',
     icon: 'snowflake',
-    status: 'Active',
+    status: 'active',
     summary: 'Helps bring customers back for seasonal maintenance.',
     metric: '12 reminders prepared this week',
     does: [
@@ -106,7 +111,7 @@ const AGENTS = [
     name: 'Customer Care Agent',
     group: 'customer',
     icon: 'heart',
-    status: 'Active',
+    status: 'active',
     summary: 'Supports customers after a visit and surfaces issues for your team.',
     metric: '5 follow-ups prepared today',
     does: [
@@ -121,8 +126,8 @@ const AGENTS = [
 function AgentDialog({ agent, onClose }) {
   if (!agent) return null;
   return (
-    <Dialog title={agent.name} onClose={onClose}>
-      <div className="agent-dialog-body" data-agent-dialog>
+    <Dialog title={agent.name} onClose={onClose} className="dialog--agent">
+      <div className="agent-dialog-body">
         <p className="agent-dialog-desc">{agent.summary}</p>
         <strong className="agent-dialog-section">What this agent could help with</strong>
         <ul className="agent-dialog-list">
@@ -173,7 +178,8 @@ export default function Agents() {
 
       <div className="agent-grid">
         {shown.map((agent) => {
-          const needsReview = agent.status === 'Needs review';
+          const needsReview = agent.status === 'needs_review';
+          const statusLabel = STATUS_LABEL[agent.status] || agent.status;
           return (
             <article key={agent.id} className="agent-card">
               <div className="agent-top">
@@ -181,7 +187,9 @@ export default function Agents() {
                   <Icon name={agent.icon} />
                 </span>
                 <span className={`agent-status${needsReview ? ' review' : ''}`}>
-                  ● {agent.status}
+                  <span aria-hidden="true">●</span>
+                  {' '}
+                  <span>{statusLabel}</span>
                 </span>
               </div>
               <h3>{agent.name}</h3>

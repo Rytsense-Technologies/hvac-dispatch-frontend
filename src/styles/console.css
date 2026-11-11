@@ -1545,16 +1545,16 @@ tr.clickable:hover, tr.clickable:focus { background: #f1f5f9; }
 }
 
 /* Agent detail dialog — eyebrow above title (shell Dialog head) */
-.dialog:has([data-agent-dialog]) {
+.dialog--agent {
   position: relative;
 }
-.dialog:has([data-agent-dialog]) .dialog__head {
+.dialog--agent .dialog__head {
   position: relative;
   padding-top: 22px;
   margin-bottom: 0;
   align-items: flex-start;
 }
-.dialog:has([data-agent-dialog]) .dialog__head::before {
+.dialog--agent .dialog__head::before {
   content: "AI AGENT OVERVIEW";
   position: absolute;
   left: 0;
@@ -1565,7 +1565,7 @@ tr.clickable:hover, tr.clickable:focus { background: #f1f5f9; }
   text-transform: uppercase;
   color: #497385;
 }
-.dialog:has([data-agent-dialog]) .dialog__head h2 {
+.dialog--agent .dialog__head h2 {
   margin: 12px 0 8px;
   font-size: 22px;
   font-weight: var(--font-weight-bold);
@@ -1574,12 +1574,12 @@ tr.clickable:hover, tr.clickable:focus { background: #f1f5f9; }
   padding-right: 36px;
   line-height: 1.25;
 }
-.dialog:has([data-agent-dialog]) .dialog-close {
+.dialog--agent .dialog-close {
   position: absolute;
   top: 0;
   right: 0;
 }
-.dialog:has([data-agent-dialog]) .dialog__body {
+.dialog--agent .dialog__body {
   gap: 0;
 }
 .agent-dialog-body {
