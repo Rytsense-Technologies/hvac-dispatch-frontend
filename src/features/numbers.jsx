@@ -34,6 +34,32 @@ function ConfirmDialog({ title, text, label, tone, action, onClose }) {
   );
 }
 
+/** Attach a number that already exists in our own phone account (the platform owner allowed it). Nothing is bought. */
+function AttachNumberDialog({ options, onClose, onDone }) {
+  const [phone, setPhone] = useState(options[0] || '');
+  const [country, setCountry] = useState('US');
+  const [busy, run] = useRun();
+  const submit = () => run(async () => {
+    await api('/v1/numbers/attach', { method: 'POST', body: { phone_number: phone, country } });
+    toast('Number attached to your company.');
+    onClose();
+    onDone();
+  });
+  return (
+    <Dialog title="Use a number we already have" onClose={onClose}>
+      <div className="stack">
+        <Note tone="info" text="Nothing is bought. Calls and texts to this number will open in your company. Its voice and text settings at the phone provider are not changed." />
+        <Field label="Number"><Select options={options.map((n) => [n, n])} value={phone} onChange={(e) => setPhone(e.target.value)} /></Field>
+        <Field label="Country (two letters)"><input type="text" maxLength={2} value={country} onChange={(e) => setCountry(e.target.value.toUpperCase())} /></Field>
+        <div className="dialog-actions">
+          <button type="button" className="btn btn--primary action" disabled={busy || !phone || country.length !== 2} onClick={submit}>Attach number</button>
+          <Button className="btn agent-btn" onClick={onClose}>Cancel</Button>
+        </div>
+      </div>
+    </Dialog>
+  );
+}
+
 /** Live provider search + purchase when the workspace can buy numbers. No card UI — confirm-only. */
 function LiveFindNumberWizard({ state, onClose, onPurchased }) {
   const [f, setF] = useState({ country: state.countries?.[0] || 'US', kind: 'local', area: '' });
@@ -398,6 +424,7 @@ export default function Numbers() {
   const liveNumbers = data?.numbers || [];
   const numbersLive = !!(data?.enabled && data?.ready);
   const canBuyLive = !!(numbersLive && data?.can_buy);
+  const attachable = numbersLive ? (data?.attachable || []) : [];
   // Match pre-design: show SIP management whenever the server says SIP is ready (even with zero trunks).
   const showSipCard = !!(sip?.enabled && sip?.ready);
   const neitherReady = apiState.status === 'ready' && !numbersLive && !showSipCard;
@@ -451,7 +478,7 @@ export default function Numbers() {
             <div className="phone-icon" aria-hidden="true">↗</div>
             <h2>Use your existing number</h2>
             <p>Keep your current business number and choose how to connect calls to your AI team.</p>
-            <Button className="btn agent-btn" onClick={() => setWizard(showSipCard ? 'sip' : 'existing')}>Connect a number</Button>
+            <Button className="btn agent-btn" onClick={() => setWizard(attachable.length ? 'attach' : (showSipCard ? 'sip' : 'existing'))}>{attachable.length ? 'Use a number we already have' : 'Connect a number'}</Button>
           </section>
         </div>
 
@@ -520,6 +547,9 @@ export default function Numbers() {
         <p className="page-foot">{foot}</p>
       </div>
 
+      {wizard === 'attach' && attachable.length ? (
+        <AttachNumberDialog options={attachable} onClose={() => setWizard(null)} onDone={load} />
+      ) : null}
       {wizard === 'find-live' && canBuyLive ? (
         <LiveFindNumberWizard state={data} onClose={() => setWizard(null)} onPurchased={load} />
       ) : null}
