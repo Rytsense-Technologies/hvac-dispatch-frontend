@@ -538,7 +538,7 @@ export default function Usage() {
 
   return (
     <>
-      <p className="settings-back"><a className="link" href="#/settings">← Back to Settings</a></p>
+      <p className="settings-back"><a className="link" href="/settings">← Back to Settings</a></p>
       <PageHeader
         eyebrow="BILLING"
         title="Usage & Billing"

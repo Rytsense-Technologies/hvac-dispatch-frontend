@@ -312,7 +312,7 @@ export default function Users() {
         title="Accounts & technicians"
         subtitle="Who can sign in, and the technicians who can be sent: their skills, areas and working days."
       >
-        <a className="btn btn--secondary agent-btn" href="#/team">Back to team</a>
+        <a className="btn btn--secondary agent-btn" href="/team">Back to team</a>
         {can('admin') ? (
           <>
             <Button className="btn btn--secondary agent-btn" onClick={() => setDialog({ kind: 'addTechnician' })}>Add technician</Button>

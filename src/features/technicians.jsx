@@ -1,4 +1,4 @@
-// Technician building blocks used by Team & dispatch and Accounts (#/team/users): working-days fields and dialogs to change
+// Technician building blocks used by Team & dispatch and Accounts (/team/users): working-days fields and dialogs to change
 // contact, set shifts, or mark unavailable (preview first, then ask for approval). Adding a technician with sign-in is on Team / Accounts.
 import { useRef, useState } from 'react';
 import { api } from '../lib/api.js';

@@ -696,7 +696,7 @@ export default function Leads() {
         <Card as="section">
           <div className="between">
             <h2>Inbound calls</h2>
-            <a className="btn btn--outline btn--small" href="#/requests">All requests</a>
+            <a className="btn btn--outline btn--small" href="/requests">All requests</a>
           </div>
           <p className="muted small">The latest calls that came in, as the AI took them: who called, what they need and what has happened since.</p>
           <div>{inboundContent}</div>

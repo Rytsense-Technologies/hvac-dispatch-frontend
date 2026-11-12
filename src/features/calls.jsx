@@ -98,9 +98,9 @@ function SampleCallDialog({ call, onClose }) {
       </div>
       <p className="sample-label">No recording or transcript is available in this demonstration.</p>
       <div className="dialog-actions">
-        <a className="btn agent-btn" href="#/customers">Customer</a>
-        <a className="btn agent-btn" href="#/work/appointments">Appointments</a>
-        <a className="btn agent-btn" href="#/work">Follow-up tasks</a>
+        <a className="btn agent-btn" href="/customers">Customer</a>
+        <a className="btn agent-btn" href="/work/appointments">Appointments</a>
+        <a className="btn agent-btn" href="/work">Follow-up tasks</a>
       </div>
     </Dialog>
   );
@@ -194,9 +194,9 @@ function CallDialog({ id, onClose }) {
           )}
         </div>
         <div className="dialog-actions">
-          <a className="btn agent-btn" href="#/customers">Customer</a>
-          <a className="btn agent-btn" href="#/work/appointments">Appointments</a>
-          <a className="btn agent-btn" href="#/work">Follow-up tasks</a>
+          <a className="btn agent-btn" href="/customers">Customer</a>
+          <a className="btn agent-btn" href="/work/appointments">Appointments</a>
+          <a className="btn agent-btn" href="/work">Follow-up tasks</a>
         </div>
       </>
     );

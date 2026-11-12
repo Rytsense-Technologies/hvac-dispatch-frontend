@@ -1,11 +1,11 @@
 // Console sections + sidebar IA for the Rytsense reference shell (Phase 0).
-// Hash routing stays location.hash (e.g. #/work, #/calls/numbers).
+// Routing uses plain paths (/calls, /work/appointments) via the History API - see ./router.js.
 // WORKSPACE nav: Overview, AI agents, Campaigns, Calls, Work, Team & dispatch, Customers, Test
 // MANAGE nav: AI Coworker, Reports, Settings
-// Work → Tasks | Appointments (section tabs). Calls → history | phone numbers.
-// Automation is reachable via #/automation (Settings deep-link), not top-level nav.
-// Test restores the pre-design call.html voice + SMS text-chat flows inside the shell.
-// Approvals (#/approvals) is a Work deep-link for live dispatch proposals from Coworker confirm.
+// Work → Tasks | Appointments (section tabs, shared chrome in workChrome.jsx). Calls → history | phone numbers.
+// Automation is reachable via /automation (Settings deep-link), not top-level nav.
+// Approvals (/approvals) is a Work deep-link for live dispatch proposals from Coworker confirm.
+// None of these paths may collide with routes.js's RESERVED_PREFIXES (the API, /tech, /billing, etc.) - router.js enforces that.
 import { lazy } from 'react';
 
 export const SECTIONS = [
@@ -34,48 +34,48 @@ export const SECTIONS = [
 
 /** Sidebar entries (order + href). `match` lists section ids that keep this item active. */
 export const NAV_ITEMS = [
-  { id: 'overview', label: 'Overview', icon: 'overview', href: '#/overview', match: ['overview'] },
-  { id: 'agents', label: 'AI agents', icon: 'agents', href: '#/agents', match: ['agents'] },
-  { id: 'campaigns', label: 'Campaigns', icon: 'campaigns', href: '#/campaigns', match: ['campaigns'] },
-  { id: 'calls', label: 'Calls', icon: 'calls', href: '#/calls', match: ['calls', 'numbers'] },
-  { id: 'work', label: 'Work', icon: 'work', href: '#/work', match: ['tasks', 'appointments', 'approvals'] },
-  { id: 'team', label: 'Team & dispatch', icon: 'team', href: '#/team', match: ['team', 'users'] },
-  { id: 'customers', label: 'Customers', icon: 'customers', href: '#/customers', match: ['customers'] },
-  { id: 'test', label: 'Test', icon: 'test', href: '#/test', match: ['test'] },
-  { id: 'copilot', label: 'AI Coworker', icon: 'copilot', href: '#/copilot', group: 'manage', match: ['copilot'] },
-  { id: 'reports', label: 'Reports', icon: 'reports', href: '#/reports', group: 'manage', match: ['reports'] },
-  { id: 'settings', label: 'Settings', icon: 'settings', href: '#/settings', group: 'manage', match: ['settings', 'automation', 'usage'] },
+  { id: 'overview', label: 'Overview', icon: 'overview', href: '/overview', match: ['overview'] },
+  { id: 'agents', label: 'AI agents', icon: 'agents', href: '/agents', match: ['agents'] },
+  { id: 'campaigns', label: 'Campaigns', icon: 'campaigns', href: '/campaigns', match: ['campaigns'] },
+  { id: 'calls', label: 'Calls', icon: 'calls', href: '/calls', match: ['calls', 'numbers'] },
+  { id: 'work', label: 'Work', icon: 'work', href: '/work', match: ['tasks', 'appointments', 'approvals'] },
+  { id: 'team', label: 'Team & dispatch', icon: 'team', href: '/team', match: ['team', 'users'] },
+  { id: 'customers', label: 'Customers', icon: 'customers', href: '/customers', match: ['customers'] },
+  { id: 'test', label: 'Test', icon: 'test', href: '/test', match: ['test'] },
+  { id: 'copilot', label: 'AI Coworker', icon: 'copilot', href: '/copilot', group: 'manage', match: ['copilot'] },
+  { id: 'reports', label: 'Reports', icon: 'reports', href: '/reports', group: 'manage', match: ['reports'] },
+  { id: 'settings', label: 'Settings', icon: 'settings', href: '/settings', group: 'manage', match: ['settings', 'automation', 'usage'] },
 ];
 
 export const SECTION_TABS = {
   work: [
-    { id: 'tasks', label: 'Tasks', href: '#/work' },
-    { id: 'appointments', label: 'Appointments', href: '#/work/appointments' },
+    { id: 'tasks', label: 'Tasks', href: '/work' },
+    { id: 'appointments', label: 'Appointments', href: '/work/appointments' },
   ],
   calls: [
-    { id: 'calls', label: 'Call history', href: '#/calls' },
-    { id: 'numbers', label: 'Phone numbers', href: '#/calls/numbers' },
+    { id: 'calls', label: 'Call history', href: '/calls' },
+    { id: 'numbers', label: 'Phone numbers', href: '/calls/numbers' },
   ],
 };
 
 export const MOBILE_PRIMARY = [
-  { id: 'overview', label: 'Home', icon: 'overview', href: '#/overview', match: ['overview'] },
-  { id: 'work', label: 'Work', icon: 'work', href: '#/work', match: ['tasks', 'appointments', 'approvals'] },
-  { id: 'calls', label: 'Calls', icon: 'calls', href: '#/calls', match: ['calls', 'numbers'] },
-  { id: 'team', label: 'Team', icon: 'team', href: '#/team', match: ['team', 'users'] },
+  { id: 'overview', label: 'Home', icon: 'overview', href: '/overview', match: ['overview'] },
+  { id: 'work', label: 'Work', icon: 'work', href: '/work', match: ['tasks', 'appointments', 'approvals'] },
+  { id: 'calls', label: 'Calls', icon: 'calls', href: '/calls', match: ['calls', 'numbers'] },
+  { id: 'team', label: 'Team', icon: 'team', href: '/team', match: ['team', 'users'] },
 ];
 
 export const MOBILE_MORE = [
-  { id: 'agents', label: 'AI agents', href: '#/agents' },
-  { id: 'campaigns', label: 'Campaigns', href: '#/campaigns' },
-  { id: 'customers', label: 'Customers', href: '#/customers' },
-  { id: 'test', label: 'Test', href: '#/test' },
-  { id: 'copilot', label: 'AI Coworker', href: '#/copilot' },
-  { id: 'reports', label: 'Reports', href: '#/reports' },
-  { id: 'settings', label: 'Settings', href: '#/settings' },
+  { id: 'agents', label: 'AI agents', href: '/agents' },
+  { id: 'campaigns', label: 'Campaigns', href: '/campaigns' },
+  { id: 'customers', label: 'Customers', href: '/customers' },
+  { id: 'test', label: 'Test', href: '/test' },
+  { id: 'copilot', label: 'AI Coworker', href: '/copilot' },
+  { id: 'reports', label: 'Reports', href: '/reports' },
+  { id: 'settings', label: 'Settings', href: '/settings' },
 ];
 
-const HASH_ALIASES = {
+const PATH_ALIASES = {
   '': 'overview',
   dashboard: 'overview',
   work: 'tasks',
@@ -87,11 +87,10 @@ const HASH_ALIASES = {
   users: 'users',
 };
 
-/** Resolve location.hash to a SECTIONS id. */
-export function sectionIdFromHash(hash = typeof location !== 'undefined' ? location.hash : '') {
-  const raw = (String(hash).replace(/^#\/?/, '') || '').split('?')[0];
-  const path = raw.replace(/^\/+|\/+$/g, '');
-  if (HASH_ALIASES[path] !== undefined) return HASH_ALIASES[path];
+/** Resolve a pathname (e.g. location.pathname) to a SECTIONS id. */
+export function sectionIdFromPath(pathname = typeof location !== 'undefined' ? location.pathname : '/') {
+  const path = String(pathname).replace(/^\/+|\/+$/g, '');
+  if (PATH_ALIASES[path] !== undefined) return PATH_ALIASES[path];
   const first = path.split('/')[0];
   return first || 'overview';
 }

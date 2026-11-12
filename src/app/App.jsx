@@ -13,13 +13,14 @@ import {
   NAV_ITEMS,
   SECTION_TABS,
   findSection,
-  sectionIdFromHash,
+  sectionIdFromPath,
 } from './routes.js';
+import { usePathname } from './router.js';
 
 const allowedIn = (section) => !SECTION_ROLES[section.id] || can(...SECTION_ROLES[section.id]);
 
 function currentSection() {
-  return findSection(sectionIdFromHash(location.hash));
+  return findSection(sectionIdFromPath(location.pathname));
 }
 
 function crumbFor(section) {
@@ -82,8 +83,15 @@ function LoginForm({ message, setupOpen, signupOpen, onSignedIn, onRegister, onS
     setTechLink(false);
     try {
       const data = await api('/v1/auth/login', { method: 'POST', body: { email: email.trim(), password } });
+      if (data.identity?.role === 'technician') {
+        // Same sign-in page for both roles: a technician's session cookie (path /v1) is also
+        // accepted on /v1/tech/*, so send them straight to their phone page without touching it.
+        setPassword('');
+        window.location.assign('/tech');
+        return;
+      }
       if (data.identity?.role !== 'admin') {
-        // This console is for admins only; a technician's own sign-in is the phone page, not here.
+        // Any other role is not for this console.
         try { await api('/v1/auth/session', { method: 'DELETE' }); } catch { /* best effort */ }
         setPassword('');
         setText('That sign-in is for a technician.');
@@ -118,7 +126,7 @@ function LoginForm({ message, setupOpen, signupOpen, onSignedIn, onRegister, onS
         {setupOpen ? <a href="#" onClick={(e) => { e.preventDefault(); onRegister(); }}>Register the first admin</a> : null}
       </p>
       {signupOpen ? <p className="muted small">New company? <a href="#" onClick={(e) => { e.preventDefault(); onSignup(); }}>Create your company</a></p> : null}
-      <p className="muted small">Test the phone assistant: <a href="#/test">Test</a> (or <a href="call.html">call.html</a>)</p>
+      <p className="muted small">Test the phone assistant: <a href="/test">Test</a> (or <a href="call.html">call.html</a>)</p>
     </form>
   );
 }
@@ -290,21 +298,14 @@ function getInitials(name) {
 }
 
 function Shell({ timezone, onSignOut }) {
-  const [hash, setHash] = useState(location.hash);
+  const path = usePathname();
   const [agents, setAgents] = useState(null); // {active, total} once /v1/agents answers; stays null (hidden counts) on any failure
   const [menuOpen, setMenuOpen] = useState(false);
   const [moreOpen, setMoreOpen] = useState(false);
   const menuRef = useRef(null);
   const moreRef = useRef(null);
   const page = useRef(null);
-  useEffect(() => {
-    const onHash = () => {
-      setHash(location.hash);
-      setMoreOpen(false);
-    };
-    window.addEventListener('hashchange', onHash);
-    return () => window.removeEventListener('hashchange', onHash);
-  }, []);
+  useEffect(() => { setMoreOpen(false); }, [path]);
 
   // Quiet status pill — real counts from /v1/agents, once per sign-in. Never invent numbers.
   useEffect(() => {
@@ -335,7 +336,7 @@ function Shell({ timezone, onSignOut }) {
   const crumb = crumbFor(section);
   const sectionTabs = section.sectionGroup ? SECTION_TABS[section.sectionGroup] : null;
 
-  useEffect(() => { page.current?.focus({ preventScroll: true }); }, [hash]);
+  useEffect(() => { page.current?.focus({ preventScroll: true }); }, [path]);
 
   const displayName = session.user?.name || session.actor || 'James M.';
   const initials = getInitials(displayName);
@@ -374,7 +375,7 @@ function Shell({ timezone, onSignOut }) {
         <header className="topbar">
           <div className="topbar__crumb"><span>{crumb.root}</span><span aria-hidden="true">/</span><strong>{crumb.strong}</strong></div>
           <div className="topbar__right">
-            <a href="#/agents" className="topbar__status-pill" title="AI agents">
+            <a href="/agents" className="topbar__status-pill" title="AI agents">
               <span className="topbar__status-dot" aria-hidden="true" />
               <span>
                 {agents
@@ -382,7 +383,7 @@ function Shell({ timezone, onSignOut }) {
                   : 'AI team active'}
               </span>
             </a>
-            <a href="#/team" className="topbar__icon-btn" title="Team & dispatch" aria-label="Team & dispatch">
+            <a href="/team" className="topbar__icon-btn" title="Team & dispatch" aria-label="Team & dispatch">
               <Icon name="team" />
             </a>
             <div className="identity-wrap" ref={menuRef}>
@@ -409,7 +410,7 @@ function Shell({ timezone, onSignOut }) {
                     <Badge text={session.role || 'admin'} tone="info" />
                     <small className="block muted">{`${session.actor || ''} · ${timezone || ''}`}</small>
                   </div>
-                  <a href="#/settings" className="identity__menu-item" role="menuitem" onClick={() => setMenuOpen(false)}>
+                  <a href="/settings" className="identity__menu-item" role="menuitem" onClick={() => setMenuOpen(false)}>
                     <Icon name="settings" />
                     <span>Settings</span>
                   </a>
@@ -431,7 +432,7 @@ function Shell({ timezone, onSignOut }) {
             />
           ) : null}
           {allowed ? (
-            <SectionBoundary key={`${section.id}${hash}`}>
+            <SectionBoundary key={`${section.id}${path}`}>
               <Suspense fallback={null}><View /></Suspense>
             </SectionBoundary>
           ) : (

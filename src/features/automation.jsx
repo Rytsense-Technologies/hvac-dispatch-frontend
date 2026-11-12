@@ -243,7 +243,7 @@ export default function Automation() {
   if (!can('admin', 'dispatcher', 'approver')) {
     return (
       <>
-        <p className="settings-back"><a className="link" href="#/settings">← Back to Settings</a></p>
+        <p className="settings-back"><a className="link" href="/settings">← Back to Settings</a></p>
         <PageHeader eyebrow="OFFICE OPERATIONS" title="Admin automation" subtitle="Review actions prepared for your office." />
         <Note text="Not available for your role." tone="warn" />
       </>
@@ -286,7 +286,7 @@ export default function Automation() {
 
   return (
     <>
-      <p className="settings-back"><a className="link" href="#/settings">← Back to Settings</a></p>
+      <p className="settings-back"><a className="link" href="/settings">← Back to Settings</a></p>
       <PageHeader
         eyebrow="OFFICE OPERATIONS"
         title="Admin automation"

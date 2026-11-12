@@ -839,7 +839,7 @@ export default function Settings() {
               </ul>
               <div style={{ marginTop: '8px' }}>
                 <a
-                  href="#/team"
+                  href="/team"
                   className="settings-btn"
                   style={{ display: 'inline-flex', textDecoration: 'none' }}
                   onClick={() => setActiveModal(null)}

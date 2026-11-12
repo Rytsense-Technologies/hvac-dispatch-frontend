@@ -146,10 +146,10 @@ function BillingFor({ job, reload }) {
         {count ? (
           <ul className="plain">
             {open.map((q) => (
-              <li key={`q${q.id}`}>Quote{' '}<a href="#/billing" onClick={(e) => { e.preventDefault(); setQuoteId(q.id); }}>{q.number || '(draft)'}</a>{` · ${q.status} · ${q.total}`}</li>
+              <li key={`q${q.id}`}>Quote{' '}<a href="#" onClick={(e) => { e.preventDefault(); setQuoteId(q.id); }}>{q.number || '(draft)'}</a>{` · ${q.status} · ${q.total}`}</li>
             ))}
             {liveInvoices.map((i) => (
-              <li key={`i${i.id}`}>Invoice{' '}<a href="#/billing" onClick={(e) => { e.preventDefault(); setInvoiceId(i.id); }}>{i.number || '(draft)'}</a>{` · ${i.state} · ${i.total}`}</li>
+              <li key={`i${i.id}`}>Invoice{' '}<a href="#" onClick={(e) => { e.preventDefault(); setInvoiceId(i.id); }}>{i.number || '(draft)'}</a>{` · ${i.state} · ${i.total}`}</li>
             ))}
           </ul>
         ) : <Empty text="No quote or invoice yet." />}

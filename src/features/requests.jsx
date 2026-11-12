@@ -154,7 +154,7 @@ function RequestDrawer({ item, alerts, reload, onClose }) {
             )}
           </section>
         )}
-        {item.appointment_id ? <p><a href="#/jobs">See it on the Jobs screen</a></p> : null}
+        {item.appointment_id ? <p><a href="/jobs">See it on the Jobs screen</a></p> : null}
       </div>
     </Overlay>
   );

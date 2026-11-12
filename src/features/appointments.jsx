@@ -238,8 +238,8 @@ function AppointmentDetail({ initial, onClose, reload, demoMode }) {
           </p>
         ) : null}
         <div className="work-dialog-actions">
-          <a href="#/customers" className="btn btn--secondary" onClick={onClose}>View customer</a>
-          <a href="#/work" className="btn btn--secondary" onClick={onClose}>View task</a>
+          <a href="/customers" className="btn btn--secondary" onClick={onClose}>View customer</a>
+          <a href="/work" className="btn btn--secondary" onClick={onClose}>View task</a>
           <Button className="btn btn--secondary" onClick={() => { toast('Sample confirm only.'); onClose(); }}>Confirm</Button>
           <Button className="btn btn--secondary" onClick={() => { toast('Sample reschedule only.'); onClose(); }}>Reschedule</Button>
           <Button className="btn btn--secondary" onClick={() => { toast('Sample cancel only.'); onClose(); }}>Cancel appointment</Button>
@@ -298,7 +298,7 @@ function AppointmentDetail({ initial, onClose, reload, demoMode }) {
                 <ul className="plain">{detail.history.map((line, i) => <li key={i}>{line}</li>)}</ul>
               </>
             ) : null}
-            {detail.job_id ? <p><a href="#/jobs">See it on the Jobs screen</a></p> : null}
+            {detail.job_id ? <p><a href="/jobs">See it on the Jobs screen</a></p> : null}
 
             {!flow ? (
               <section className="stack">
@@ -338,8 +338,8 @@ function AppointmentDetail({ initial, onClose, reload, demoMode }) {
                   <small className="block muted">{actionsById.cancel.why_not}</small>
                 ) : null}
                 <div className="work-dialog-actions" style={{ marginTop: 4 }}>
-                  <a href="#/customers" className="btn btn--ghost" onClick={onClose}>View customer</a>
-                  <a href="#/work" className="btn btn--ghost" onClick={onClose}>View task</a>
+                  <a href="/customers" className="btn btn--ghost" onClick={onClose}>View customer</a>
+                  <a href="/work" className="btn btn--ghost" onClick={onClose}>View task</a>
                 </div>
               </section>
             ) : (

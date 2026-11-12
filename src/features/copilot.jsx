@@ -38,31 +38,31 @@ const SUGGESTED_ACTIONS = [
     title: 'Invoice follow-up',
     subtitle: 'Sarah Mitchell · Needs approval',
     cta: 'Open automation',
-    href: '#/automation',
+    href: '/automation',
   },
   {
     title: 'Customer record update',
     subtitle: 'David Rodriguez · Needs review',
     cta: 'Open automation',
-    href: '#/automation',
+    href: '/automation',
   },
   {
     title: 'Assign AC repair · Sarah Mitchell',
     subtitle: 'Unassigned work',
     cta: 'Open Work',
-    href: '#/work',
+    href: '/work',
   },
   {
     title: 'Assign Plumbing inspection · William Brooks',
     subtitle: 'Unassigned work',
     cta: 'Open Work',
-    href: '#/work',
+    href: '/work',
   },
   {
     title: 'Explore existing campaigns',
     subtitle: 'Sample outreach',
     cta: 'Open sample campaigns',
-    href: '#/campaigns?demo=1',
+    href: '/campaigns?demo=1',
   },
 ];
 
@@ -80,7 +80,7 @@ function ConfirmationBox({ confirmation }) {
           </span>
         </div>
         <div>
-          <a href="#/approvals" className="btn btn--outline btn--small">
+          <a href="/approvals" className="btn btn--outline btn--small">
             Open Approvals Queue →
           </a>
         </div>
@@ -487,7 +487,7 @@ export default function Copilot() {
           </form>
 
           <p className="sample-label">
-            Suggestion chips, chat, threads, and confirmations use live APIs — confirming a change creates a live Approvals proposal at #/approvals. Suggested action rows on the right are illustrative section navigation only.
+            Suggestion chips, chat, threads, and confirmations use live APIs — confirming a change creates a live Approvals proposal at /approvals. Suggested action rows on the right are illustrative section navigation only.
           </p>
 
           {threads && threads.length ? (

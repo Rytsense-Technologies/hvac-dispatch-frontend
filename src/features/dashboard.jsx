@@ -270,7 +270,7 @@ function TodoRows({ items }) {
       title={t.title}
       subtitle={t.reason || t.customer || 'Needs review'}
       trailing={(
-        <a className="btn btn--secondary btn--small" href="#/automation">Review</a>
+        <a className="btn btn--secondary btn--small" href="/automation">Review</a>
       )}
     />
   ));
@@ -290,7 +290,7 @@ function ExtensionsPanel({ state }) {
       >
         <span className="overview-extensions__actions">
           <Badge text={`${count} update${count === 1 ? '' : 's'}`} tone={count ? 'warn' : 'good'} />
-          <a className="link" href="#/team">View team →</a>
+          <a className="link" href="/team">View team →</a>
         </span>
       </PanelHead>
       {state.status === 'loading' ? <Spinner text="Loading extensions…" /> : null}
@@ -470,20 +470,20 @@ export default function Dashboard() {
         ) : (
           <div className="priority-grid">
             <PriorityItem
-              href="#/work"
+              href="/work"
               icon="work"
               title="Assign open work"
               text={plural(unassigned, 'unassigned job', 'unassigned jobs')}
             />
             <PriorityItem
-              href="#/automation"
+              href="/automation"
               icon="checkCircle"
               warm
               title="Review AI actions"
               text={plural(reviewCount, 'item needs review', 'items need review')}
             />
             <PriorityItem
-              href="#/team"
+              href="/team"
               icon="team"
               title="Check your team"
               text={teamAvailabilityText(o?.queues)}
@@ -503,28 +503,28 @@ export default function Dashboard() {
         <>
           <div className="cards">
             <MetricCard
-              href="#/calls"
+              href="/calls"
               label="Calls answered"
               value={callsCount}
               hint="Conversations shown in Calls"
               icon="phone"
             />
             <MetricCard
-              href="#/work/appointments"
+              href="/work/appointments"
               label="Appointments booked"
               value={apptCount}
               hint={isWeek ? 'Appointments this week' : 'Appointments today'}
               icon="appointments"
             />
             <MetricCard
-              href="#/customers"
+              href="/customers"
               label="Customers"
               value={customersTotal}
               hint={customerHint}
               icon="customers"
             />
             <MetricCard
-              href="#/automation"
+              href="/automation"
               label="AI actions to review"
               value={reviewCount}
               hint="Items awaiting office review"
@@ -534,7 +534,7 @@ export default function Dashboard() {
 
           <div className="sectionhead">
             <h2>Your AI team</h2>
-            <a className="link sectionhead__meta" href="#/agents">View agents →</a>
+            <a className="link sectionhead__meta" href="/agents">View agents →</a>
           </div>
           {(() => {
             const strip = agentsForStrip(o);
@@ -556,14 +556,14 @@ export default function Dashboard() {
           <div className="overview-layout">
             <Panel>
               <PanelHead title="Recent calls" subtitle="The latest conversations with your customers">
-                <a className="link" href="#/calls">View all →</a>
+                <a className="link" href="/calls">View all →</a>
               </PanelHead>
               <RecentCalls calls={recentCalls.slice(0, 4)} period={period} />
             </Panel>
 
             <Panel>
               <PanelHead title="Your to-do list" subtitle="Administrative work that needs a look">
-                <a className="link" href="#/work">View tasks →</a>
+                <a className="link" href="/work">View tasks →</a>
               </PanelHead>
               <TodoRows items={todos.slice(0, 5)} />
             </Panel>

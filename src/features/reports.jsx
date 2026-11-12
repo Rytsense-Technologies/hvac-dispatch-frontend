@@ -14,8 +14,8 @@ const PERIODS = [
   { id: 'today', label: 'Today', api: 'today' },
 ];
 
-const APPOINTMENTS_HREF = '#/work/appointments';
-const REVIEW_HREF = '#/automation';
+const APPOINTMENTS_HREF = '/work/appointments';
+const REVIEW_HREF = '/automation';
 
 function firstDefined(...vals) {
   for (const v of vals) {

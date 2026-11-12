@@ -170,7 +170,7 @@ function PeopleTab({
         >
           <Badge text={`${people.length} member${people.length === 1 ? '' : 's'}`} tone="good" />
           {canManageUsers ? (
-            <a className="btn btn--secondary agent-btn" href="#/team/users">Manage accounts</a>
+            <a className="btn btn--secondary agent-btn" href="/team/users">Manage accounts</a>
           ) : null}
         </PanelHead>
         {people.length ? people.map((person) => {
@@ -449,7 +449,7 @@ export default function Team() {
       >
         {canManageUsers ? (
           <>
-            <a className="btn btn--secondary agent-btn" href="#/team/users">Manage accounts</a>
+            <a className="btn btn--secondary agent-btn" href="/team/users">Manage accounts</a>
             <Button className="btn btn--primary action" onClick={() => setDialog({ kind: 'add' })}>
               + Add team member
             </Button>

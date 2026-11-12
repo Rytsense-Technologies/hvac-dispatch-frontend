@@ -13,8 +13,32 @@ const forward = {
   headers: { 'ngrok-skip-browser-warning': 'true' },
 };
 
+// The console routes client-side with the History API (/calls, /settings, ...). appType 'mpa' means
+// Vite otherwise 404s on a direct open or refresh of one of those paths, since no such file exists on
+// disk; this plugin rewrites that one request to index.html, same as nginx.conf does in production.
+// It must not touch the other pages (call.html, customer.html, portal/*), real files/assets, or
+// anything proxied to the API (see RESERVED_PREFIXES, which mirrors src/app/router.js).
+const RESERVED_PREFIXES = ['/v1', '/tech', '/set-password', '/signup', '/billing', '/twilio', '/healthz', '/rtc', '/twirp', '/api'];
+const OTHER_PAGES = ['/portal'];
+function consoleHistoryFallback() {
+  return {
+    name: 'console-history-fallback',
+    configureServer(server) {
+      server.middlewares.use((req, res, next) => {
+        const pathname = (req.url || '').split('?')[0];
+        const accepts = req.headers.accept || '';
+        const isNavigation = req.method === 'GET' && accepts.includes('text/html');
+        const isOwnPage = [...RESERVED_PREFIXES, ...OTHER_PAGES].some((p) => pathname === p || pathname.startsWith(`${p}/`));
+        const hasExtension = /\.[a-z0-9]+$/i.test(pathname);
+        if (isNavigation && !isOwnPage && !hasExtension) req.url = '/index.html';
+        next();
+      });
+    },
+  };
+}
+
 export default defineConfig({
-  plugins: [react()],
+  plugins: [react(), consoleHistoryFallback()],
   appType: 'mpa',
   server: {
     port: 5500,

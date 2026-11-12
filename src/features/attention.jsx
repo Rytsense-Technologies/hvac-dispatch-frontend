@@ -50,7 +50,7 @@ export default function Attention() {
         <span><strong>{v.summary?.service_type || 'Job'}</strong><small className="block muted">{short(v.job_id)}</small></span>,
         formatDateTime(v.summary?.scheduled_at), v.technician_name || v.technician_id,
         <span className="row wrap">{v.reasons.map((r) => <Badge key={r} text={reasonText(r)} tone="bad" />)}</span>,
-        <span>{proposalText(v)}{v.approval?.status === 'pending' && can('approver', 'admin') ? <>{' '}<a href="#/approvals">Review</a></> : null}</span>,
+        <span>{proposalText(v)}{v.approval?.status === 'pending' && can('approver', 'admin') ? <>{' '}<a href="/approvals">Review</a></> : null}</span>,
       ])} />
     );
   } else body = <Empty text={state.shown === 'open' ? 'Nothing needs attention. Every booked job fits its technician.' : 'Nothing to show.'} />;

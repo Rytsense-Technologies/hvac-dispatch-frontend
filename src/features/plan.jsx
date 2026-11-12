@@ -27,7 +27,7 @@ function Result({ s, onClose }) {
           <Badge text="Plan Completed" tone="good" />
         </div>
         <div className="row" style={{ gap: '8px', alignItems: 'center' }}>
-          <a href="#/approvals" className="btn btn--primary btn--small">
+          <a href="/approvals" className="btn btn--primary btn--small">
             Open Approvals Queue →
           </a>
           {onClose ? (
