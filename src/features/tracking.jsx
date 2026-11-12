@@ -15,7 +15,7 @@ const STATUS_TONE = {
   available: 'good', active: 'good',
   on_a_job: 'info', en_route: 'info', arrived: 'info', on_site: 'info',
   offline: 'warn', off: 'warn', stale: 'warn', disabled: 'bad',
-  time_off: 'neutral', unavailable: 'neutral', off_duty: 'neutral',
+  time_off: 'neutral', unavailable: 'neutral', off_duty: 'neutral', not_on_shift: 'neutral',
 };
 const toneFor = (code) => STATUS_TONE[String(code || '').toLowerCase()] || 'neutral';
 
@@ -233,17 +233,20 @@ export default function TeamTracking({ onBack, active = true }) {
       return technicians.map((t) => {
         const code = t.status?.code || t.tracking || 'offline';
         const label = t.status?.label || t.tracking_text || t.tracking || 'Unknown';
+        const detail = t.status?.detail;
         const trade = t.trade || (Array.isArray(t.skills) ? t.skills[0] : '') || '';
         const freshness = t.updated_at
           ? `Updated ${timeAgo(t.updated_at)}`
           : (t.eta_seconds != null ? `ETA ${Math.round(t.eta_seconds / 60)} min` : (enabled ? 'No recent location update' : 'No location available'));
-        const offline = ['off', 'offline', 'stale', 'disabled'].includes(String(code).toLowerCase())
+        // off_duty and not_on_shift are both "not working now" - neither has a live feed worth showing as such.
+        const offline = ['off', 'offline', 'stale', 'disabled', 'off_duty', 'not_on_shift'].includes(String(code).toLowerCase())
           || String(t.tracking_text || '').toLowerCase().includes('off');
         return {
           id: t.id || t.name,
           name: t.name,
           initial: initials(t.name).slice(0, 1),
           subtitle: `${label}${trade ? ` · ${trade}` : ''}`,
+          detail,
           freshness,
           badge: offline ? 'Offline' : (hasLiveFeed ? 'Live feed' : (enabled ? 'Tracking' : 'No GPS')),
           tone: offline ? 'warn' : (hasLiveFeed ? 'good' : toneFor(code)),
@@ -362,6 +365,7 @@ export default function TeamTracking({ onBack, active = true }) {
                       <strong>{row.name}</strong>
                       <small className="muted">
                         {row.subtitle}
+                        {row.detail ? <><br />{row.detail}</> : null}
                         <br />
                         {row.freshness}
                       </small>

@@ -27,7 +27,7 @@ const FILTERS = [
 const STATUS_TONE = {
   available: 'good', active: 'good',
   on_a_job: 'info', invited: 'info',
-  time_off: 'neutral', unavailable: 'neutral', off_duty: 'neutral',
+  time_off: 'neutral', unavailable: 'neutral', off_duty: 'neutral', not_on_shift: 'neutral',
   disabled: 'bad',
 };
 const toneFor = (code) => STATUS_TONE[String(code || '').toLowerCase()] || 'neutral';
@@ -176,6 +176,7 @@ function PeopleTab({
         {people.length ? people.map((person) => {
           const statusLabel = person.status?.label || person.availability || person.status || '—';
           const statusCode = person.status?.code || person.status;
+          const statusDetail = person.status?.detail;
           const tech = personTech(person);
           const user = personUser(person);
           return (
@@ -184,6 +185,7 @@ function PeopleTab({
               <span className="rowmain">
                 <strong>{person.name}</strong>
                 <small className="muted">{personSubtitle(person)}</small>
+                {statusDetail ? <small className="muted team-status-detail">{statusDetail}</small> : null}
               </span>
               <Badge text={statusLabel} tone={toneFor(statusCode)} />
               <div className="team-person-actions">

@@ -89,6 +89,7 @@ export default function Campaigns() {
 
   // Outbound Create Form state
   const [newCampaignName, setNewCampaignName] = useState('');
+  const [newCampaignKind, setNewCampaignKind] = useState('speed_to_lead');
   const [newCampaignObjective, setNewCampaignObjective] = useState('');
   const [newCampaignAudience, setNewCampaignAudience] = useState('');
   const [newCampaignScript, setNewCampaignScript] = useState('');
@@ -169,10 +170,12 @@ export default function Campaigns() {
       interested: [],
     };
 
+    let created;
     try {
-      await api('/v1/leads/campaigns', {
+      created = await api('/v1/leads/campaigns', {
         method: 'POST',
         body: {
+          kind: newCampaignKind,
           draft: newCampaignStatus.toLowerCase() === 'draft',
           name: newObj.name,
           objective: newObj.objective,
@@ -180,14 +183,16 @@ export default function Campaigns() {
           script_note: newObj.script,
         },
       });
-    } catch {
-      // Local fallback in demo mode
+    } catch (error) {
+      toast(error.message, 'bad');
+      return;
     }
 
-    setCampaigns((prev) => [newObj, ...prev]);
+    setCampaigns((prev) => [{ ...newObj, id: String(created?.id ?? newObj.id) }, ...prev]);
     toast('Campaign created successfully.');
     setShowCreateCampaignModal(false);
     setNewCampaignName('');
+    setNewCampaignKind('speed_to_lead');
     setNewCampaignObjective('');
     setNewCampaignAudience('');
     setNewCampaignScript('');
@@ -792,6 +797,18 @@ export default function Campaigns() {
                   onChange={(e) => setNewCampaignName(e.target.value)}
                   style={{ width: '100%', padding: '8px 12px', borderRadius: '6px', border: '1px solid #cbd5e1' }}
                 />
+              </div>
+              <div>
+                <label className="label">Campaign type *</label>
+                <select
+                  required
+                  value={newCampaignKind}
+                  onChange={(e) => setNewCampaignKind(e.target.value)}
+                  style={{ width: '100%', padding: '8px 12px', borderRadius: '6px', border: '1px solid #cbd5e1' }}
+                >
+                  <option value="speed_to_lead">Speed to lead (new inquiries)</option>
+                  <option value="reactivation">Reactivation (past customers)</option>
+                </select>
               </div>
               <div>
                 <label className="label">Objective</label>

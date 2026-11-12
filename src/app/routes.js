@@ -5,7 +5,7 @@
 // Work → Tasks | Appointments (section tabs, shared chrome in workChrome.jsx). Calls → history | phone numbers.
 // Automation is reachable via /automation (Settings deep-link), not top-level nav.
 // Approvals (/approvals) is a Work deep-link for live dispatch proposals from Coworker confirm.
-// None of these paths may collide with routes.js's RESERVED_PREFIXES (the API, /tech, /billing, etc.) - router.js enforces that.
+// None of these paths may collide with routes.js's RESERVED_PREFIXES (the API, /billing, etc.) - router.js enforces that.
 import { lazy } from 'react';
 
 export const SECTIONS = [
@@ -30,6 +30,9 @@ export const SECTIONS = [
   { id: 'settings', label: 'Settings', icon: 'settings', group: 'manage', view: lazy(() => import('../features/settings.jsx')) },
   { id: 'automation', label: 'Admin automation', icon: 'automation', group: 'manage', hideNav: true, crumbParent: 'Settings', view: lazy(() => import('../features/automation.jsx')) },
   { id: 'usage', label: 'Usage & Billing', icon: 'settings', group: 'manage', hideNav: true, crumbParent: 'Settings', view: lazy(() => import('../features/usage.jsx')) },
+
+  // TECHNICIAN PORTAL
+  { id: 'tech', label: 'My jobs', icon: 'technicians', hideNav: true, view: lazy(() => import('../features/tech.jsx')) },
 ];
 
 /** Sidebar entries (order + href). `match` lists section ids that keep this item active. */
@@ -85,6 +88,7 @@ const PATH_ALIASES = {
   'calls/numbers': 'numbers',
   'team/users': 'users',
   users: 'users',
+  tech: 'tech',
 };
 
 /** Resolve a pathname (e.g. location.pathname) to a SECTIONS id. */

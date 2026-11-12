@@ -17,11 +17,11 @@ export function slotKind(segment) {
   const code = String(segment?.kind || segment?.code || segment?.status || '').toLowerCase();
   if (['available', 'free', 'open'].includes(code)) return 'available';
   if (['booked', 'busy', 'job', 'assigned'].includes(code)) return 'booked';
-  if (['outside', 'off', 'time_off', 'unavailable', 'weekend'].includes(code)) return 'outside';
+  if (['outside', 'off', 'time_off', 'unavailable', 'weekend', 'not_on_shift'].includes(code)) return 'outside';
   const text = String(segment?.text || segment?.label || '').toLowerCase();
   if (text.includes('available') || text.includes('free')) return 'available';
   if (text.includes('booked') || text.includes('job') || text.includes('assigned')) return 'booked';
-  if (text.includes('outside') || text.includes('time off') || text.includes('weekend') || text.includes('off duty')) return 'outside';
+  if (text.includes('outside') || text.includes('time off') || text.includes('weekend') || text.includes('off duty') || text.includes('not on shift')) return 'outside';
   return 'outside';
 }
 

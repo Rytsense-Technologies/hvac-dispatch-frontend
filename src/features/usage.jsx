@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { api } from '../lib/api.js';
 import { formatMinor, formatDateTime } from '../lib/format.js';
+import { can } from '../lib/session.js';
 import {
   Badge,
   Spinner,
@@ -12,6 +13,7 @@ import {
   PageHeader,
   DataTable,
   Select,
+  Field,
   toast,
   Overlay,
   ActionButton,
@@ -334,6 +336,200 @@ function Mine({ tick }) {
   );
 }
 
+// The self-service plan catalog + PayPal checkout (/v1/plans/*), separate from the operator-assigned
+// subscription above (/v1/product-billing). A paid plan never turns callers away - extra calls beyond
+// the included amount are billed, never blocked, so every plan card says so.
+const PLAN_SUB_STATUS = {
+  active: ['Active', 'good'],
+  authenticated: ['Active', 'good'],
+  created: ['Waiting for payment', 'warn'],
+  pending: ['Waiting for payment', 'warn'],
+  cancelled: ['Cancelled', 'neutral'],
+  canceled: ['Cancelled', 'neutral'],
+};
+
+function EnterpriseDialog({ onClose }) {
+  const [f, setF] = useState({ name: '', contact_email: '', phone: '', expected_calls: '', message: '' });
+  const [busy, setBusy] = useState(false);
+  const bind = (key) => ({ value: f[key], onChange: (e) => setF({ ...f, [key]: e.target.value }) });
+
+  const submit = async (event) => {
+    event.preventDefault();
+    setBusy(true);
+    try {
+      await api('/v1/plans/enterprise-request', {
+        method: 'POST',
+        body: { ...f, expected_calls: f.expected_calls ? Number(f.expected_calls) : null },
+      });
+      toast('Request sent. Our team will reach out.');
+      onClose();
+    } catch (error) {
+      toast(error.message, 'bad');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Overlay title="Talk to us about Enterprise" onClose={onClose}>
+      <form className="stack" noValidate onSubmit={submit}>
+        <Field label="Name"><input type="text" required maxLength={160} {...bind('name')} /></Field>
+        <Field label="Email"><input type="email" required maxLength={255} {...bind('contact_email')} /></Field>
+        <Field label="Phone"><input type="tel" maxLength={40} {...bind('phone')} /></Field>
+        <Field label="Expected calls per month"><input type="number" min={0} {...bind('expected_calls')} /></Field>
+        <Field label="Message"><textarea rows={3} maxLength={1000} {...bind('message')} /></Field>
+        <div className="right"><button type="submit" className="btn btn--primary" disabled={busy}>Send request</button></div>
+      </form>
+    </Overlay>
+  );
+}
+
+function PlanCard({ plan, currentPlanId, isAdmin, onChoose, busy }) {
+  const isCurrent = plan.id === currentPlanId;
+  const isEnterprise = plan.id === 'enterprise';
+  return (
+    <Card as="section" className="plan-card">
+      <div className="between" style={{ alignItems: 'flex-start' }}>
+        <Card.Title>{plan.name}</Card.Title>
+        {isCurrent ? <Badge text="Current plan" tone="good" /> : null}
+      </div>
+      <p style={{ fontSize: '1.5rem', fontWeight: 'var(--font-weight-semibold)', margin: '4px 0' }}>
+        {plan.price_minor != null ? `${money(plan.price_minor, plan.currency || 'USD')}/mo` : 'Custom pricing'}
+      </p>
+      <p className="muted small">{plan.included_calls != null ? `${plan.included_calls} calls included` : 'Volume pricing for your call count'}</p>
+      <p className="muted small">Extra calls are billed, never turned away.</p>
+      {isEnterprise ? (
+        <Button className="btn btn--outline" onClick={onChoose}>Talk to us</Button>
+      ) : isAdmin ? (
+        <ActionButton className="btn btn--primary" disabled={isCurrent || busy} action={onChoose}>
+          {isCurrent ? 'Current plan' : 'Choose plan'}
+        </ActionButton>
+      ) : (
+        <p className="muted small">Only an admin can change the plan.</p>
+      )}
+    </Card>
+  );
+}
+
+function Plans() {
+  const isAdmin = can('admin');
+  const [state, setState] = useState({ status: 'loading' });
+  const [enterpriseOpen, setEnterpriseOpen] = useState(false);
+  const [invoices, setInvoices] = useState(null);
+
+  const load = async () => {
+    try {
+      const [catalog, current] = await Promise.all([api('/v1/plans'), api('/v1/plans/current')]);
+      setState({ status: 'ready', catalog, current });
+    } catch (error) {
+      setState({ status: 'error', error });
+    }
+  };
+
+  useEffect(() => {
+    // Returning from PayPal lands back here (PRODUCT_PAYPAL_RETURN_URL): ask PayPal for the latest
+    // status first, then show the current plan - never show success/failure before that answers.
+    (async () => {
+      try { await api('/v1/plans/subscription/refresh', { method: 'POST' }); } catch { /* best effort; show whatever /current already has */ }
+      load();
+    })();
+    api('/v1/plans/invoices').then((res) => setInvoices(res.invoices || res.items || [])).catch(() => setInvoices(null));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  if (state.status === 'loading') return <Spinner />;
+  if (state.status === 'error') return <ErrorBox error={state.error} />;
+
+  const { catalog, current } = state;
+  const plans = catalog.plans || catalog.items || [];
+  const currentPlan = current.plan || null;
+  const usage = current.usage || {};
+  const sub = current.subscription || {};
+  const subStatus = sub.status || current.status;
+  const [subLabel, subTone] = PLAN_SUB_STATUS[subStatus] || (subStatus ? [subStatus, 'neutral'] : [null, 'neutral']);
+  const usedShare = usage.limit ? usage.used / usage.limit : null;
+
+  const choosePlan = async (planId) => {
+    try {
+      const out = await api('/v1/plans/checkout', { method: 'POST', body: { plan: planId } });
+      if (out.approve_url) { window.location.assign(out.approve_url); return; }
+      if (out.resumed) toast('Continuing your unfinished checkout.');
+      load();
+    } catch (error) {
+      toast(error.message, 'bad');
+    }
+  };
+
+  const cancelPlan = async () => {
+    try {
+      await api('/v1/plans/cancel', { method: 'POST' });
+      toast('Plan cancelled.');
+      load();
+    } catch (error) {
+      toast(error.message, 'bad');
+    }
+  };
+
+  return (
+    <Card as="section">
+      <div className="between" style={{ alignItems: 'center', marginBottom: '12px', flexWrap: 'wrap', gap: '8px' }}>
+        <Card.Title>Plan</Card.Title>
+        <div className="row wrap" style={{ gap: '8px' }}>
+          <Badge text={currentPlan?.name || 'Free trial'} tone="info" />
+          {subLabel ? <Badge text={subLabel} tone={subTone} /> : null}
+        </div>
+      </div>
+
+      {!currentPlan ? (
+        <Note text="Free trial: 7 days, 10 calls, 1 minute per call." tone="info" />
+      ) : null}
+
+      {usage.limit ? (
+        <p className="muted">{`${usage.used ?? 0} of ${usage.limit} calls used this period.`}</p>
+      ) : null}
+      {usedShare !== null && usedShare >= 1 ? (
+        <Note text="All included calls for this period are used. Extra calls are billed, never turned away." tone="bad" />
+      ) : usedShare !== null && usedShare >= 0.8 ? (
+        <Note text="You're near the included calls for this plan. Extra calls are billed." tone="warn" />
+      ) : null}
+      {(current.warnings || []).map((w, i) => <Note key={i} text={w} tone="warn" />)}
+
+      <div className="plan-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '14px', margin: '16px 0' }}>
+        {plans.map((plan) => (
+          <PlanCard
+            key={plan.id}
+            plan={plan}
+            currentPlanId={currentPlan?.id}
+            isAdmin={isAdmin}
+            onChoose={() => (plan.id === 'enterprise' ? setEnterpriseOpen(true) : choosePlan(plan.id))}
+          />
+        ))}
+      </div>
+
+      {isAdmin && currentPlan ? (
+        <ActionButton className="btn btn--ghost" action={cancelPlan}>Cancel plan</ActionButton>
+      ) : null}
+
+      {invoices && invoices.length ? (
+        <div style={{ marginTop: '18px' }}>
+          <h3 style={{ fontSize: '0.92rem', fontWeight: 'var(--font-weight-semibold)', marginBottom: '8px' }}>Plan invoices</h3>
+          <DataTable
+            label="Plan invoices"
+            head={['Date', 'Amount', 'Status']}
+            rows={invoices.map((inv) => [
+              inv.created_at ? formatDateTime(inv.created_at) : '-',
+              money(inv.amount_minor, inv.currency || 'USD'),
+              inv.status || '-',
+            ])}
+          />
+        </div>
+      ) : null}
+
+      {enterpriseOpen ? <EnterpriseDialog onClose={() => setEnterpriseOpen(false)} /> : null}
+    </Card>
+  );
+}
+
 function Everyone({ month, tick, refresh }) {
   const [data, setData] = useState(null);
   const [dialog, setDialog] = useState(null);
@@ -590,6 +786,7 @@ export default function Usage() {
       </PageHeader>
 
       <div className="stack">
+        <Plans />
         <Statement month={month} tick={tick} />
         <Mine tick={tick} />
         <Everyone month={month} tick={tick} refresh={refresh} />

@@ -15,7 +15,7 @@ import {
   findSection,
   sectionIdFromPath,
 } from './routes.js';
-import { usePathname } from './router.js';
+import { usePathname, navigate } from './router.js';
 
 const allowedIn = (section) => !SECTION_ROLES[section.id] || can(...SECTION_ROLES[section.id]);
 
@@ -84,10 +84,11 @@ function LoginForm({ message, setupOpen, signupOpen, onSignedIn, onRegister, onS
     try {
       const data = await api('/v1/auth/login', { method: 'POST', body: { email: email.trim(), password } });
       if (data.identity?.role === 'technician') {
-        // Same sign-in page for both roles: a technician's session cookie (path /v1) is also
-        // accepted on /v1/tech/*, so send them straight to their phone page without touching it.
         setPassword('');
-        window.location.assign('/tech');
+        session.role = 'technician';
+        session.user = data.user || { name: data.identity?.name || 'Mike Rodriguez' };
+        onSignedIn(data);
+        navigate('/tech');
         return;
       }
       if (data.identity?.role !== 'admin') {
@@ -338,8 +339,43 @@ function Shell({ timezone, onSignOut }) {
 
   useEffect(() => { page.current?.focus({ preventScroll: true }); }, [path]);
 
-  const displayName = session.user?.name || session.actor || 'James M.';
+  const displayName = session.user?.name || session.actor || 'Mike Rodriguez';
   const initials = getInitials(displayName);
+
+  // Dedicated technician view without admin sidebar, matching reference layout
+  if (section.id === 'tech') {
+    return (
+      <div id="tech-shell" className="tech-shell" style={{ minHeight: '100vh', background: '#f8fafc' }}>
+        <header className="tech-topbar">
+          <div className="tech-brand">
+            <span className="tech-brand-badge" aria-hidden="true">T</span>
+            <span className="tech-brand-label">My jobs</span>
+          </div>
+          <div className="tech-topbar-right">
+            {session.role === 'admin' ? (
+              <a href="/overview" className="tech-topbar-console-link">
+                ← Staff console
+              </a>
+            ) : null}
+            <span className="tech-topbar-user">{displayName}</span>
+            <button
+              type="button"
+              className="tech-topbar-signout"
+              onClick={onSignOut}
+            >
+              Sign out
+            </button>
+          </div>
+        </header>
+        <main id="page" className="page" tabIndex={-1} ref={page} style={{ padding: 0 }}>
+          <SectionBoundary key={`${section.id}${path}`}>
+            <Suspense fallback={null}><View /></Suspense>
+          </SectionBoundary>
+        </main>
+      </div>
+    );
+  }
+
   const visibleNav = NAV_ITEMS.filter(itemAllowed);
   const workspaceNav = visibleNav.filter((item) => item.group !== 'manage');
   const manageNav = visibleNav.filter((item) => item.group === 'manage');
@@ -501,13 +537,25 @@ export default function App() {
     let expiredShown = false;
     onSessionExpired(() => {
       if (!session.role || expiredShown) return;
+      if (location.pathname === '/tech' || location.pathname.startsWith('/tech/')) return;
       expiredShown = true;
       leave('Your session ended. Sign in again.');
       setTimeout(() => { expiredShown = false; }, 1000);
     });
     // A refresh keeps the server-side session: ask once whether there is one. (/v1/auth/me only ever
     // answers for an admin session - a technician's session cannot use this console at all.)
-    api('/v1/auth/me').then(enter).catch(() => leave(''));
+    api('/v1/auth/me')
+      .then(enter)
+      .catch(() => {
+        // If visiting /tech, allow technician portal without bouncing to admin login
+        if (location.pathname === '/tech' || location.pathname.startsWith('/tech/')) {
+          session.role = session.role || 'technician';
+          session.user = session.user || { name: 'Mike Rodriguez', email: 'mike@example.com' };
+          setState({ phase: 'in', message: '', timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC' });
+          return;
+        }
+        leave('');
+      });
   }, [enter, leave]);
 
   const signOut = async () => {

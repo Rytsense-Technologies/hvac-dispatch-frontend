@@ -8,7 +8,7 @@
 // fallback or intercepted as client-side routes - RESERVED_PREFIXES is that list.
 import { useSyncExternalStore } from 'react';
 
-export const RESERVED_PREFIXES = ['/v1', '/tech', '/set-password', '/signup', '/billing', '/twilio', '/healthz', '/rtc', '/twirp', '/api'];
+export const RESERVED_PREFIXES = ['/v1', '/set-password', '/signup', '/billing', '/twilio', '/healthz', '/rtc', '/twirp', '/api'];
 
 export const isReservedPath = (pathname) => RESERVED_PREFIXES.some((p) => pathname === p || pathname.startsWith(`${p}/`));
 
@@ -37,7 +37,7 @@ export function usePathname() {
 
 const isPlainLeftClick = (event) => event.button === 0 && !event.metaKey && !event.ctrlKey && !event.shiftKey && !event.altKey;
 
-/** Install once at startup: same-origin console links navigate client-side; everything else (the API, /tech, call.html, real files) loads normally. */
+/** Install once at startup: same-origin console links navigate client-side; everything else (the API, call.html, real files) loads normally. */
 export function installLinkInterceptor() {
   document.addEventListener('click', (event) => {
     if (event.defaultPrevented || !isPlainLeftClick(event)) return;

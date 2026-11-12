@@ -117,10 +117,58 @@ export function SummaryCards({ s }) {
   return <StatGrid items={items} />;
 }
 
+// Polls GET /v1/jobber/status every 5s for ~2 minutes after Connect is opened, so the card flips to
+// "Connected" on its own once the person approves at Jobber and returns - stops early once connected.
+const RECONNECT_POLL_MS = 5000;
+const RECONNECT_POLL_TICKS = 24;
+
 export function JobberCard() {
   const [state, load] = useLoader(() => api('/v1/jobber/status'));
+  const [popupUrl, setPopupUrl] = useState(null);
+  const pollRef = useRef(null);
+  const stopPolling = () => { if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; } };
+
   useEffect(() => { load(); }, [load]);
+
+  // Auto-refresh when the person comes back to this tab (e.g. after approving at Jobber).
+  useEffect(() => {
+    const onVisible = () => { if (document.visibilityState === 'visible') load(); };
+    document.addEventListener('visibilitychange', onVisible);
+    window.addEventListener('focus', load);
+    return () => {
+      document.removeEventListener('visibilitychange', onVisible);
+      window.removeEventListener('focus', load);
+    };
+  }, [load]);
+
+  useEffect(() => stopPolling, []);
+
   const s = state.data;
+  useEffect(() => { if (s?.connected) stopPolling(); }, [s?.connected]);
+
+  const startPolling = () => {
+    stopPolling();
+    let ticks = 0;
+    pollRef.current = setInterval(() => {
+      ticks += 1;
+      load();
+      if (ticks >= RECONNECT_POLL_TICKS) stopPolling();
+    }, RECONNECT_POLL_MS);
+  };
+
+  const connect = async () => {
+    setPopupUrl(null);
+    const out = await api('/v1/jobber/connect', { method: 'POST' });
+    if (!out?.url) { toast('Jobber did not return a connection link.', 'bad'); return; }
+    const win = window.open(out.url, '_blank', 'noopener');
+    if (win) {
+      toast('Jobber authorization opened in a new tab.');
+      startPolling();
+    } else {
+      setPopupUrl(out.url);
+    }
+  };
+
   let content;
   if (state.error) content = <ErrorBox error={state.error} />;
   else if (!s) content = <Spinner />;
@@ -138,6 +186,7 @@ export function JobberCard() {
       </>
     );
   } else {
+    const needsReconnect = s.status === 'needs_reconnect';
     content = (
       <>
         <div className="between" style={{ marginBottom: '8px' }}>
@@ -147,27 +196,28 @@ export function JobberCard() {
               {s.connected ? `Connected: ${s.account_name || 'Active Account'}` : 'Connect your account to automatically import client requests as leads.'}
             </p>
           </div>
-          {s.connected ? <Badge text="Connected" tone="good" /> : s.status === 'needs_reconnect' ? <Badge text="Needs Reconnect" tone="bad" /> : <Badge text="Not Connected" tone="neutral" />}
+          {s.connected ? <Badge text="Connected" tone="good" /> : needsReconnect ? <Badge text="Needs Reconnect" tone="bad" /> : <Badge text="Not Connected" tone="neutral" />}
         </div>
-        {s.status === 'needs_reconnect' ? <Note text="Jobber authorization expired. Reconnect your account." tone="bad" /> : null}
+        {needsReconnect ? <Note text="Jobber authorization expired. Reconnect your account." tone="bad" /> : null}
         {s.connected ? <p className="muted" style={{ fontSize: '0.84rem' }}>{`Last synchronized: ${s.last_synced_at ? formatDateTime(s.last_synced_at) : 'Not synced yet'}.`}</p> : null}
         {s.last_error ? <Note text={s.last_error} tone="warn" /> : null}
+        {popupUrl ? (
+          <Note
+            text={<>Your browser blocked the pop-up. <a href={popupUrl} target="_blank" rel="noopener noreferrer" onClick={() => setPopupUrl(null)}>Open Jobber authorization</a>.</>}
+            tone="warn"
+          />
+        ) : null}
         <div className="row wrap" style={{ marginTop: '12px' }}>
-          <ActionButton
-            className="btn btn--primary"
-            action={async () => {
-              const out = await api('/v1/jobber/connect', { method: 'POST' });
-              window.open(out.url, '_blank', 'noopener');
-              toast('Jobber authorization opened in a new tab.');
-            }}
-          >{s.connected ? 'Reconnect Jobber' : 'Connect Jobber'}</ActionButton>
+          <ActionButton className="btn btn--primary" action={connect}>
+            {s.connected || needsReconnect ? 'Reconnect Jobber' : 'Connect Jobber'}
+          </ActionButton>
           <Button className="btn btn--outline" onClick={() => load()}>Refresh</Button>
           {s.connected ? (
             <ActionButton
               className="btn btn--outline"
               action={async () => {
                 const out = await api('/v1/jobber/sync', { method: 'POST' });
-                toast(out.skipped ? `Not checked: ${out.skipped}` : `${out.new} new request${out.new === 1 ? '' : 's'} imported.`, out.skipped ? 'warn' : 'good');
+                toast(out?.skipped ? `Not checked: ${out.skipped}` : `${out?.new ?? 0} new request${out?.new === 1 ? '' : 's'} imported.`, out?.skipped ? 'warn' : 'good');
                 load();
               }}
             >Sync requests now</ActionButton>

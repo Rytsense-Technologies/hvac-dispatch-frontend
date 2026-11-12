@@ -4,6 +4,9 @@ import { useEffect, useState } from 'react';
 import { api } from '../lib/api.js';
 import { can } from '../lib/session.js';
 import { toast } from '../components/index.js';
+import { JobberCard } from './leads.jsx';
+
+const DAY_LABELS = [['mon', 'Mon'], ['tue', 'Tue'], ['wed', 'Wed'], ['thu', 'Thu'], ['fri', 'Fri'], ['sat', 'Sat'], ['sun', 'Sun']];
 
 export default function Settings() {
   const allowed = can('admin', 'dispatcher', 'approver');
@@ -13,14 +16,23 @@ export default function Settings() {
   // Editable state with real backend fallback values
   const [profileName, setProfileName] = useState('Comfort Home Services');
   const [profileLocation, setProfileLocation] = useState('Austin, Texas');
+  const [officePhone, setOfficePhone] = useState('');
+  const [officeEmail, setOfficeEmail] = useState('');
   const [profileHours, setProfileHours] = useState('Monday–Friday · 8:00 AM–5:00 PM');
+  const [hoursForm, setHoursForm] = useState({
+    days: ['mon', 'tue', 'wed', 'thu', 'fri'],
+    open: '08:00',
+    close: '17:00',
+    slot_minutes: 120,
+    min_notice_minutes: 60,
+    max_days_ahead: 30,
+  });
+  const [hoursTimezone, setHoursTimezone] = useState('');
   const [profileNotifications, setProfileNotifications] = useState('Example email notifications');
   const [connectedCount, setConnectedCount] = useState('No systems connected');
   const [teamMemberCount, setTeamMemberCount] = useState('3 sample members');
   const [billingPlanName, setBillingPlanName] = useState('Professional · Example plan');
   const [paymentProviderStatus, setPaymentProviderStatus] = useState('No payment provider connected');
-  const [billingEmail, setBillingEmail] = useState('office@example.com');
-  const [isEditingBillingEmail, setIsEditingBillingEmail] = useState(false);
 
   // ServiceTitan modal state
   const [stRecords, setStRecords] = useState({
@@ -29,14 +41,6 @@ export default function Settings() {
     team: true,
   });
   const [stPreference, setStPreference] = useState('Review before sync');
-
-  // Jobber modal state
-  const [jobberRecords, setJobberRecords] = useState({
-    customers: true,
-    jobs: true,
-    team: true,
-  });
-  const [jobberPreference, setJobberPreference] = useState('Review before sync');
 
   useEffect(() => {
     let active = true;
@@ -51,6 +55,8 @@ export default function Settings() {
           const loc = res.profile.city ? `${res.profile.city}, ${res.profile.state || 'TX'}` : (res.profile.address || 'Austin, Texas');
           setProfileLocation(loc);
         }
+        if (res?.profile?.office_phone) setOfficePhone(res.profile.office_phone);
+        if (res?.profile?.office_email) setOfficeEmail(res.profile.office_email);
 
         if (res?.profile?.email) {
           setBillingEmail(res.profile.email);
@@ -58,6 +64,15 @@ export default function Settings() {
 
         if (res?.hours?.values) {
           const h = res.hours.values;
+          setHoursForm((prev) => ({
+            days: Array.isArray(h.days) && h.days.length ? h.days : prev.days,
+            open: h.open || prev.open,
+            close: h.close || prev.close,
+            slot_minutes: h.slot_minutes ?? prev.slot_minutes,
+            min_notice_minutes: h.min_notice_minutes ?? prev.min_notice_minutes,
+            max_days_ahead: h.max_days_ahead ?? prev.max_days_ahead,
+          }));
+          if (h.timezone) setHoursTimezone(h.timezone);
           const daysStr = Array.isArray(h.days) && h.days.length === 5 ? 'Monday–Friday' : 'Monday–Saturday';
           const openStr = h.open ? `${h.open}` : '8:00 AM';
           const closeStr = h.close ? `${h.close}` : '5:00 PM';
@@ -107,10 +122,11 @@ export default function Settings() {
     try {
       await api('/v1/settings/profile', {
         method: 'PATCH',
-        body: { name: profileName, address: profileLocation },
+        body: { name: profileName, office_phone: officePhone, office_email: officeEmail },
       });
-    } catch {
-      // Local fallback
+    } catch (error) {
+      toast(error.message, 'bad');
+      return;
     }
     toast('Business profile updated.');
     setActiveModal(null);
@@ -120,11 +136,20 @@ export default function Settings() {
     try {
       await api('/v1/settings/hours', {
         method: 'PATCH',
-        body: { open: '08:00', close: '17:00' },
+        body: {
+          days: hoursForm.days,
+          open: hoursForm.open,
+          close: hoursForm.close,
+          slot_minutes: Number(hoursForm.slot_minutes),
+          min_notice_minutes: Number(hoursForm.min_notice_minutes),
+          max_days_ahead: Number(hoursForm.max_days_ahead),
+        },
       });
-    } catch {
-      // Local fallback
+    } catch (error) {
+      toast(error.message, 'bad');
+      return;
     }
+    setProfileHours(`${hoursForm.days.length === 5 ? 'Monday–Friday' : 'Monday–Saturday'} · ${hoursForm.open}–${hoursForm.close}`);
     toast('Business hours updated.');
     setActiveModal(null);
   };
@@ -139,20 +164,11 @@ export default function Settings() {
         method: 'PUT',
         body: { records: selected, update_preference: stPreference },
       });
-    } catch {
-      // Local fallback
+    } catch (error) {
+      toast(error.message, 'bad');
+      return;
     }
     toast('ServiceTitan sample connection plan saved.');
-    setActiveModal(null);
-  };
-
-  const handleSaveJobberPlan = async () => {
-    try {
-      await api('/v1/jobber/connect', { method: 'POST' });
-    } catch {
-      // Local fallback
-    }
-    toast('Jobber sample connection plan saved.');
     setActiveModal(null);
   };
 
@@ -274,13 +290,7 @@ export default function Settings() {
             <h2 className="settings-card-title">Billing & payments</h2>
             <p className="settings-card-sub">Manage your product subscription and billing details</p>
           </div>
-          <button
-            type="button"
-            className="settings-btn"
-            onClick={() => setActiveModal('billing')}
-          >
-            Manage billing
-          </button>
+          <a className="settings-btn" href="/usage">Manage billing</a>
         </div>
 
         <div className="settings-row">
@@ -289,7 +299,7 @@ export default function Settings() {
             <p className="settings-row-sub">{paymentProviderStatus}</p>
           </div>
           <div className="settings-row-actions">
-            <span className="settings-badge-demo">Demo account</span>
+            <a className="settings-btn" href="/usage">View plan & usage</a>
           </div>
         </div>
       </div>
@@ -320,134 +330,19 @@ export default function Settings() {
           </div>
         </div>
 
-        {/* Row 2: Jobber */}
-        <div className="settings-row">
-          <div className="settings-row-info">
-            <h3 className="settings-row-title">Jobber</h3>
-            <p className="settings-row-sub">Not connected · Supported data and permissions to be confirmed with the provider</p>
-          </div>
-          <div className="settings-row-actions">
-            <button
-              type="button"
-              className="settings-btn"
-              onClick={() => setActiveModal('jobber')}
-            >
-              Set up
-            </button>
-          </div>
-        </div>
-
         {/* Footer inside Card 3 */}
         <p className="settings-inner-disclaimer">
-          Connection previews only. No account authorization or data synchronization occurs.
+          ServiceTitan connection preview only. No account authorization or data synchronization occurs.
         </p>
       </div>
 
+      {/* Row 2 used to be a non-functional Jobber "preview" modal duplicating this. The real
+          connect/sync/disconnect flow (JobberCard, also used from the Leads page) lives here now. */}
+      <div style={{ marginTop: '16px' }}>
+        <JobberCard />
+      </div>
+
       {/* -------------------- EXACT REFERENCE MODALS -------------------- */}
-
-      {/* Modal 1: Billing & payments (Matches media_1794464462493_5f67045c.png) */}
-      {activeModal === 'billing' && (
-        <div className="settings-modal-overlay" onClick={() => setActiveModal(null)}>
-          <div className="settings-modal-card" onClick={(e) => e.stopPropagation()}>
-            <div className="settings-modal-head">
-              <div>
-                <div className="settings-modal-eyebrow">SAMPLE WORKSPACE</div>
-                <h2 className="settings-modal-title">Billing & payments</h2>
-              </div>
-              <button
-                type="button"
-                className="settings-modal-close"
-                onClick={() => setActiveModal(null)}
-              >
-                ×
-              </button>
-            </div>
-
-            {/* Pills row */}
-            <div className="billing-modal-pills">
-              <span className="billing-modal-pill">Subscription</span>
-              <span className="billing-modal-pill">Payment method</span>
-              <span className="billing-modal-pill">Invoices</span>
-            </div>
-
-            {/* Plan heading and notice */}
-            <div style={{ marginBottom: '14px' }}>
-              <h3 style={{ fontSize: '0.95rem', fontWeight: 600, color: '#0f172a', margin: '0 0 4px 0' }}>
-                Professional · Example plan
-              </h3>
-              <p style={{ fontSize: '0.82rem', color: '#64748b', margin: 0, lineHeight: 1.4 }}>
-                Recurring charges, usage, taxes, and plan pricing will be shown after a billing provider is connected.
-              </p>
-            </div>
-
-            {/* Row 1: Payment method */}
-            <div className="settings-modal-split-row">
-              <div>
-                <div style={{ fontSize: '0.88rem', fontWeight: 600, color: '#0f172a' }}>Payment method</div>
-                <div style={{ fontSize: '0.82rem', color: '#64748b', marginTop: '2px' }}>No card saved</div>
-              </div>
-              <button
-                type="button"
-                className="settings-btn"
-                onClick={() => toast('Payment method setup is simulated in demo workspace.')}
-              >
-                Add payment method
-              </button>
-            </div>
-
-            {/* Row 2: Billing email */}
-            <div className="settings-modal-split-row">
-              <div style={{ flex: 1, marginRight: '12px' }}>
-                <div style={{ fontSize: '0.88rem', fontWeight: 600, color: '#0f172a' }}>Billing email</div>
-                {isEditingBillingEmail ? (
-                  <input
-                    type="email"
-                    value={billingEmail}
-                    onChange={(e) => setBillingEmail(e.target.value)}
-                    style={{ padding: '4px 8px', borderRadius: '4px', border: '1px solid #cbd5e1', fontSize: '0.82rem', marginTop: '4px', width: '100%' }}
-                  />
-                ) : (
-                  <div style={{ fontSize: '0.82rem', color: '#64748b', marginTop: '2px' }}>{billingEmail}</div>
-                )}
-              </div>
-              <button
-                type="button"
-                className="settings-btn"
-                onClick={() => {
-                  if (isEditingBillingEmail) {
-                    setIsEditingBillingEmail(false);
-                    toast('Billing email saved.');
-                  } else {
-                    setIsEditingBillingEmail(true);
-                  }
-                }}
-              >
-                {isEditingBillingEmail ? 'Save' : 'Edit'}
-              </button>
-            </div>
-
-            {/* Row 3: Invoices */}
-            <div style={{ padding: '14px 0 6px 0' }}>
-              <div style={{ fontSize: '0.88rem', fontWeight: 600, color: '#0f172a' }}>Invoices</div>
-              <div style={{ fontSize: '0.82rem', color: '#64748b', margin: '3px 0 12px 0' }}>
-                No invoices yet. Receipts will appear after actual billing begins.
-              </div>
-              <button
-                type="button"
-                className="settings-btn"
-                onClick={() => toast('Plans review preview.')}
-              >
-                Review plans
-              </button>
-            </div>
-
-            {/* Footer Disclaimer */}
-            <p style={{ fontSize: '0.72rem', color: '#94a3b8', margin: '14px 0 0 0', lineHeight: 1.4 }}>
-              Design concept only. No charges, payment methods, or subscriptions are created.
-            </p>
-          </div>
-        </div>
-      )}
 
       {/* Modal 2: ServiceTitan integration (Matches media_1794464468126_bead87a6.png) */}
       {activeModal === 'servicetitan' && (
@@ -538,95 +433,6 @@ export default function Settings() {
         </div>
       )}
 
-      {/* Modal 3: Jobber integration (Matches media_1794464470552_949bebb7.png) */}
-      {activeModal === 'jobber' && (
-        <div className="settings-modal-overlay" onClick={() => setActiveModal(null)}>
-          <div className="settings-modal-card" onClick={(e) => e.stopPropagation()}>
-            <div className="settings-modal-head">
-              <div>
-                <div className="settings-modal-eyebrow">SAMPLE WORKSPACE</div>
-                <h2 className="settings-modal-title">Jobber integration</h2>
-              </div>
-              <button
-                type="button"
-                className="settings-modal-close"
-                onClick={() => setActiveModal(null)}
-              >
-                ×
-              </button>
-            </div>
-
-            <p style={{ fontSize: '0.82rem', color: '#475569', margin: '4px 0 10px 0', lineHeight: 1.5 }}>
-              Connect your business account through a supported provider integration. Access, API availability, and supported records must be verified for your account.
-            </p>
-
-            <ul className="settings-steps-list">
-              <li>1. Confirm that your provider account supports the required integration.</li>
-              <li>2. Authorize access through the provider's connection flow.</li>
-              <li>3. Review which records can be shared and resolve field mappings.</li>
-              <li>4. Run a sample sync and review results before enabling updates.</li>
-            </ul>
-
-            <div style={{ fontSize: '0.82rem', fontWeight: 600, color: '#334155', margin: '14px 0 8px 0' }}>
-              Proposed records to sync
-            </div>
-
-            <div className="settings-checkbox-group">
-              <label className="settings-checkbox-label">
-                <input
-                  type="checkbox"
-                  checked={jobberRecords.customers}
-                  onChange={(e) => setJobberRecords((prev) => ({ ...prev, customers: e.target.checked }))}
-                />
-                Customers
-              </label>
-              <label className="settings-checkbox-label">
-                <input
-                  type="checkbox"
-                  checked={jobberRecords.jobs}
-                  onChange={(e) => setJobberRecords((prev) => ({ ...prev, jobs: e.target.checked }))}
-                />
-                Jobs and appointments
-              </label>
-              <label className="settings-checkbox-label">
-                <input
-                  type="checkbox"
-                  checked={jobberRecords.team}
-                  onChange={(e) => setJobberRecords((prev) => ({ ...prev, team: e.target.checked }))}
-                />
-                Team availability
-              </label>
-            </div>
-
-            <div style={{ fontSize: '0.82rem', fontWeight: 600, color: '#334155', margin: '12px 0 6px 0' }}>
-              Update preference
-            </div>
-
-            <select
-              className="wizard-select"
-              value={jobberPreference}
-              onChange={(e) => setJobberPreference(e.target.value)}
-            >
-              <option value="Review before sync">Review before sync</option>
-              <option value="Automatic">Automatic</option>
-              <option value="Import to Rytsense only">Import to Rytsense only</option>
-            </select>
-
-            <p style={{ fontSize: '0.72rem', color: '#94a3b8', margin: '10px 0 16px 0', lineHeight: 1.4 }}>
-              These are proposed options, not a statement of provider capabilities. No credentials are collected in this preview.
-            </p>
-
-            <button
-              type="button"
-              className="settings-save-plan-btn"
-              onClick={handleSaveJobberPlan}
-            >
-              Save sample connection plan
-            </button>
-          </div>
-        </div>
-      )}
-
       {/* Business profile modal */}
       {activeModal === 'profile' && (
         <div className="settings-modal-overlay" onClick={() => setActiveModal(null)}>
@@ -656,12 +462,22 @@ export default function Settings() {
                 />
               </div>
               <div>
-                <label className="label">Location & service area</label>
+                <label className="label">Office phone</label>
                 <input
-                  type="text"
+                  type="tel"
                   className="input"
-                  value={profileLocation}
-                  onChange={(e) => setProfileLocation(e.target.value)}
+                  value={officePhone}
+                  onChange={(e) => setOfficePhone(e.target.value)}
+                  style={{ width: '100%', padding: '8px 12px', borderRadius: '6px', border: '1px solid #cbd5e1' }}
+                />
+              </div>
+              <div>
+                <label className="label">Office email</label>
+                <input
+                  type="email"
+                  className="input"
+                  value={officeEmail}
+                  onChange={(e) => setOfficeEmail(e.target.value)}
                   style={{ width: '100%', padding: '8px 12px', borderRadius: '6px', border: '1px solid #cbd5e1' }}
                 />
               </div>
@@ -705,18 +521,81 @@ export default function Settings() {
             </div>
             <div className="settings-modal-body">
               <div>
-                <label className="label">Standard schedule</label>
-                <p style={{ margin: '4px 0 10px 0', fontWeight: 500 }}>Monday – Friday: 8:00 AM – 5:00 PM</p>
-                <p style={{ margin: '0 0 10px 0', color: '#64748b' }}>Saturday – Sunday: Closed (Emergency on-call only)</p>
+                <label className="label">Open days</label>
+                <div className="row wrap" style={{ gap: 10, marginTop: 4 }}>
+                  {DAY_LABELS.map(([id, text]) => (
+                    <label key={id} className="settings-checkbox-label">
+                      <input
+                        type="checkbox"
+                        checked={hoursForm.days.includes(id)}
+                        onChange={(e) => setHoursForm((prev) => ({
+                          ...prev,
+                          days: e.target.checked ? [...prev.days, id] : prev.days.filter((d) => d !== id),
+                        }))}
+                      />
+                      {text}
+                    </label>
+                  ))}
+                </div>
+              </div>
+              <div className="row wrap" style={{ gap: 16 }}>
+                <div>
+                  <label className="label">Opens</label>
+                  <input
+                    type="time"
+                    value={hoursForm.open}
+                    onChange={(e) => setHoursForm((prev) => ({ ...prev, open: e.target.value }))}
+                    style={{ padding: '8px 12px', borderRadius: '6px', border: '1px solid #cbd5e1' }}
+                  />
+                </div>
+                <div>
+                  <label className="label">Closes</label>
+                  <input
+                    type="time"
+                    value={hoursForm.close}
+                    onChange={(e) => setHoursForm((prev) => ({ ...prev, close: e.target.value }))}
+                    style={{ padding: '8px 12px', borderRadius: '6px', border: '1px solid #cbd5e1' }}
+                  />
+                </div>
               </div>
               <div>
-                <label className="label">Timezone</label>
-                <p style={{ margin: '4px 0 0 0', color: '#334155' }}>America/Chicago (Central Time)</p>
+                <label className="label">Appointment dispatch slot length (minutes)</label>
+                <input
+                  type="number"
+                  min={15}
+                  step={15}
+                  value={hoursForm.slot_minutes}
+                  onChange={(e) => setHoursForm((prev) => ({ ...prev, slot_minutes: e.target.value }))}
+                  style={{ width: '100%', padding: '8px 12px', borderRadius: '6px', border: '1px solid #cbd5e1' }}
+                />
               </div>
               <div>
-                <label className="label">Appointment dispatch slot length</label>
-                <p style={{ margin: '4px 0 0 0', color: '#334155' }}>2 hour arrival window (15–30 min minimum notice)</p>
+                <label className="label">Minimum notice (minutes)</label>
+                <input
+                  type="number"
+                  min={0}
+                  step={15}
+                  value={hoursForm.min_notice_minutes}
+                  onChange={(e) => setHoursForm((prev) => ({ ...prev, min_notice_minutes: e.target.value }))}
+                  style={{ width: '100%', padding: '8px 12px', borderRadius: '6px', border: '1px solid #cbd5e1' }}
+                />
               </div>
+              <div>
+                <label className="label">Book up to how many days ahead</label>
+                <input
+                  type="number"
+                  min={1}
+                  value={hoursForm.max_days_ahead}
+                  onChange={(e) => setHoursForm((prev) => ({ ...prev, max_days_ahead: e.target.value }))}
+                  style={{ width: '100%', padding: '8px 12px', borderRadius: '6px', border: '1px solid #cbd5e1' }}
+                />
+              </div>
+              {hoursTimezone ? (
+                <div>
+                  <label className="label">Timezone</label>
+                  <p style={{ margin: '4px 0 0 0', color: '#334155' }}>{hoursTimezone}</p>
+                </div>
+              ) : null}
             </div>
             <div className="settings-modal-footer">
               <button type="button" className="settings-btn" onClick={() => setActiveModal(null)}>

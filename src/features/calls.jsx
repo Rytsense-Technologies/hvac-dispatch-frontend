@@ -5,7 +5,7 @@ import { api } from '../lib/api.js';
 import { formatDateTime, timeAgo } from '../lib/format.js';
 import { can } from '../lib/session.js';
 import {
-  PageHeader, Badge, Spinner, Empty, ErrorBox, Note, Details, Button, Dialog, Row, Panel, Select,
+  PageHeader, Badge, Spinner, Empty, ErrorBox, Note, Details, Button, Dialog, Row, Panel, Select, Icon, toast,
 } from '../components/index.js';
 
 const PAGE = 50;
@@ -20,7 +20,7 @@ const SAMPLE_CALLS = [
   {
     id: 'sample-sarah',
     sample: true,
-    customer: { name: 'Sarah Mitchell', phone: '' },
+    customer: { name: 'Sarah Mitchell', phone: '(512) 555-0142' },
     reason: 'AC not cooling',
     outcome: { code: 'booked', label: 'Appointment booked' },
     started_label: '10:42 AM',
@@ -29,7 +29,7 @@ const SAMPLE_CALLS = [
   {
     id: 'sample-david',
     sample: true,
-    customer: { name: 'David Rodriguez', phone: '' },
+    customer: { name: 'David Rodriguez', phone: '(512) 555-0188' },
     reason: 'HVAC maintenance',
     outcome: { code: 'booked', label: 'Appointment booked' },
     started_label: '9:58 AM',
@@ -38,7 +38,7 @@ const SAMPLE_CALLS = [
   {
     id: 'sample-jessica',
     sample: true,
-    customer: { name: 'Jessica Taylor', phone: '' },
+    customer: { name: 'Jessica Taylor', phone: '(512) 555-0165' },
     reason: 'Pricing inquiry',
     outcome: { code: 'follow_up', label: 'Follow-up needed' },
     started_label: '9:21 AM',
@@ -51,6 +51,41 @@ export function formatDuration(seconds) {
   const m = Math.floor(seconds / 60);
   const s = Math.round(seconds % 60);
   return `${m}:${String(s).padStart(2, '0')}`;
+}
+
+export function getCallPhoneNumber(call) {
+  if (!call) return '';
+  const raw =
+    call.customer?.phone ||
+    call.customer_phone ||
+    call.phone ||
+    call.from ||
+    call.to ||
+    call.caller_number ||
+    call.caller_id ||
+    '';
+  return String(raw).trim();
+}
+
+export function isRealPhoneNumber(phone) {
+  if (!phone) return false;
+  if (phone.toLowerCase().startsWith('guest-')) return false;
+  return /\d{4,}/.test(phone);
+}
+
+export function formatDisplayPhone(raw) {
+  if (!raw) return '';
+  const digits = String(raw).replace(/\D/g, '');
+  if (digits.length === 10) {
+    return `(${digits.slice(0, 3)}) ${digits.slice(3, 6)}-${digits.slice(6)}`;
+  }
+  if (digits.length === 11 && digits.startsWith('1')) {
+    return `+1 (${digits.slice(1, 4)}) ${digits.slice(4, 7)}-${digits.slice(7)}`;
+  }
+  if (digits.length > 10) {
+    return `+${digits}`;
+  }
+  return raw;
 }
 
 function objectRows(value) {
@@ -74,14 +109,170 @@ function TurnLine({ turn }) {
 
 function callSubtitle(call) {
   if (call.sample) {
-    return [call.reason, call.outcome?.label, call.started_label].filter(Boolean).join(' · ');
+    return [call.customer?.phone, call.reason, call.outcome?.label, call.started_label].filter(Boolean).join(' · ');
   }
   const when = call.started_at ? (formatDateTime(call.started_at).split(',').pop()?.trim() || timeAgo(call.started_at)) : '';
   // Pre-design table showed phone under the name; keep it in the row subtitle.
   return [call.customer?.phone, call.reason, call.outcome?.label, when].filter(Boolean).join(' · ') || 'No summary yet';
 }
 
-function SampleCallDialog({ call, onClose }) {
+function CallActionDialog({ call, onClose }) {
+  const initialPhone = getCallPhoneNumber(call);
+  const isReal = isRealPhoneNumber(initialPhone);
+  const [customPhone, setCustomPhone] = useState(isReal ? initialPhone : '');
+  const [dialing, setDialing] = useState(false);
+
+  const customerName = call.customer?.name || 'Customer';
+  const activePhone = customPhone.trim() || initialPhone;
+  const displayPhone = formatDisplayPhone(activePhone);
+
+  const handleDial = () => {
+    if (!activePhone) {
+      toast('Please enter a phone number to call.', 'warn');
+      return;
+    }
+    setDialing(true);
+    toast(`Initiating call to ${displayPhone || activePhone}...`);
+    window.location.href = `tel:${activePhone.replace(/\s+/g, '')}`;
+    setTimeout(() => {
+      setDialing(false);
+      onClose();
+    }, 1200);
+  };
+
+  const handleCopy = () => {
+    if (!activePhone) return;
+    navigator.clipboard?.writeText(activePhone);
+    toast('Phone number copied to clipboard.');
+  };
+
+  return (
+    <Dialog title={`Call · ${customerName}`} onClose={onClose}>
+      <div className="stack" style={{ gap: 16 }}>
+        <p style={{ margin: 0, fontSize: '0.9rem', color: '#475569' }}>
+          Connect directly with <strong>{customerName}</strong> via phone or AI assistant.
+        </p>
+
+        {isReal ? (
+          <div
+            style={{
+              padding: '14px 16px',
+              background: '#f8fafc',
+              border: '1px solid #e2e8f0',
+              borderRadius: 8,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: 12,
+            }}
+          >
+            <div>
+              <div style={{ fontSize: '0.75rem', fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                Phone Number
+              </div>
+              <div style={{ fontSize: '1.25rem', fontWeight: 600, color: '#0f172a', marginTop: 2 }}>
+                {displayPhone}
+              </div>
+              {call.reason ? (
+                <div style={{ fontSize: '0.8rem', color: '#64748b', marginTop: 2 }}>
+                  Topic: {call.reason}
+                </div>
+              ) : null}
+            </div>
+            <button
+              type="button"
+              className="btn btn--outline btn--small"
+              onClick={handleCopy}
+              title="Copy number"
+              style={{ flexShrink: 0 }}
+            >
+              Copy
+            </button>
+          </div>
+        ) : (
+          <div
+            style={{
+              padding: '14px 16px',
+              background: '#f8fafc',
+              border: '1px solid #e2e8f0',
+              borderRadius: 8,
+            }}
+          >
+            <div style={{ fontSize: '0.78rem', color: '#64748b', marginBottom: 8 }}>
+              {initialPhone ? (
+                <>Originating session: <strong>{initialPhone}</strong> (Web assistant caller)</>
+              ) : (
+                <>No phone number on record for this caller.</>
+              )}
+            </div>
+            <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, color: '#334155', marginBottom: 4 }}>
+              Enter phone number to call:
+            </label>
+            <input
+              type="tel"
+              className="input"
+              placeholder="e.g. (512) 555-0199 or 15392164290"
+              value={customPhone}
+              onChange={(e) => setCustomPhone(e.target.value)}
+              style={{
+                width: '100%',
+                padding: '8px 12px',
+                border: '1px solid #cbd5e1',
+                borderRadius: 6,
+                fontSize: '0.9rem',
+                boxSizing: 'border-box',
+              }}
+            />
+          </div>
+        )}
+
+        <div className="dialog-actions" style={{ marginTop: 8 }}>
+          <button
+            type="button"
+            className="btn btn--primary"
+            disabled={dialing || (!activePhone && !customPhone)}
+            onClick={handleDial}
+            style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
+          >
+            <Icon name="phone" />
+            <span>{dialing ? 'Connecting…' : 'Call on phone'}</span>
+          </button>
+
+          <a
+            className="btn agent-btn"
+            href="/test"
+            title="Open AI Phone Assistant"
+            style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
+          >
+            <Icon name="test" />
+            <span>Call with AI Assistant</span>
+          </a>
+
+          {activePhone && isReal ? (
+            <a
+              className="btn btn--ghost"
+              href={`sms:${activePhone.replace(/\s+/g, '')}`}
+              title="Send text message"
+            >
+              Send SMS
+            </a>
+          ) : null}
+
+          <button
+            type="button"
+            className="btn btn--ghost"
+            onClick={onClose}
+            style={{ marginLeft: 'auto' }}
+          >
+            Cancel
+          </button>
+        </div>
+      </div>
+    </Dialog>
+  );
+}
+
+function SampleCallDialog({ call, onCall, onClose }) {
   return (
     <Dialog title={`Call · ${call.customer?.name || 'Unknown'}`} onClose={onClose}>
       <p>
@@ -98,6 +289,9 @@ function SampleCallDialog({ call, onClose }) {
       </div>
       <p className="sample-label">No recording or transcript is available in this demonstration.</p>
       <div className="dialog-actions">
+        <Button className="btn btn--primary agent-btn" onClick={() => onCall?.(call)}>
+          Call customer
+        </Button>
         <a className="btn agent-btn" href="/customers">Customer</a>
         <a className="btn agent-btn" href="/work/appointments">Appointments</a>
         <a className="btn agent-btn" href="/work">Follow-up tasks</a>
@@ -106,7 +300,7 @@ function SampleCallDialog({ call, onClose }) {
   );
 }
 
-function CallDialog({ id, onClose }) {
+function CallDialog({ id, onCall, onClose }) {
   const [state, setState] = useState({ loading: true });
   const seq = useRef(0);
 
@@ -194,6 +388,9 @@ function CallDialog({ id, onClose }) {
           )}
         </div>
         <div className="dialog-actions">
+          <Button className="btn btn--primary agent-btn" onClick={() => onCall?.(c)}>
+            Call customer
+          </Button>
           <a className="btn agent-btn" href="/customers">Customer</a>
           <a className="btn agent-btn" href="/work/appointments">Appointments</a>
           <a className="btn agent-btn" href="/work">Follow-up tasks</a>
@@ -219,6 +416,7 @@ export default function Calls() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [open, setOpen] = useState(null);
+  const [calling, setCalling] = useState(null);
   const seq = useRef(0);
   const latest = useRef({});
   latest.current = { search, direction, from, to, offset };
@@ -278,13 +476,25 @@ export default function Calls() {
             title={call.customer?.name || 'Unknown'}
             subtitle={callSubtitle(call)}
             trailing={(
-              <Button
-                className="btn agent-btn"
-                aria-label={`Review call with ${call.customer?.name || 'Unknown'}`}
-                onClick={() => setOpen(call)}
-              >
-                View call
-              </Button>
+              <>
+                <Button
+                  className="btn agent-btn"
+                  aria-label={`Call ${call.customer?.name || 'customer'}`}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setCalling(call);
+                  }}
+                >
+                  Call
+                </Button>
+                <Button
+                  className="btn agent-btn"
+                  aria-label={`Review call with ${call.customer?.name || 'Unknown'}`}
+                  onClick={() => setOpen(call)}
+                >
+                  View call
+                </Button>
+              </>
             )}
           />
         ))}
@@ -334,8 +544,27 @@ export default function Calls() {
         </p>
       </div>
 
-      {open?.sample ? <SampleCallDialog call={open} onClose={() => setOpen(null)} /> : null}
-      {open && !open.sample ? <CallDialog id={open.id} onClose={() => setOpen(null)} /> : null}
+      {calling ? <CallActionDialog call={calling} onClose={() => setCalling(null)} /> : null}
+      {open?.sample ? (
+        <SampleCallDialog
+          call={open}
+          onCall={(c) => {
+            setOpen(null);
+            setCalling(c);
+          }}
+          onClose={() => setOpen(null)}
+        />
+      ) : null}
+      {open && !open.sample ? (
+        <CallDialog
+          id={open.id}
+          onCall={(c) => {
+            setOpen(null);
+            setCalling(c);
+          }}
+          onClose={() => setOpen(null)}
+        />
+      ) : null}
     </div>
   );
 }

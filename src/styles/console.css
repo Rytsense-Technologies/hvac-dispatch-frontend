@@ -8257,3 +8257,351 @@ button.slot.booked:hover {
   background: #0369a1;
   border-color: #0369a1;
 }
+
+
+/* ---------- Tech Module (Exact Reference UI) ---------- */
+.tech-container {
+  max-width: 1040px;
+  margin: 0 auto;
+  padding: 32px 24px 60px 24px;
+}
+.tech-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 24px;
+}
+.tech-eyebrow {
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #0d9488;
+  margin: 0 0 6px 0;
+}
+.tech-title {
+  font-size: 1.85rem;
+  font-weight: 600;
+  color: #0f172a;
+  letter-spacing: -0.02em;
+  margin: 0 0 4px 0;
+}
+.tech-subtitle {
+  font-size: 0.88rem;
+  color: #64748b;
+  margin: 0;
+}
+.tech-duty-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 10px;
+  background: #ecfdf5;
+  border: 1px solid #a7f3d0;
+  border-radius: 6px;
+  color: #065f46;
+  font-size: 0.75rem;
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+.tech-grid {
+  display: grid;
+  grid-template-columns: 1fr 340px;
+  gap: 24px;
+  align-items: start;
+}
+@media (max-width: 860px) {
+  .tech-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.tech-section-title {
+  font-size: 1.15rem;
+  font-weight: 600;
+  color: #0f172a;
+  margin: 0 0 16px 0;
+  letter-spacing: -0.01em;
+}
+
+.tech-job-card {
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 22px 24px;
+  margin-bottom: 16px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.02);
+  transition: all 0.15s ease;
+}
+.tech-job-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+.tech-job-eyebrow {
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #64748b;
+}
+.tech-job-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  font-size: 0.72rem;
+  font-weight: 500;
+  border-radius: 4px;
+  line-height: 1.2;
+}
+.tech-job-badge--completed {
+  background: #ecfdf5;
+  border: 1px solid #a7f3d0;
+  color: #065f46;
+}
+.tech-job-badge--progress {
+  background: #f0f9ff;
+  border: 1px solid #bae6fd;
+  color: #0369a1;
+}
+.tech-job-badge--scheduled {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  color: #475569;
+}
+
+.tech-job-title {
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: #0f172a;
+  margin: 0 0 10px 0;
+  letter-spacing: -0.01em;
+}
+.tech-job-customer {
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: #0f172a;
+  margin: 0 0 2px 0;
+}
+.tech-job-address {
+  font-size: 0.82rem;
+  color: #64748b;
+  margin: 0 0 16px 0;
+}
+.tech-job-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 0;
+  border-top: 1px solid #f1f5f9;
+  margin-bottom: 16px;
+  gap: 12px;
+}
+.tech-job-time {
+  font-size: 0.82rem;
+  font-weight: 500;
+  color: #0f172a;
+}
+.tech-job-priority {
+  font-size: 0.78rem;
+  color: #64748b;
+}
+.tech-job-priority--urgent {
+  color: #b91c1c;
+  font-weight: 500;
+}
+
+.tech-blocker-box {
+  background: #fff7ed;
+  border: 1px solid #fed7aa;
+  border-radius: 6px;
+  padding: 8px 12px;
+  font-size: 0.76rem;
+  color: #9a3412;
+  font-weight: 500;
+  margin-bottom: 16px;
+  line-height: 1.4;
+}
+
+.tech-view-btn {
+  display: block;
+  width: 100%;
+  padding: 9px 0;
+  background: #0284c7;
+  border: 1px solid #0284c7;
+  border-radius: 6px;
+  color: #ffffff;
+  font-size: 0.85rem;
+  font-weight: 600;
+  text-align: center;
+  cursor: pointer;
+  font-family: inherit;
+  transition: all 0.15s ease;
+}
+.tech-view-btn:hover {
+  background: #0369a1;
+  border-color: #0369a1;
+}
+
+/* Sidebar Widgets */
+.tech-widget-card {
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 20px 24px;
+  margin-bottom: 20px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.02);
+}
+.tech-widget-title {
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: #0f172a;
+  margin: 0 0 16px 0;
+  letter-spacing: -0.01em;
+}
+.tech-glance-grid {
+  display: flex;
+  gap: 32px;
+  align-items: flex-start;
+}
+.tech-glance-item {
+  display: flex;
+  flex-direction: column;
+}
+.tech-glance-num {
+  font-size: 1.85rem;
+  font-weight: 600;
+  color: #0f172a;
+  line-height: 1.1;
+}
+.tech-glance-label {
+  font-size: 0.75rem;
+  color: #64748b;
+  margin-top: 3px;
+}
+
+.tech-checklist {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.tech-checklist-item {
+  font-size: 0.82rem;
+  color: #475569;
+  line-height: 1.7;
+}
+
+.tech-contact-link {
+  display: inline-block;
+  margin-top: 14px;
+  color: #0284c7;
+  font-size: 0.82rem;
+  font-weight: 500;
+  text-decoration: none;
+  cursor: pointer;
+  background: none;
+  border: none;
+  padding: 0;
+  font-family: inherit;
+}
+.tech-contact-link:hover {
+  color: #0369a1;
+  text-decoration: underline;
+}
+
+
+/* ---------- Tech Topbar & Modal Helpers ---------- */
+.tech-topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 24px;
+  background: #ffffff;
+  border-bottom: 1px solid #e2e8f0;
+}
+.tech-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  text-decoration: none;
+  color: #0f172a;
+}
+.tech-brand-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  background: #10b981;
+  color: #ffffff;
+  border-radius: 6px;
+  font-weight: 600;
+  font-size: 0.95rem;
+}
+.tech-brand-label {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: #0f172a;
+}
+.tech-topbar-right {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+.tech-topbar-user {
+  font-size: 0.88rem;
+  font-weight: 500;
+  color: #334155;
+}
+.tech-topbar-console-link {
+  font-size: 0.82rem;
+  font-weight: 500;
+  color: #0284c7;
+  text-decoration: none;
+}
+.tech-topbar-console-link:hover {
+  text-decoration: underline;
+}
+.tech-topbar-signout {
+  background: none;
+  border: none;
+  padding: 0;
+  font-family: inherit;
+  font-size: 0.88rem;
+  font-weight: 500;
+  color: #64748b;
+  cursor: pointer;
+}
+.tech-topbar-signout:hover {
+  color: #0f172a;
+  text-decoration: underline;
+}
+.tech-dialog-row {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 12px;
+  font-size: 0.88rem;
+}
+.tech-dialog-label {
+  color: #64748b;
+  font-weight: 500;
+}
+.tech-dialog-value {
+  color: #0f172a;
+  font-weight: 500;
+  text-align: right;
+}
+.tech-dialog-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 20px;
+  padding-top: 16px;
+  border-top: 1px solid #e2e8f0;
+}

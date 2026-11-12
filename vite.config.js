@@ -18,7 +18,7 @@ const forward = {
 // disk; this plugin rewrites that one request to index.html, same as nginx.conf does in production.
 // It must not touch the other pages (call.html, customer.html, portal/*), real files/assets, or
 // anything proxied to the API (see RESERVED_PREFIXES, which mirrors src/app/router.js).
-const RESERVED_PREFIXES = ['/v1', '/tech', '/set-password', '/signup', '/billing', '/twilio', '/healthz', '/rtc', '/twirp', '/api'];
+const RESERVED_PREFIXES = ['/v1', '/set-password', '/signup', '/billing', '/twilio', '/healthz', '/rtc', '/twirp', '/api'];
 const OTHER_PAGES = ['/portal'];
 function consoleHistoryFallback() {
   return {
@@ -44,7 +44,6 @@ export default defineConfig({
     port: 5500,
     proxy: {
       '/v1': forward,
-      '/tech': forward,
       '/healthz': forward,
       // The emailed one-time link opens this address; the backend serves the ready-made page itself.
       '/set-password': forward,
