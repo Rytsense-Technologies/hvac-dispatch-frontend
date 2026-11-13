@@ -301,16 +301,6 @@ function CallActionDialog({ call, onClose }) {
             </a>
           ) : null}
 
-          <a
-            className="btn agent-btn"
-            href="/test"
-            title="Open AI Phone Assistant"
-            style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
-          >
-            <Icon name="test" />
-            <span>Call with AI Assistant</span>
-          </a>
-
           {activePhone && isReal ? (
             <a
               className="btn btn--ghost"
