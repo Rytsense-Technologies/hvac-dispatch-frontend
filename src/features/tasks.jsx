@@ -40,13 +40,14 @@ const SAMPLE_FOLLOWUPS = [
   { id: 'sample-f4', isSample: true, title: 'Estimate follow-up', subject: { name: 'Jessica Taylor' }, status_hint: 'Needs approval' },
 ];
 
-function technicianName(t) {
+// Exported so Work / Schedule's "Unassigned work" panel (same items, same choices/assign APIs) can reuse these.
+export function technicianName(t) {
   if (!t) return '';
   if (typeof t === 'object') return t.name || '';
   return String(t);
 }
 
-function jobSubtitle(item) {
+export function jobSubtitle(item) {
   if (item.place) return item.place;
   const bits = [];
   if (item.when) bits.push(item.when);
@@ -65,7 +66,7 @@ function followUpSubtitle(item) {
   return [name, hint].filter(Boolean).join(' · ');
 }
 
-function jobIdOf(item) {
+export function jobIdOf(item) {
   return item.job_id || item.id || null;
 }
 
@@ -77,7 +78,7 @@ function assignmentEndpoints(item) {
   return { choices, assign, jobId };
 }
 
-function canAssignJob(item) {
+export function canAssignJob(item) {
   if (!can('admin', 'dispatcher')) return false;
   if (item.isSample) return true;
   if (item.status === 'assigned') return false;
@@ -97,7 +98,7 @@ function followUpEndpoints(item) {
 
 // ---------- assign dialog ----------
 
-function AssignDialog({ job, onClose, onDone }) {
+export function AssignDialog({ job, onClose, onDone }) {
   const [state, setState] = useState({ phase: 'loading' });
   const endpoints = assignmentEndpoints(job);
 

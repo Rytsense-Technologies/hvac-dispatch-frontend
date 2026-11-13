@@ -101,6 +101,14 @@ function confirmationOf(v) {
   return { label: 'Needs confirmation', code: 'needs_confirmation' };
 }
 
+// History lines come as plain strings in the sample data, but the server sends {at, text} objects - never
+// put either straight into JSX (that throws "object as child"); always render through this.
+function historyText(line) {
+  if (line === null || line === undefined) return '';
+  if (typeof line === 'string') return line;
+  return `${line.text ?? ''}${line.at ? ` · ${new Date(line.at).toLocaleString()}` : ''}`;
+}
+
 // ---- reschedule: fetch free slots for a day, pick one, confirm ----
 
 function RescheduleFlow({ visit, onCancel, onDone }) {
@@ -181,7 +189,9 @@ function RescheduleFlow({ visit, onCancel, onDone }) {
 
 // ---- detail dialog for one visit ----
 
-function AppointmentDetail({ initial, onClose, reload, demoMode }) {
+// Exported so other screens that already know a visit's own detail endpoint (e.g. Work / Schedule)
+// can reuse this exact dialog instead of building a second one - pass { id, api: { detail } }.
+export function AppointmentDetail({ initial, onClose, reload, demoMode }) {
   const isSample = Boolean(initial.isSample || demoMode);
   const [detailUrl, setDetailUrl] = useState(
     initial.api?.detail || (initial.id && !initial.isSample ? `/v1/appointments/${initial.id}/detail` : null),
@@ -234,7 +244,7 @@ function AppointmentDetail({ initial, onClose, reload, demoMode }) {
           <p>
             <strong>History</strong>
             <br />
-            {Array.isArray(initial.history) ? initial.history[0] : initial.history}
+            {historyText(Array.isArray(initial.history) ? initial.history[0] : initial.history)}
           </p>
         ) : null}
         <div className="work-dialog-actions">
@@ -295,7 +305,7 @@ function AppointmentDetail({ initial, onClose, reload, demoMode }) {
             {detail.history?.length ? (
               <>
                 <h3>History</h3>
-                <ul className="plain">{detail.history.map((line, i) => <li key={i}>{line}</li>)}</ul>
+                <ul className="plain">{detail.history.map((line, i) => <li key={i}>{historyText(line)}</li>)}</ul>
               </>
             ) : null}
             {detail.job_id ? <p><a href="/jobs">See it on the Jobs screen</a></p> : null}

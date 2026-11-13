@@ -406,6 +406,147 @@ function ImportWizard({ onClose, reload, onImported }) {
   );
 }
 
+// ---------- add one person (admin, dispatcher only) ----------
+
+const EMPTY_ONE_PERSON = {
+  name: '', phone: '', email: '', address: '', city: '', state: '', zip: '', interest: '', notes: '', consent: false,
+};
+
+function AddOnePersonDialog({ onClose, reload, onViewCustomer }) {
+  const [recordType, setRecordType] = useState('customers');
+  const [form, setForm] = useState(EMPTY_ONE_PERSON);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState(null);
+  const [result, setResult] = useState(null);
+
+  const set = (key) => (e) => setForm((f) => ({ ...f, [key]: e.target.value }));
+
+  const changeRecordType = (e) => {
+    setRecordType(e.target.value);
+    setResult(null);
+    setError(null);
+  };
+
+  const reset = () => {
+    setForm(EMPTY_ONE_PERSON);
+    setResult(null);
+    setError(null);
+  };
+
+  const submit = async (e) => {
+    e.preventDefault();
+    if (!form.phone.trim()) { toast('A phone number is needed.', 'bad'); return; }
+    setSaving(true);
+    setError(null);
+    try {
+      const body = {
+        record_type: recordType,
+        phone: form.phone.trim(),
+        name: form.name.trim() || undefined,
+        email: form.email.trim() || undefined,
+        address: form.address.trim() || undefined,
+        city: form.city.trim() || undefined,
+        state: form.state.trim() || undefined,
+        zip: form.zip.trim() || undefined,
+      };
+      if (recordType === 'leads') {
+        body.interest = form.interest.trim() || undefined;
+        body.notes = form.notes.trim() || undefined;
+        body.consent = !!form.consent;
+      }
+      const out = await api('/v1/imports/one', { method: 'POST', body });
+      setResult(out);
+      if (out.created) reload();
+      const person = out.record_type === 'leads' ? out.lead : out.customer;
+      toast(out.already_existed ? 'This person already exists.' : `Added ${person?.name || person?.phone || 'person'}.`);
+    } catch (err) {
+      setError(err);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const person = result ? (result.record_type === 'leads' ? result.lead : result.customer) : null;
+
+  return (
+    <Dialog title="Add one person" onClose={onClose}>
+      <div className="stack">
+        <Field label="Record type">
+          <Select
+            options={[['customers', 'Customers'], ['leads', 'Leads']]}
+            value={recordType}
+            onChange={changeRecordType}
+            disabled={!!result}
+          />
+        </Field>
+
+        <form className="stack" noValidate onSubmit={submit}>
+          <div className="grid2">
+            <Field label="Phone *"><input type="tel" value={form.phone} onChange={set('phone')} disabled={!!result} /></Field>
+            <Field label="Name"><input type="text" value={form.name} onChange={set('name')} disabled={!!result} /></Field>
+            <Field label="Email"><input type="email" value={form.email} onChange={set('email')} disabled={!!result} /></Field>
+            <Field label="Address"><input type="text" value={form.address} onChange={set('address')} disabled={!!result} /></Field>
+            <Field label="City"><input type="text" value={form.city} onChange={set('city')} disabled={!!result} /></Field>
+            <Field label="State"><input type="text" value={form.state} onChange={set('state')} disabled={!!result} /></Field>
+            <Field label="ZIP"><input type="text" value={form.zip} onChange={set('zip')} disabled={!!result} /></Field>
+          </div>
+
+          {recordType === 'leads' ? (
+            <>
+              <Field label="Interest"><input type="text" value={form.interest} onChange={set('interest')} disabled={!!result} /></Field>
+              <Field label="Notes"><textarea rows={2} value={form.notes} onChange={set('notes')} disabled={!!result} /></Field>
+              <label className="check">
+                <input
+                  type="checkbox"
+                  checked={form.consent}
+                  disabled={!!result}
+                  onChange={(e) => setForm((f) => ({ ...f, consent: e.target.checked }))}
+                />
+                Agreed to be called
+              </label>
+              {!form.consent ? (
+                <Note tone="warn" text="Saved without consent: nobody will call this lead until consent is recorded." />
+              ) : null}
+            </>
+          ) : null}
+
+          {error ? <Note tone="bad" text={error.message} /> : null}
+
+          {!result ? (
+            <div className="right">
+              <button type="submit" className="btn btn--primary" disabled={saving}>{saving ? 'Saving…' : 'Add person'}</button>
+            </div>
+          ) : null}
+        </form>
+
+        {result ? (
+          <div className="stack">
+            <Note
+              tone={result.already_existed ? 'warn' : 'good'}
+              text={result.already_existed ? 'This person already exists. Nothing was changed.' : `Added ${person?.name || person?.phone || 'person'}.`}
+            />
+            {result.record_type === 'leads' && result.lead?.status === 'blocked' ? (
+              <Note tone="warn" text="On the do-not-call list: kept, but will not be called." />
+            ) : null}
+            {result.record_type === 'leads' && result.lead?.note ? (
+              <Note tone="neutral" text={result.lead.note} />
+            ) : null}
+            <div className="row between">
+              {result.record_type === 'customers' && result.customer?.id ? (
+                <Button className="btn btn--secondary" onClick={() => onViewCustomer(result.customer.id)}>View customer</Button>
+              ) : <span />}
+              <div className="row" style={{ gap: 8 }}>
+                <Button className="btn btn--outline" onClick={reset}>Add another</Button>
+                <Button className="btn btn--primary" onClick={onClose}>Done</Button>
+              </div>
+            </div>
+          </div>
+        ) : null}
+      </div>
+    </Dialog>
+  );
+}
+
 // ---------- the page ----------
 
 export default function Customers() {
@@ -416,6 +557,7 @@ export default function Customers() {
   const [error, setError] = useState(null);
   const [openId, setOpenId] = useState(null);
   const [importOpen, setImportOpen] = useState(false);
+  const [addOneOpen, setAddOneOpen] = useState(false);
   const [leads, setLeads] = useState(null);
   const [leadsLoading, setLeadsLoading] = useState(false);
   const [leadsError, setLeadsError] = useState(null);
@@ -491,9 +633,14 @@ export default function Customers() {
         subtitle="Find a customer and review their service history."
       >
         {canImport && (
-          <Button className="btn btn--primary" onClick={() => setImportOpen(true)}>
-            Import leads or customers
-          </Button>
+          <>
+            <Button className="btn btn--secondary" onClick={() => setAddOneOpen(true)}>
+              Add one person
+            </Button>
+            <Button className="btn btn--primary" onClick={() => setImportOpen(true)}>
+              Import leads or customers
+            </Button>
+          </>
         )}
       </PageHeader>
 
@@ -530,6 +677,13 @@ export default function Customers() {
           onClose={() => setImportOpen(false)}
           reload={() => load(true)}
           onImported={() => loadLeads()}
+        />
+      )}
+      {addOneOpen && canImport && (
+        <AddOnePersonDialog
+          onClose={() => setAddOneOpen(false)}
+          reload={() => { load(true); loadLeads(); }}
+          onViewCustomer={(id) => { setAddOneOpen(false); setOpenId(id); }}
         />
       )}
     </>

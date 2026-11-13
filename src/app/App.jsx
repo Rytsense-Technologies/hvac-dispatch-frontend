@@ -54,8 +54,17 @@ function itemAllowed(item) {
 class SectionBoundary extends Component {
   state = { error: null };
   static getDerivedStateFromError(error) { return { error }; }
+  retry = () => this.setState({ error: null });
   render() {
-    if (this.state.error) return <p className="note note--bad" role="alert">{`This section could not be loaded: ${this.state.error.message}`}</p>;
+    if (this.state.error) {
+      return (
+        <div className="note note--bad" role="alert">
+          <p>{`${this.props.label ? `${this.props.label}: ` : ''}This section could not be loaded.`}</p>
+          <p className="muted small">{this.state.error.message}</p>
+          <button type="button" className="btn btn--outline btn--small" onClick={this.retry}>Retry</button>
+        </div>
+      );
+    }
     return this.props.children;
   }
 }
@@ -370,7 +379,7 @@ function Shell({ timezone, onSignOut }) {
           </div>
         </header>
         <main id="page" className="page" tabIndex={-1} ref={page} style={{ padding: 0 }}>
-          <SectionBoundary key={`${section.id}${path}`}>
+          <SectionBoundary key={`${section.id}${path}`} label={section.label}>
             <Suspense fallback={null}><View /></Suspense>
           </SectionBoundary>
         </main>
@@ -470,7 +479,7 @@ function Shell({ timezone, onSignOut }) {
             />
           ) : null}
           {allowed ? (
-            <SectionBoundary key={`${section.id}${path}`}>
+            <SectionBoundary key={`${section.id}${path}`} label={section.label}>
               <Suspense fallback={null}><View /></Suspense>
             </SectionBoundary>
           ) : (
