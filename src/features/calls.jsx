@@ -3,12 +3,20 @@
 import { useEffect, useRef, useState } from 'react';
 import { api } from '../lib/api.js';
 import { formatDateTime, timeAgo } from '../lib/format.js';
-import { can } from '../lib/session.js';
+import { can, session } from '../lib/session.js';
 import {
   PageHeader, Badge, Spinner, Empty, ErrorBox, Note, Details, Button, Dialog, Row, Panel, Select, Icon, toast,
 } from '../components/index.js';
 
 const PAGE = 50;
+const MY_PHONE_KEY = 'hvac_staff_phone';
+
+function safeGet(key) {
+  try { return localStorage.getItem(key); } catch { return null; }
+}
+function safeSet(key, value) {
+  try { localStorage.setItem(key, value); } catch { /* storage unavailable */ }
+}
 
 const OUTCOME_TONE = {
   booked: 'good', completed: 'good', follow_up: 'warn', escalated: 'bad', cancelled: 'neutral', no_request: 'neutral',
@@ -120,24 +128,46 @@ function CallActionDialog({ call, onClose }) {
   const initialPhone = getCallPhoneNumber(call);
   const isReal = isRealPhoneNumber(initialPhone);
   const [customPhone, setCustomPhone] = useState(isReal ? initialPhone : '');
+  const [myPhone, setMyPhone] = useState(() => safeGet(MY_PHONE_KEY) || session.user?.phone || '');
+  const [needsMyPhone, setNeedsMyPhone] = useState(false);
+  const [serverUnavailable, setServerUnavailable] = useState(false);
   const [dialing, setDialing] = useState(false);
 
   const customerName = call.customer?.name || 'Customer';
   const activePhone = customPhone.trim() || initialPhone;
   const displayPhone = formatDisplayPhone(activePhone);
+  // A call row has a usable id to look up on the server only when we also have a real phone for it;
+  // otherwise (web-chat callers, typed-in numbers) send the number the dispatcher is looking at instead.
+  const hasRealCallId = call.id && !String(call.id).startsWith('sample-');
 
-  const handleDial = () => {
+  const updateMyPhone = (value) => {
+    setMyPhone(value);
+    safeSet(MY_PHONE_KEY, value.trim());
+  };
+
+  const handleDial = async () => {
     if (!activePhone) {
       toast('Please enter a phone number to call.', 'warn');
       return;
     }
     setDialing(true);
-    toast(`Initiating call to ${displayPhone || activePhone}...`);
-    window.location.href = `tel:${activePhone.replace(/\s+/g, '')}`;
-    setTimeout(() => {
-      setDialing(false);
+    setServerUnavailable(false);
+    try {
+      const body = {};
+      if (isReal && hasRealCallId) body.call_id = call.id;
+      else body.phone = activePhone.trim();
+      const myPhoneTrimmed = myPhone.trim();
+      if (myPhoneTrimmed) body.my_phone = myPhoneTrimmed;
+      const res = await api('/v1/calls/callback', { method: 'POST', body });
+      toast(res?.message || 'Calling you now. Pick up your phone and you will be connected.');
       onClose();
-    }, 1200);
+    } catch (error) {
+      if (error.status === 503) setServerUnavailable(true);
+      if (error.status === 422 && /profile|add your phone/i.test(error.message)) setNeedsMyPhone(true);
+      toast(error.message, 'bad');
+    } finally {
+      setDialing(false);
+    }
   };
 
   const handleCopy = () => {
@@ -226,17 +256,50 @@ function CallActionDialog({ call, onClose }) {
           </div>
         )}
 
+        {needsMyPhone ? (
+          <div style={{ padding: '14px 16px', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 8 }}>
+            <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, color: '#92400e', marginBottom: 4 }}>
+              Your phone number
+            </label>
+            <input
+              type="tel"
+              className="input"
+              placeholder="e.g. (512) 555-0199"
+              value={myPhone}
+              onChange={(e) => updateMyPhone(e.target.value)}
+              style={{ width: '100%', padding: '8px 12px', border: '1px solid #fcd34d', borderRadius: 6, fontSize: '0.9rem', boxSizing: 'border-box' }}
+            />
+            <div style={{ fontSize: '0.76rem', color: '#92400e', marginTop: 6 }}>
+              The server rings you here first, then connects you to the customer. Saved on this browser for next time.
+            </div>
+          </div>
+        ) : null}
+
+        {serverUnavailable ? (
+          <Note tone="warn" text="Calling from the console is not set up on this server yet. Use your own phone instead." />
+        ) : null}
+
         <div className="dialog-actions" style={{ marginTop: 8 }}>
           <button
             type="button"
             className="btn btn--primary"
-            disabled={dialing || (!activePhone && !customPhone)}
+            disabled={dialing || !activePhone}
             onClick={handleDial}
             style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
           >
             <Icon name="phone" />
-            <span>{dialing ? 'Connecting…' : 'Call on phone'}</span>
+            <span>{dialing ? 'Calling…' : 'Call'}</span>
           </button>
+
+          {serverUnavailable && activePhone ? (
+            <a
+              className="btn btn--outline"
+              href={`tel:${activePhone.replace(/\s+/g, '')}`}
+              title="Call with your own phone app"
+            >
+              Call on this device
+            </a>
+          ) : null}
 
           <a
             className="btn agent-btn"
@@ -272,7 +335,7 @@ function CallActionDialog({ call, onClose }) {
   );
 }
 
-function SampleCallDialog({ call, onCall, onClose }) {
+function SampleCallDialog({ call, onCall, canCall, onClose }) {
   return (
     <Dialog title={`Call · ${call.customer?.name || 'Unknown'}`} onClose={onClose}>
       <p>
@@ -289,9 +352,11 @@ function SampleCallDialog({ call, onCall, onClose }) {
       </div>
       <p className="sample-label">No recording or transcript is available in this demonstration.</p>
       <div className="dialog-actions">
-        <Button className="btn btn--primary agent-btn" onClick={() => onCall?.(call)}>
-          Call customer
-        </Button>
+        {canCall ? (
+          <Button className="btn btn--primary agent-btn" onClick={() => onCall?.(call)}>
+            Call customer
+          </Button>
+        ) : null}
         <a className="btn agent-btn" href="/customers">Customer</a>
         <a className="btn agent-btn" href="/work/appointments">Appointments</a>
         <a className="btn agent-btn" href="/work">Follow-up tasks</a>
@@ -300,7 +365,7 @@ function SampleCallDialog({ call, onCall, onClose }) {
   );
 }
 
-function CallDialog({ id, onCall, onClose }) {
+function CallDialog({ id, onCall, canCall, onClose }) {
   const [state, setState] = useState({ loading: true });
   const seq = useRef(0);
 
@@ -388,9 +453,11 @@ function CallDialog({ id, onCall, onClose }) {
           )}
         </div>
         <div className="dialog-actions">
-          <Button className="btn btn--primary agent-btn" onClick={() => onCall?.(c)}>
-            Call customer
-          </Button>
+          {canCall ? (
+            <Button className="btn btn--primary agent-btn" onClick={() => onCall?.(c)}>
+              Call customer
+            </Button>
+          ) : null}
           <a className="btn agent-btn" href="/customers">Customer</a>
           <a className="btn agent-btn" href="/work/appointments">Appointments</a>
           <a className="btn agent-btn" href="/work">Follow-up tasks</a>
@@ -422,6 +489,7 @@ export default function Calls() {
   latest.current = { search, direction, from, to, offset };
 
   const allowed = can('admin', 'dispatcher', 'approver');
+  const canCall = can('admin', 'dispatcher');
 
   useEffect(() => {
     if (!allowed) return undefined;
@@ -477,16 +545,30 @@ export default function Calls() {
             subtitle={callSubtitle(call)}
             trailing={(
               <>
-                <Button
-                  className="btn agent-btn"
-                  aria-label={`Call ${call.customer?.name || 'customer'}`}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setCalling(call);
-                  }}
-                >
-                  Call
-                </Button>
+                {canCall ? (
+                  <Button
+                    className="btn agent-btn"
+                    aria-label={`Call ${call.customer?.name || 'customer'}`}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setCalling(call);
+                    }}
+                  >
+                    Call
+                  </Button>
+                ) : (
+                  <Button
+                    className="btn agent-btn"
+                    disabled
+                    title="Your role cannot do that."
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      toast('Your role cannot do that.', 'warn');
+                    }}
+                  >
+                    Call
+                  </Button>
+                )}
                 <Button
                   className="btn agent-btn"
                   aria-label={`Review call with ${call.customer?.name || 'Unknown'}`}
@@ -544,10 +626,11 @@ export default function Calls() {
         </p>
       </div>
 
-      {calling ? <CallActionDialog call={calling} onClose={() => setCalling(null)} /> : null}
+      {calling && canCall ? <CallActionDialog call={calling} onClose={() => setCalling(null)} /> : null}
       {open?.sample ? (
         <SampleCallDialog
           call={open}
+          canCall={canCall}
           onCall={(c) => {
             setOpen(null);
             setCalling(c);
@@ -558,6 +641,7 @@ export default function Calls() {
       {open && !open.sample ? (
         <CallDialog
           id={open.id}
+          canCall={canCall}
           onCall={(c) => {
             setOpen(null);
             setCalling(c);

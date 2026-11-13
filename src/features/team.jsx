@@ -9,7 +9,7 @@ import {
 } from '../components/index.js';
 import { ScheduleTech } from './schedule.jsx';
 import {
-  ContactDialog, ShiftsDialog, TimeOffDialog,
+  ContactDialog, ShiftsDialog, TimeOffDialog, RecordLeaveDialog,
 } from './technicians.jsx';
 import {
   AddAdminDialog, AddTechnicianDialog, EditDialog,
@@ -28,6 +28,7 @@ const STATUS_TONE = {
   available: 'good', active: 'good',
   on_a_job: 'info', invited: 'info',
   time_off: 'neutral', unavailable: 'neutral', off_duty: 'neutral', not_on_shift: 'neutral',
+  on_leave: 'warn',
   disabled: 'bad',
 };
 const toneFor = (code) => STATUS_TONE[String(code || '').toLowerCase()] || 'neutral';
@@ -153,7 +154,7 @@ function ExtensionsPanel({ active }) {
 
 function PeopleTab({
   active, canManageUsers, canSchedule, onEditRole, onResetPassword, onCreateSignIn,
-  onContact, onShifts, onTimeOff,
+  onContact, onShifts, onTimeOff, onRecordLeave,
 }) {
   const state = useTabData('/v1/team', undefined, active);
   if (!active) return null;
@@ -248,6 +249,15 @@ function PeopleTab({
                     onClick={() => onTimeOff(tech)}
                   >
                     Time off
+                  </Button>
+                ) : null}
+                {tech && canSchedule ? (
+                  <Button
+                    className="btn btn--secondary agent-btn"
+                    aria-label={`Record leave for ${person.name}`}
+                    onClick={() => onRecordLeave(tech)}
+                  >
+                    Record leave
                   </Button>
                 ) : null}
               </div>
@@ -429,6 +439,7 @@ export default function Team() {
         onContact={(tech) => setDialog({ kind: 'contact', tech })}
         onShifts={(tech) => setDialog({ kind: 'shifts', tech })}
         onTimeOff={(tech) => setDialog({ kind: 'timeoff', tech })}
+        onRecordLeave={(tech) => setDialog({ kind: 'recordLeave', tech })}
       />
     );
   } else if (tab === 'availability') {
@@ -491,6 +502,9 @@ export default function Team() {
       ) : null}
       {dialog?.kind === 'timeoff' ? (
         <TimeOffDialog tech={dialog.tech} reload={refreshPeople} onClose={closeDialog} />
+      ) : null}
+      {dialog?.kind === 'recordLeave' ? (
+        <RecordLeaveDialog tech={dialog.tech} reload={refreshPeople} onClose={closeDialog} />
       ) : null}
       {dialog?.kind === 'role' ? <RoleReviewDialog role={dialog.role} onClose={closeDialog} /> : null}
     </div>

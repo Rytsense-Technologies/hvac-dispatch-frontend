@@ -1,12 +1,13 @@
 // Technician building blocks used by Team & dispatch and Accounts (/team/users): working-days fields and dialogs to change
 // contact, set shifts, or mark unavailable (preview first, then ask for approval). Adding a technician with sign-in is on Team / Accounts.
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { api } from '../lib/api.js';
 import {
-  todayIn, formatDateTime, reasonText, buildShifts, shiftProblems, WEEKDAYS,
+  todayIn, formatDateTime, formatDay, reasonText, buildShifts, shiftProblems, WEEKDAYS,
+  leaveRangeText, summarizeLeaveResult,
 } from '../lib/format.js';
 import {
-  Field, Overlay, ActionButton, toast, useRun, Card,
+  Field, Overlay, ActionButton, Button, toast, useRun, Card,
 } from '../components/index.js';
 
 export const ProblemsBox = ({ list }) => <ul className="note note--bad" role="alert" hidden={!list.length}>{list.map((p, i) => <li key={i}>{p}</li>)}</ul>;
@@ -155,6 +156,107 @@ export function UnavailableDialog({ tech, reload, onClose }) {
             onClose();
             reload();
           }}>Ask for approval</ActionButton>
+        </div>
+      </div>
+    </Overlay>
+  );
+}
+
+// Dispatcher-side leave: separate from UnavailableDialog (no preview/approval step — the leave API
+// moves jobs or flags them as needs_staff immediately, same as the technician's own /tech/leave).
+export function RecordLeaveDialog({ tech, reload, onClose }) {
+  const [leave, setLeave] = useState([]);
+  const [leaveStatus, setLeaveStatus] = useState('loading');
+  const [date, setDate] = useState(todayIn);
+  const [fromTime, setFromTime] = useState('');
+  const [toTime, setToTime] = useState('');
+  const [reason, setReason] = useState('');
+  const [busy, run] = useRun();
+  const minDay = useRef(todayIn()).current;
+
+  const load = async () => {
+    setLeaveStatus('loading');
+    try {
+      const res = await api(`/v1/dispatch/technicians/${tech.id}/leave`);
+      setLeave(Array.isArray(res?.leave) ? res.leave : []);
+      setLeaveStatus('ready');
+    } catch {
+      setLeaveStatus('error');
+    }
+  };
+
+  useEffect(() => {
+    load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const submit = (event) => {
+    event.preventDefault();
+    if (!date) { toast('Pick a date.', 'warn'); return; }
+    if (Boolean(fromTime) !== Boolean(toTime)) { toast('Give both a start and end time, or leave both blank for the whole day.', 'warn'); return; }
+    run(async () => {
+      const body = { date, reason: reason.trim() };
+      if (fromTime && toTime) { body.from_time = fromTime; body.to_time = toTime; }
+      const res = await api(`/v1/dispatch/technicians/${tech.id}/leave`, { method: 'POST', body });
+      const summary = summarizeLeaveResult(res);
+      toast(summary ? `Leave recorded. ${summary}.` : 'Leave recorded.');
+      setDate(todayIn());
+      setFromTime('');
+      setToTime('');
+      setReason('');
+      await load();
+      reload();
+    });
+  };
+
+  const cancelLeave = async (leaveId) => {
+    await api(`/v1/dispatch/technicians/${tech.id}/leave/${leaveId}`, { method: 'DELETE' });
+    setLeave((prev) => prev.filter((l) => l.id !== leaveId));
+    toast('Leave cancelled.');
+    reload();
+  };
+
+  return (
+    <Overlay title={`Record leave: ${tech.name}`} wide onClose={onClose}>
+      <div className="stack">
+        <p className="muted">
+          Nobody is planned onto this time. A job already booked in it moves automatically to the next
+          best available technician, or stays flagged for the office to place.
+        </p>
+
+        <form className="stack" noValidate onSubmit={submit}>
+          <div className="grid2">
+            <Field label="Date"><input type="date" value={date} min={minDay} onChange={(e) => setDate(e.target.value)} /></Field>
+            <Field label="Reason" hint="Optional, up to 200 characters">
+              <input type="text" maxLength={200} value={reason} onChange={(e) => setReason(e.target.value)} />
+            </Field>
+            <Field label="From (optional)"><input type="time" value={fromTime} onChange={(e) => setFromTime(e.target.value)} /></Field>
+            <Field label="To (optional)"><input type="time" value={toTime} onChange={(e) => setToTime(e.target.value)} /></Field>
+          </div>
+          <p className="muted small">Leave both times blank for the whole working day. Give both times or neither.</p>
+          <div className="right">
+            <button type="submit" className="btn btn--primary" disabled={busy}>Record leave</button>
+          </div>
+        </form>
+
+        <div>
+          <h4 style={{ margin: '8px 0' }}>Upcoming leave</h4>
+          {leaveStatus === 'loading' ? <p className="muted">Loading…</p> : null}
+          {leaveStatus === 'error' ? <p className="note note--bad" role="alert">Could not load upcoming leave.</p> : null}
+          {leaveStatus === 'ready' && !leave.length ? <p className="muted">No upcoming leave.</p> : null}
+          {leaveStatus === 'ready' && leave.length ? (
+            <ul className="plain">
+              {leave.map((l) => (
+                <li key={l.id} className="row-item">
+                  <span className="rowmain">
+                    <strong>{formatDay(l.date)}</strong>
+                    <small className="muted">{leaveRangeText(l)}{l.reason ? ` · ${l.reason}` : ''}</small>
+                  </span>
+                  <Button className="btn btn--outline btn--small" onClick={() => cancelLeave(l.id)}>Cancel</Button>
+                </li>
+              ))}
+            </ul>
+          ) : null}
         </div>
       </div>
     </Overlay>

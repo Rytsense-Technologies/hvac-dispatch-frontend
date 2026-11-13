@@ -91,6 +91,29 @@ export const reasonText = (code) => REASONS[code] || String(code).replaceAll('_'
 
 export const short = (id) => String(id).slice(0, 8);
 
+// ---------- leave (technician time off) ----------
+
+export function leaveRangeText(entry) {
+  if (entry.text) return entry.text;
+  if (entry.start && entry.end) return `${entry.start} – ${entry.end}`;
+  return 'All day';
+}
+
+// Summarizes a leave POST's `moved` / `needs_staff` lists into the sentence the tech and dispatcher screens both show.
+export function summarizeLeaveResult(res) {
+  const moved = res?.moved || [];
+  const needsStaff = res?.needs_staff || [];
+  const parts = [];
+  if (moved.length) {
+    const names = [...new Set(moved.map((m) => m.technician).filter(Boolean))];
+    parts.push(`${moved.length} job${moved.length === 1 ? '' : 's'} ${moved.length === 1 ? 'was' : 'were'} given to ${names.join(', ') || 'another technician'}`);
+  }
+  if (needsStaff.length) {
+    parts.push(`the office still has to place ${needsStaff.length} job${needsStaff.length === 1 ? '' : 's'}`);
+  }
+  return parts.join('. ');
+}
+
 // ---------- technician form rules (kept pure so they are easy to check) ----------
 
 export const parseList = (text, lower = false) => [...new Set(String(text || '').split(',').map((s) => (lower ? s.trim().toLowerCase() : s.trim())).filter(Boolean))];

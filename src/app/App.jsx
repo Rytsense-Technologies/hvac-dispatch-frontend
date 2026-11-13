@@ -86,7 +86,7 @@ function LoginForm({ message, setupOpen, signupOpen, onSignedIn, onRegister, onS
       if (data.identity?.role === 'technician') {
         setPassword('');
         session.role = 'technician';
-        session.user = data.user || { name: data.identity?.name || 'Mike Rodriguez' };
+        session.user = data.user || { name: data.identity?.name || 'Technician' };
         onSignedIn(data);
         navigate('/tech');
         return;
@@ -309,7 +309,9 @@ function Shell({ timezone, onSignOut }) {
   useEffect(() => { setMoreOpen(false); }, [path]);
 
   // Quiet status pill — real counts from /v1/agents, once per sign-in. Never invent numbers.
+  // A technician session cannot read this (or any other staff-only endpoint) - skip it so /tech never logs a 401 for it.
   useEffect(() => {
+    if (session.role === 'technician') return undefined;
     let live = true;
     api('/v1/agents')
       .then((data) => {
@@ -339,7 +341,7 @@ function Shell({ timezone, onSignOut }) {
 
   useEffect(() => { page.current?.focus({ preventScroll: true }); }, [path]);
 
-  const displayName = session.user?.name || session.actor || 'Mike Rodriguez';
+  const displayName = session.user?.name || session.actor || 'Technician';
   const initials = getInitials(displayName);
 
   // Dedicated technician view without admin sidebar, matching reference layout
@@ -546,11 +548,19 @@ export default function App() {
     // answers for an admin session - a technician's session cannot use this console at all.)
     api('/v1/auth/me')
       .then(enter)
-      .catch(() => {
-        // If visiting /tech, allow technician portal without bouncing to admin login
+      .catch(async () => {
+        // If visiting /tech, allow technician portal without bouncing to admin login.
+        // This 401 is expected here (a technician session cannot use /v1/auth/me) - handled quietly, no fake name.
         if (location.pathname === '/tech' || location.pathname.startsWith('/tech/')) {
           session.role = session.role || 'technician';
-          session.user = session.user || { name: 'Mike Rodriguez', email: 'mike@example.com' };
+          if (!session.user) {
+            try {
+              const profile = await api('/v1/tech/profile');
+              session.user = { name: profile?.name || 'Technician', email: profile?.email, phone: profile?.phone };
+            } catch {
+              session.user = { name: 'Technician' };
+            }
+          }
           setState({ phase: 'in', message: '', timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC' });
           return;
         }
