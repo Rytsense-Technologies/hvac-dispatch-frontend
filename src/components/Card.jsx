@@ -18,14 +18,15 @@ Card.Row = function CardRow({ className = '', children }) {
 };
 
 // The repeated "cards" grid of single-number stat cards (dashboard, billing, tracking, usage).
-// items: [[label, value], ...], [[label, value, hint], ...] or [[label, value, hint, icon], ...] - value
-// can be any node (text, a formatted number, a badge); hint is a short line of muted detail under the
-// number (e.g. "4 in, 2 out"); icon is an optional Icon.jsx name shown in a small badge, top right.
+// items: [[label, value], ...], [[label, value, hint], ...], [[label, value, hint, icon], ...] or
+// [[label, value, hint, icon, tone], ...] - value can be any node (text, a formatted number, a badge);
+// hint is a short line of muted detail under the number (e.g. "4 in, 2 out"); icon is an optional
+// Icon.jsx name shown in a small badge, top right; tone (e.g. "bad") colors the card for an alert count.
 export function StatGrid({ items, className = '' }) {
   return (
     <div className={`cards ${className}`.trim()}>
-      {items.map(([label, value, hint, icon]) => (
-        <div key={label} className="card stat">
+      {items.map(([label, value, hint, icon, tone]) => (
+        <div key={label} className={`card stat${tone ? ` stat--${tone}` : ''}`}>
           <div className="stat__head">
             <h3>{label}</h3>
             {icon ? <span className="stat__icon"><Icon name={icon} /></span> : null}

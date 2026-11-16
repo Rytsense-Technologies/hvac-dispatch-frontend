@@ -58,10 +58,6 @@ export default function Settings() {
         if (res?.profile?.office_phone) setOfficePhone(res.profile.office_phone);
         if (res?.profile?.office_email) setOfficeEmail(res.profile.office_email);
 
-        if (res?.profile?.email) {
-          setBillingEmail(res.profile.email);
-        }
-
         if (res?.hours?.values) {
           const h = res.hours.values;
           setHoursForm((prev) => ({

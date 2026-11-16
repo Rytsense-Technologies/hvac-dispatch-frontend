@@ -353,8 +353,21 @@ function Shell({ timezone, onSignOut }) {
   const displayName = session.user?.name || session.actor || 'Technician';
   const initials = getInitials(displayName);
 
-  // Dedicated technician view without admin sidebar, matching reference layout
+  // Dedicated technician view without admin sidebar, matching reference layout.
+  // A staff session (admin, dispatcher, ...) has no technician identity - every /v1/tech/* call
+  // would just 401. Send staff to the Schedule instead of ever mounting the technician app for them.
   if (section.id === 'tech') {
+    if (session.role && session.role !== 'technician') {
+      return (
+        <div id="tech-shell" className="tech-shell" style={{ minHeight: '100vh', background: '#f8fafc', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
+          <div className="card" style={{ maxWidth: 420, textAlign: 'center' }}>
+            <h1 style={{ fontSize: '1.15rem', margin: '0 0 8px 0' }}>Technician app is for technicians</h1>
+            <p className="muted" style={{ margin: '0 0 16px 0' }}>Open the Schedule to see their jobs.</p>
+            <a href="/work/schedule" className="btn btn--primary">Open Schedule</a>
+          </div>
+        </div>
+      );
+    }
     return (
       <div id="tech-shell" className="tech-shell" style={{ minHeight: '100vh', background: '#f8fafc' }}>
         <header className="tech-topbar">
@@ -363,11 +376,6 @@ function Shell({ timezone, onSignOut }) {
             <span className="tech-brand-label">My jobs</span>
           </div>
           <div className="tech-topbar-right">
-            {session.role === 'admin' ? (
-              <a href="/overview" className="tech-topbar-console-link">
-                ← Staff console
-              </a>
-            ) : null}
             <span className="tech-topbar-user">{displayName}</span>
             <button
               type="button"
@@ -544,11 +552,11 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    // A 401 anywhere else means the session ended (timed out, disabled, or the password was reset elsewhere).
+    // A 401 anywhere else means the session ended (timed out, disabled, or the password was reset
+    // elsewhere) - including a technician's own /v1/tech/* calls, which should send them back to sign in.
     let expiredShown = false;
     onSessionExpired(() => {
       if (!session.role || expiredShown) return;
-      if (location.pathname === '/tech' || location.pathname.startsWith('/tech/')) return;
       expiredShown = true;
       leave('Your session ended. Sign in again.');
       setTimeout(() => { expiredShown = false; }, 1000);

@@ -409,8 +409,31 @@ function ImportWizard({ onClose, reload, onImported }) {
 // ---------- add one person (admin, dispatcher only) ----------
 
 const EMPTY_ONE_PERSON = {
-  name: '', phone: '', email: '', address: '', city: '', state: '', zip: '', interest: '', notes: '', consent: false,
+  name: '', phone: '', email: '', address: '', city: '', state: '', zip: '',
+  interest: '', notes: '', consent: false, consentText: '', campaignId: '',
 };
+
+// Rough USPS ZIP3-prefix ranges per state, used only to warn on an obvious mismatch - not to block saving.
+const ZIP3_BY_STATE = {
+  AL: [[350, 369]], AK: [[995, 999]], AZ: [[850, 865]], AR: [[716, 729]], CA: [[900, 961]],
+  CO: [[800, 816]], CT: [[60, 69]], DE: [[197, 199]], DC: [[200, 205]], FL: [[320, 349]],
+  GA: [[300, 319], [398, 399]], HI: [[967, 968]], ID: [[832, 838]], IL: [[600, 629]], IN: [[460, 479]],
+  IA: [[500, 528]], KS: [[660, 679]], KY: [[400, 427]], LA: [[700, 714]], ME: [[39, 49]],
+  MD: [[206, 219]], MA: [[10, 27], [55, 55]], MI: [[480, 499]], MN: [[550, 567]], MS: [[386, 397]],
+  MO: [[630, 658]], MT: [[590, 599]], NE: [[680, 693]], NV: [[889, 898]], NH: [[30, 38]],
+  NJ: [[70, 89]], NM: [[870, 884]], NY: [[100, 149]], NC: [[270, 289]], ND: [[580, 588]],
+  OH: [[430, 459]], OK: [[730, 749]], OR: [[970, 979]], PA: [[150, 196]], RI: [[28, 29]],
+  SC: [[290, 299]], SD: [[570, 577]], TN: [[370, 385]], TX: [[750, 799], [885, 885]], UT: [[840, 847]],
+  VT: [[50, 59]], VA: [[220, 246]], WA: [[980, 994]], WV: [[247, 268]], WI: [[530, 549]], WY: [[820, 831]],
+};
+
+function zipStateMismatch(zip, state) {
+  const z = (zip || '').trim();
+  const s = (state || '').trim().toUpperCase();
+  if (!/^\d{5}$/.test(z) || !ZIP3_BY_STATE[s]) return false;
+  const prefix = Number(z.slice(0, 3));
+  return !ZIP3_BY_STATE[s].some(([min, max]) => prefix >= min && prefix <= max);
+}
 
 function AddOnePersonDialog({ onClose, reload, onViewCustomer }) {
   const [recordType, setRecordType] = useState('customers');
@@ -418,6 +441,7 @@ function AddOnePersonDialog({ onClose, reload, onViewCustomer }) {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
   const [result, setResult] = useState(null);
+  const [campaigns, setCampaigns] = useState(null);
 
   const set = (key) => (e) => setForm((f) => ({ ...f, [key]: e.target.value }));
 
@@ -433,9 +457,33 @@ function AddOnePersonDialog({ onClose, reload, onViewCustomer }) {
     setError(null);
   };
 
+  useEffect(() => {
+    if (recordType !== 'leads' || campaigns !== null) return;
+    let active = true;
+    (async () => {
+      try {
+        const res = await api('/v1/leads/campaigns');
+        if (active) setCampaigns(Array.isArray(res?.campaigns) ? res.campaigns : []);
+      } catch {
+        if (active) setCampaigns([]);
+      }
+    })();
+    return () => { active = false; };
+  }, [recordType, campaigns]);
+
+  const addressMismatch = form.zip.trim() && form.state.trim() && zipStateMismatch(form.zip, form.state);
+
   const submit = async (e) => {
     e.preventDefault();
     if (!form.phone.trim()) { toast('A phone number is needed.', 'bad'); return; }
+    if (recordType === 'leads' && form.consent && !form.consentText.trim()) {
+      toast('Say how they agreed to be called.', 'bad');
+      return;
+    }
+    if (recordType === 'leads' && form.consent) {
+      const ok = window.confirm('If agreed to be called is ticked, the assistant will phone this number within seconds. Continue?');
+      if (!ok) return;
+    }
     setSaving(true);
     setError(null);
     try {
@@ -453,12 +501,20 @@ function AddOnePersonDialog({ onClose, reload, onViewCustomer }) {
         body.interest = form.interest.trim() || undefined;
         body.notes = form.notes.trim() || undefined;
         body.consent = !!form.consent;
+        body.consent_text = form.consent ? form.consentText.trim() : undefined;
+        body.campaign_id = form.campaignId || undefined;
       }
       const out = await api('/v1/imports/one', { method: 'POST', body });
       setResult(out);
       if (out.created) reload();
       const person = out.record_type === 'leads' ? out.lead : out.customer;
-      toast(out.already_existed ? 'This person already exists.' : `Added ${person?.name || person?.phone || 'person'}.`);
+      const joinedCampaign = person?.campaign?.name || person?.campaign_name
+        || campaigns?.find((c) => String(c.id) === form.campaignId)?.name;
+      if (out.already_existed) {
+        toast(out.consent_added ? 'Consent recorded; this person can now be called.' : 'This person already exists.');
+      } else {
+        toast(`Added ${person?.name || person?.phone || 'person'}.${joinedCampaign ? ` Joined "${joinedCampaign}".` : ''}`);
+      }
     } catch (err) {
       setError(err);
     } finally {
@@ -467,6 +523,8 @@ function AddOnePersonDialog({ onClose, reload, onViewCustomer }) {
   };
 
   const person = result ? (result.record_type === 'leads' ? result.lead : result.customer) : null;
+  const resultJoinedCampaign = result ? (person?.campaign?.name || person?.campaign_name
+    || campaigns?.find((c) => String(c.id) === form.campaignId)?.name) : null;
 
   return (
     <Dialog title="Add one person" onClose={onClose}>
@@ -491,10 +549,22 @@ function AddOnePersonDialog({ onClose, reload, onViewCustomer }) {
             <Field label="ZIP"><input type="text" value={form.zip} onChange={set('zip')} disabled={!!result} /></Field>
           </div>
 
+          {!result && addressMismatch ? (
+            <Note tone="warn" text={`"${form.zip.trim()}" does not look like a ${form.state.trim().toUpperCase()} ZIP code. Double check the address.`} />
+          ) : null}
+
           {recordType === 'leads' ? (
             <>
               <Field label="Interest"><input type="text" value={form.interest} onChange={set('interest')} disabled={!!result} /></Field>
               <Field label="Notes"><textarea rows={2} value={form.notes} onChange={set('notes')} disabled={!!result} /></Field>
+              <Field label="Campaign">
+                <Select
+                  options={[['', 'No campaign'], ...(campaigns || []).map((c) => [String(c.id), c.name || `Campaign ${c.id}`])]}
+                  value={form.campaignId}
+                  onChange={set('campaignId')}
+                  disabled={!!result}
+                />
+              </Field>
               <label className="check">
                 <input
                   type="checkbox"
@@ -504,9 +574,19 @@ function AddOnePersonDialog({ onClose, reload, onViewCustomer }) {
                 />
                 Agreed to be called
               </label>
-              {!form.consent ? (
+              {form.consent ? (
+                <Field label="How did they agree? *">
+                  <input
+                    type="text"
+                    placeholder="e.g. Said yes on a call, 2026-01-14"
+                    value={form.consentText}
+                    onChange={set('consentText')}
+                    disabled={!!result}
+                  />
+                </Field>
+              ) : (
                 <Note tone="warn" text="Saved without consent: nobody will call this lead until consent is recorded." />
-              ) : null}
+              )}
             </>
           ) : null}
 
@@ -522,8 +602,12 @@ function AddOnePersonDialog({ onClose, reload, onViewCustomer }) {
         {result ? (
           <div className="stack">
             <Note
-              tone={result.already_existed ? 'warn' : 'good'}
-              text={result.already_existed ? 'This person already exists. Nothing was changed.' : `Added ${person?.name || person?.phone || 'person'}.`}
+              tone={result.already_existed && !result.consent_added ? 'warn' : 'good'}
+              text={
+                result.already_existed
+                  ? (result.consent_added ? 'Consent recorded; this person can now be called.' : 'This person already exists. Nothing was changed.')
+                  : `Added ${person?.name || person?.phone || 'person'}.${resultJoinedCampaign ? ` Joined "${resultJoinedCampaign}".` : ''}`
+              }
             />
             {result.record_type === 'leads' && result.lead?.status === 'blocked' ? (
               <Note tone="warn" text="On the do-not-call list: kept, but will not be called." />

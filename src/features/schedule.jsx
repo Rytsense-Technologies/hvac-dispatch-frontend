@@ -10,7 +10,7 @@ import {
 import { SECTION_TABS } from '../app/routes.js';
 import { AppointmentDetail } from './appointments.jsx';
 import {
-  AssignDialog, canAssignJob, jobIdOf, jobSubtitle,
+  AssignDialog, canAssignJob, JobBadges, jobIdOf, jobSubtitle,
 } from './tasks.jsx';
 
 // Exported primitives for compatibility with other features (jobs.jsx, requests.jsx, team.jsx)
@@ -635,7 +635,9 @@ export default function Schedule() {
             {unassigned.map((item, i) => (
               <div key={jobIdOf(item) || item.id || i} className="sched-unassigned-item">
                 <div>
-                  <div className="sched-unassigned-item-title">{item.title || item.text || 'Job'}</div>
+                  <div className="sched-unassigned-item-title">
+                    {item.title || item.text || 'Job'} <JobBadges item={item} />
+                  </div>
                   <div className="sched-unassigned-item-sub">{jobSubtitle(item)}</div>
                 </div>
                 {canAssignJob(item) ? (

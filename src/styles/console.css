@@ -707,6 +707,11 @@ small,
   max-width: 100%;
 }
 
+.panel--emergency {
+  border-color: #fecaca;
+  background: #fff5f5;
+}
+
 .card {
   padding: 17px 18px;
 }
@@ -866,6 +871,18 @@ small,
   color: #17384f;
   font-variant-numeric: tabular-nums;
   line-height: 1.15;
+}
+
+.stat--bad {
+  border-color: #fecaca;
+  background: #fff1f2;
+}
+.stat--bad .stat__value {
+  color: #b91c1c;
+}
+.stat--bad .stat__icon {
+  background: #fee2e2;
+  color: #b91c1c;
 }
 
 .stat small.muted {
@@ -8449,6 +8466,54 @@ button.slot.booked:hover {
   font-weight: 500;
   margin-bottom: 16px;
   line-height: 1.4;
+}
+
+.tech-badge-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+.tech-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  border-radius: 4px;
+  line-height: 1.3;
+}
+.tech-badge--emergency {
+  background: #fee2e2;
+  border: 1px solid #fecaca;
+  color: #b91c1c;
+}
+.tech-badge--address-unverified {
+  background: #fef3c7;
+  border: 1px solid #fde68a;
+  color: #92400e;
+}
+
+.tech-address-banner {
+  background: #fffbeb;
+  border: 1px solid #fde68a;
+  border-radius: 6px;
+  padding: 12px 14px;
+  margin: 12px 0;
+  font-size: 0.82rem;
+  color: #92400e;
+  font-weight: 500;
+  line-height: 1.4;
+}
+
+.tech-action-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.tech-action-why-not {
+  margin: 0;
+  max-width: 220px;
 }
 
 .tech-view-btn {

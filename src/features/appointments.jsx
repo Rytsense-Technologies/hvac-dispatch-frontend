@@ -109,6 +109,65 @@ function historyText(line) {
   return `${line.text ?? ''}${line.at ? ` · ${new Date(line.at).toLocaleString()}` : ''}`;
 }
 
+// ---- call about the visit (confirm / remind / reschedule) ----
+
+const VISIT_CALL_PURPOSES = [
+  ['confirm', 'Confirm the visit'],
+  ['remind', 'Remind about the visit'],
+  ['reschedule', 'Offer to reschedule'],
+];
+
+function VisitCallDialog({ appointmentId, onClose }) {
+  const [purpose, setPurpose] = useState('confirm');
+  const [busy, setBusy] = useState(false);
+  const [notPlaced, setNotPlaced] = useState(null);
+  const [error, setError] = useState(null);
+
+  const submit = async () => {
+    setBusy(true);
+    setNotPlaced(null);
+    setError(null);
+    try {
+      const out = await api('/v1/leads/visit-call', { method: 'POST', body: { appointment_id: appointmentId, purpose } });
+      if (out?.placed === false) {
+        setNotPlaced(out.reason || 'The call was not placed.');
+      } else {
+        toast('Call placed.');
+        onClose();
+      }
+    } catch (err) {
+      setError(err);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Dialog title="Call about the visit" onClose={onClose}>
+      <div className="stack">
+        <p className="muted">Choose why you're calling about this visit.</p>
+        <fieldset className="stack">
+          <legend>Purpose</legend>
+          {VISIT_CALL_PURPOSES.map(([value, label]) => (
+            <label className="choice" key={value}>
+              <input type="radio" name="visit-call-purpose" checked={purpose === value} onChange={() => setPurpose(value)} />
+              <span>{label}</span>
+            </label>
+          ))}
+        </fieldset>
+        {notPlaced ? <Note tone="warn" text={notPlaced} /> : null}
+        {error ? <Note tone="bad" text={error.message} /> : null}
+        <div className="right">
+          <Button className="btn btn--outline" onClick={onClose}>Cancel</Button>
+          <Button className="btn btn--primary" disabled={busy} onClick={submit}>
+            {busy ? 'Calling…' : 'Call about the visit'}
+          </Button>
+        </div>
+      </div>
+    </Dialog>
+  );
+}
+
 // ---- reschedule: fetch free slots for a day, pick one, confirm ----
 
 function RescheduleFlow({ visit, onCancel, onDone }) {
@@ -198,6 +257,7 @@ export function AppointmentDetail({ initial, onClose, reload, demoMode }) {
   );
   const [state, setState] = useState(isSample ? { phase: 'sample' } : { phase: 'loading' });
   const [flow, setFlow] = useState(false);
+  const [callingVisit, setCallingVisit] = useState(false);
   const seq = useRef(0);
   const roleOk = can('admin', 'dispatcher');
 
@@ -336,6 +396,9 @@ export function AppointmentDetail({ initial, onClose, reload, demoMode }) {
                     >
                       {actionsById.cancel?.label || 'Cancel'}
                     </ActionButton>
+                    <Button className="btn btn--secondary" onClick={() => setCallingVisit(true)}>
+                      Call about the visit
+                    </Button>
                   </div>
                 )}
                 {actionsById.confirm && !actionsById.confirm.allowed && actionsById.confirm.why_not ? (
@@ -366,6 +429,9 @@ export function AppointmentDetail({ initial, onClose, reload, demoMode }) {
           </>
         ) : null}
       </div>
+      {callingVisit && detail ? (
+        <VisitCallDialog appointmentId={detail.id} onClose={() => setCallingVisit(false)} />
+      ) : null}
     </Dialog>
   );
 }
@@ -383,6 +449,7 @@ export default function Appointments() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [selected, setSelected] = useState(null);
+  const [callingVisit, setCallingVisit] = useState(null);
   const seq = useRef(0);
   const latest = useRef({});
   latest.current = { scope, search, assigned, confirmation, offset };
@@ -485,6 +552,13 @@ export default function Appointments() {
               <Badge text={conf.label} tone={confirmTone(conf.code)} />
               <Button
                 className="btn btn--secondary"
+                onClick={() => setCallingVisit(item.id)}
+                aria-label={`Call about the visit with ${item.customerName || visitTitle(item)}`}
+              >
+                Call about the visit
+              </Button>
+              <Button
+                className="btn btn--secondary"
                 onClick={() => setSelected(item)}
                 aria-label={`View appointment ${visitTitle(item)}`}
               >
@@ -537,6 +611,10 @@ export default function Appointments() {
           onClose={() => setSelected(null)}
           reload={() => setNonce((v) => v + 1)}
         />
+      ) : null}
+
+      {callingVisit ? (
+        <VisitCallDialog appointmentId={callingVisit} onClose={() => setCallingVisit(null)} />
       ) : null}
     </>,
   );

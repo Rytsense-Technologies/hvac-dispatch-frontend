@@ -85,6 +85,29 @@ export function canAssignJob(item) {
   return Boolean(assignmentEndpoints(item).choices);
 }
 
+function cancelEndpoint(item) {
+  const jobId = jobIdOf(item);
+  return item.api?.cancel || (jobId ? `/v1/dispatch/jobs/${jobId}/cancel` : null);
+}
+
+export function canCancelJob(item) {
+  if (!can('admin', 'dispatcher')) return false;
+  if (item.isSample) return false;
+  return Boolean(cancelEndpoint(item));
+}
+
+// Every job task (unassigned, assigned or emergency) may carry these; shown wherever the job is listed.
+export function JobBadges({ item }) {
+  if (!item) return null;
+  return (
+    <>
+      {item.emergency ? <Badge text="Emergency" tone="bad" /> : null}
+      {item.address_status === 'unverified' ? <Badge text="Address to confirm" tone="warn" /> : null}
+      {item.address_status === 'confirmed' ? <Badge text="Address confirmed" tone="neutral" /> : null}
+    </>
+  );
+}
+
 function followUpEndpoints(item) {
   const kind = item.kind;
   const sourceId = item.source_id || item.id;
@@ -416,6 +439,15 @@ export default function Tasks() {
     : (followSub === 'open'
       ? (counters.office_follow_ups?.value ?? officeItems.length)
       : officeItems.length);
+  const emergencyCount = demoMode ? 0 : (counters.emergency_work?.value ?? 0);
+  const emergencyWork = demoMode ? { total: 0, items: [] } : (data.emergency_work || { total: 0, items: [] });
+
+  const cancelJob = async (item) => {
+    if (!window.confirm('Cancel this visit? The customer will need to be told.')) return;
+    await api(cancelEndpoint(item), { method: 'POST', body: {} });
+    toast('Visit cancelled.');
+    loadTasks(true);
+  };
 
   return chrome(
     <>
@@ -425,10 +457,62 @@ export default function Tasks() {
           ['Unassigned work', unassignedCount, 'Ready for assignment'],
           ['Assigned jobs', assignedCount, demoMode ? 'In this example queue' : 'Currently assigned'],
           ['Office follow-ups', followUpCount, demoMode ? 'Sample tasks' : (followSub === 'open' ? 'Awaiting review' : 'Past decisions')],
+          ['Emergency work', emergencyCount, counters.emergency_work?.text || 'Emergencies not finished', null, 'bad'],
         ]}
       />
 
       <div className="work-panels">
+        {emergencyWork.total > 0 ? (
+          <Panel className="panel--emergency">
+            <PanelHead title="Emergency work" subtitle="Needs action now">
+              <Badge text={`${emergencyWork.total} total`} tone="bad" />
+            </PanelHead>
+            {(emergencyWork.items || []).map((item) => (
+              item.status === 'needs_visit' ? (
+                <Row
+                  key={item.service_request_id || item.id}
+                  leading="▲"
+                  title={item.title || 'Emergency'}
+                  subtitle={[item.customer?.name, item.place, item.when, item.description || item.text].filter(Boolean).join(' · ')}
+                  trailing={(
+                    <>
+                      <Badge text="Emergency" tone="bad" />
+                      <Badge text="Needs visit" tone="warn" />
+                      {item.customer?.phone ? (
+                        <a className="btn btn--secondary" href={`tel:${item.customer.phone}`}>Call customer</a>
+                      ) : null}
+                    </>
+                  )}
+                />
+              ) : (
+                <Row
+                  key={item.id || item.title}
+                  leading="▲"
+                  title={item.title || item.text || 'Job'}
+                  subtitle={jobSubtitle(item)}
+                  trailing={(
+                    <>
+                      <JobBadges item={item} />
+                      <Badge
+                        text={item.status === 'assigned' ? (technicianName(item.technician) || 'Assigned') : 'Unassigned'}
+                        tone={item.status === 'assigned' ? 'good' : 'warn'}
+                      />
+                      {canAssignJob(item) ? (
+                        <Button className="btn btn--secondary" onClick={() => setAssigning(item)}>
+                          Assign technician →
+                        </Button>
+                      ) : null}
+                      {canCancelJob(item) ? (
+                        <ActionButton className="btn btn--ghost" action={() => cancelJob(item)}>Cancel</ActionButton>
+                      ) : null}
+                    </>
+                  )}
+                />
+              )
+            ))}
+          </Panel>
+        ) : null}
+
         <Panel>
           <PanelHead title="Unassigned work" subtitle="Assign a technician directly from the task">
             <Badge text={`${unassignedCount} unassigned`} tone="warn" />
@@ -442,11 +526,15 @@ export default function Tasks() {
                 subtitle={jobSubtitle(item)}
                 trailing={(
                   <>
+                    <JobBadges item={item} />
                     <Badge text="Unassigned" tone="warn" />
                     {canAssignJob(item) ? (
                       <Button className="btn btn--secondary" onClick={() => setAssigning(item)}>
                         Assign technician →
                       </Button>
+                    ) : null}
+                    {canCancelJob(item) ? (
+                      <ActionButton className="btn btn--ghost" action={() => cancelJob(item)}>Cancel</ActionButton>
                     ) : null}
                   </>
                 )}
@@ -469,7 +557,15 @@ export default function Tasks() {
                 leading="▣"
                 title={item.title || item.text || 'Job'}
                 subtitle={jobSubtitle(item)}
-                trailing={<Badge text={technicianName(item.technician) || 'Assigned'} tone="good" />}
+                trailing={(
+                  <>
+                    <JobBadges item={item} />
+                    <Badge text={technicianName(item.technician) || 'Assigned'} tone="good" />
+                    {canCancelJob(item) ? (
+                      <ActionButton className="btn btn--ghost" action={() => cancelJob(item)}>Cancel</ActionButton>
+                    ) : null}
+                  </>
+                )}
               />
             ))
           ) : (

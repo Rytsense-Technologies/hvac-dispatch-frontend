@@ -13,6 +13,7 @@ export const SECTIONS = [
   { id: 'overview', label: 'Overview', icon: 'overview', view: lazy(() => import('../features/dashboard.jsx')) },
   { id: 'agents', label: 'AI agents', icon: 'agents', view: lazy(() => import('../features/agents.jsx')) },
   { id: 'campaigns', label: 'Campaigns', icon: 'campaigns', view: lazy(() => import('../features/campaigns.jsx')) },
+  { id: 'leads', label: 'Leads', icon: 'leads', view: lazy(() => import('../features/leads.jsx')) },
   { id: 'calls', label: 'Calls', icon: 'calls', view: lazy(() => import('../features/calls.jsx')), sectionGroup: 'calls' },
   { id: 'numbers', label: 'Phone numbers', icon: 'calls', view: lazy(() => import('../features/numbers.jsx')), hideNav: true, sectionGroup: 'calls', crumbParent: 'Calls' },
   { id: 'tasks', label: 'Tasks', icon: 'work', view: lazy(() => import('../features/tasks.jsx')), hideNav: true, sectionGroup: 'work', crumbParent: 'Work' },
@@ -41,6 +42,7 @@ export const NAV_ITEMS = [
   { id: 'overview', label: 'Overview', icon: 'overview', href: '/overview', match: ['overview'] },
   { id: 'agents', label: 'AI agents', icon: 'agents', href: '/agents', match: ['agents'] },
   { id: 'campaigns', label: 'Campaigns', icon: 'campaigns', href: '/campaigns', match: ['campaigns'] },
+  { id: 'leads', label: 'Leads', icon: 'leads', href: '/leads', match: ['leads'] },
   { id: 'calls', label: 'Calls', icon: 'calls', href: '/calls', match: ['calls', 'numbers'] },
   { id: 'work', label: 'Work', icon: 'work', href: '/work', match: ['tasks', 'appointments', 'approvals', 'schedule'] },
   { id: 'team', label: 'Team & dispatch', icon: 'team', href: '/team', match: ['team', 'users'] },
@@ -73,6 +75,7 @@ export const MOBILE_PRIMARY = [
 export const MOBILE_MORE = [
   { id: 'agents', label: 'AI agents', href: '/agents' },
   { id: 'campaigns', label: 'Campaigns', href: '/campaigns' },
+  { id: 'leads', label: 'Leads', href: '/leads' },
   { id: 'customers', label: 'Customers', href: '/customers' },
   { id: 'test', label: 'Test', href: '/test' },
   { id: 'copilot', label: 'AI Coworker', href: '/copilot' },

@@ -24,7 +24,7 @@ const STATUS_BADGE_TONE = {
 
 function actionCode(action) {
   if (typeof action === 'string') return action;
-  return action?.code || action?.event || action?.action || '';
+  return action?.code || action?.event || action?.action || action?.id || '';
 }
 
 function actionLabel(action) {
@@ -40,13 +40,27 @@ function jobWindowText(job) {
   return 'Time not set';
 }
 
+// priority is {code, label} from the API (occasionally a plain string in older data).
+function priorityCode(priority) {
+  if (!priority) return '';
+  if (typeof priority === 'object') return priority.code || '';
+  return String(priority);
+}
+
+function priorityText(priority) {
+  if (!priority) return '';
+  if (typeof priority === 'object') return priority.label || priority.text || priority.code || '';
+  return String(priority);
+}
+
 function isUrgentPriority(priority) {
-  return /urgent|emergency/i.test(String(priority || ''));
+  return /urgent|emergency/i.test(priorityCode(priority));
 }
 
 function priorityLabel(priority) {
-  if (!priority) return 'Standard priority';
-  const text = String(priority).replaceAll('_', ' ');
+  const text = priorityText(priority).replaceAll('_', ' ');
+  if (!text) return 'Standard priority';
+  if (/priority/i.test(text)) return text;
   return `${text.charAt(0).toUpperCase()}${text.slice(1)} priority`;
 }
 
@@ -56,8 +70,13 @@ function blockerText(value) {
   return value.reason || value.text || value.note || JSON.stringify(value);
 }
 
+// An unverified job's latitude/longitude are only an approximate stand-in - no pin or route from
+// them until the address is confirmed. Text-address search is always safe to show instead.
 function mapsHref(job) {
-  if (job.latitude != null && job.longitude != null) return `https://maps.google.com/?q=${job.latitude},${job.longitude}`;
+  const addressVerified = !job.address_check || job.address_check.status === 'confirmed';
+  if (addressVerified && job.latitude != null && job.longitude != null) {
+    return `https://maps.google.com/?q=${job.latitude},${job.longitude}`;
+  }
   if (job.address) return `https://maps.google.com/?q=${encodeURIComponent(job.address)}`;
   return null;
 }
@@ -83,6 +102,7 @@ export default function TechPortal() {
   const [activeJobId, setActiveJobId] = useState(null);
   const [jobDetail, setJobDetail] = useState({ status: 'idle' });
   const [noteInput, setNoteInput] = useState('');
+  const [addressInput, setAddressInput] = useState('');
   const [actionBusy, setActionBusy] = useState(null);
   const detailSeq = useRef(0);
 
@@ -176,7 +196,10 @@ export default function TechPortal() {
     setJobDetail({ status: 'loading' });
     try {
       const data = await api(`/v1/tech/jobs/${id}`);
-      if (mine === detailSeq.current) setJobDetail({ status: 'ready', data });
+      if (mine === detailSeq.current) {
+        setJobDetail({ status: 'ready', data });
+        setAddressInput(data?.address || '');
+      }
     } catch (error) {
       if (mine === detailSeq.current) setJobDetail({ status: 'error', error });
     }
@@ -184,6 +207,7 @@ export default function TechPortal() {
 
   const openJob = (job) => {
     setNoteInput('');
+    setAddressInput(job.address || '');
     setActiveJobId(job.id);
     fetchJobDetail(job.id);
   };
@@ -192,25 +216,63 @@ export default function TechPortal() {
     setActiveJobId(null);
     setJobDetail({ status: 'idle' });
     setNoteInput('');
+    setAddressInput('');
   };
 
+  // Every action carries its own request {method, path, body} - send exactly that, only adding
+  // location/note (or, for confirm_address, the edited address) on top. Never build the request by hand.
   const handleAction = async (action) => {
-    if (!activeJobId) return;
+    if (!activeJobId || action?.allowed === false) return;
     const code = actionCode(action);
+    const request = action?.request;
+    if (!request?.path) {
+      toast('This action is not available right now.', 'bad');
+      return;
+    }
     setActionBusy(code);
     try {
-      const pos = await getPositionQuick();
-      const body = { event: code };
-      if (pos) {
-        body.latitude = pos.latitude;
-        body.longitude = pos.longitude;
-        body.accuracy_meters = pos.accuracy_meters;
+      const body = { ...(request.body || {}) };
+      if (code === 'confirm_address') {
+        const edited = addressInput.trim();
+        const original = (jobDetail.data?.address || '').trim();
+        body.address = edited && edited !== original ? edited : null;
+      } else {
+        const pos = await getPositionQuick();
+        if (pos) {
+          body.latitude = pos.latitude;
+          body.longitude = pos.longitude;
+          body.accuracy_meters = pos.accuracy_meters;
+        }
+        const note = noteInput.trim();
+        if (note) body.note = note;
       }
-      const note = noteInput.trim();
-      if (note) body.note = note;
-      await api(`/v1/tech/jobs/${activeJobId}/progress`, { method: 'POST', body });
+      await api(request.path, { method: request.method || 'POST', body });
       toast(`${actionLabel(action)} saved.`);
       setNoteInput('');
+      await fetchJobDetail(activeJobId);
+      loadToday();
+    } catch (error) {
+      toast(error.message, 'bad');
+    } finally {
+      setActionBusy(null);
+    }
+  };
+
+  // The address-confirm banner's own button: reuse the job's confirm_address action (and its request)
+  // when the API includes one, so the edited address rides the same request; otherwise fall back.
+  const confirmAddress = async () => {
+    if (!activeJobId) return;
+    const action = (jobDetail.data?.actions || []).find((a) => actionCode(a) === 'confirm_address');
+    if (action) { await handleAction(action); return; }
+    setActionBusy('confirm_address');
+    try {
+      const edited = addressInput.trim();
+      const original = (jobDetail.data?.address || '').trim();
+      await api(`/v1/tech/jobs/${activeJobId}/address`, {
+        method: 'POST',
+        body: { address: edited && edited !== original ? edited : null },
+      });
+      toast('Address confirmed.');
       await fetchJobDetail(activeJobId);
       loadToday();
     } catch (error) {
@@ -322,6 +384,13 @@ export default function TechPortal() {
                     {job.status?.label || job.status?.code || '—'}
                   </span>
                 </div>
+
+                {job.emergency || job.address_check?.needs_call ? (
+                  <div className="tech-badge-row">
+                    {job.emergency ? <span className="tech-badge tech-badge--emergency">Emergency</span> : null}
+                    {job.address_check?.needs_call ? <span className="tech-badge tech-badge--address-unverified">Address to confirm</span> : null}
+                  </div>
+                ) : null}
 
                 <div className="tech-job-title">{job.title}</div>
                 <div className="tech-job-customer">{job.customer_name}</div>
@@ -444,6 +513,12 @@ export default function TechPortal() {
 
             {jobDetail.status === 'ready' ? (
               <>
+                {jobDetail.data.emergency ? (
+                  <div className="tech-badge-row" style={{ marginBottom: 10 }}>
+                    <span className="tech-badge tech-badge--emergency">Emergency</span>
+                  </div>
+                ) : null}
+
                 <div className="tech-dialog-row">
                   <span className="tech-dialog-label">Customer</span>
                   <span className="tech-dialog-value">{jobDetail.data.customer_name}</span>
@@ -474,6 +549,47 @@ export default function TechPortal() {
                     ) : null}
                   </span>
                 </div>
+
+                {jobDetail.data.address_check?.needs_call ? (
+                  <div className="tech-address-banner">
+                    <p style={{ margin: '0 0 10px 0' }}>{jobDetail.data.address_check.message}</p>
+                    {jobDetail.data.customer_phone ? (
+                      <a
+                        href={`tel:${jobDetail.data.customer_phone}`}
+                        className="btn btn--secondary btn--small"
+                        style={{ textDecoration: 'none', display: 'inline-block', marginBottom: 10 }}
+                      >
+                        Call {jobDetail.data.customer_phone}
+                      </a>
+                    ) : null}
+                    <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 600, color: '#92400e', marginBottom: 4 }}>
+                      Address
+                    </label>
+                    <input
+                      type="text"
+                      value={addressInput}
+                      onChange={(e) => setAddressInput(e.target.value)}
+                      style={{
+                        width: '100%',
+                        padding: '8px 10px',
+                        borderRadius: 4,
+                        border: '1px solid #fbbf24',
+                        fontSize: '0.82rem',
+                        boxSizing: 'border-box',
+                        marginBottom: 10,
+                      }}
+                    />
+                    <Button className="btn btn--primary btn--small" disabled={actionBusy === 'confirm_address'} onClick={confirmAddress}>
+                      {actionBusy === 'confirm_address' ? 'Saving…' : 'I called, address confirmed'}
+                    </Button>
+                  </div>
+                ) : jobDetail.data.address_check?.status === 'confirmed' ? (
+                  <Note
+                    tone="good"
+                    text={`Address confirmed${jobDetail.data.address_check.confirmed_at ? ` · ${formatDateTime(jobDetail.data.address_check.confirmed_at)}` : ''}`}
+                  />
+                ) : null}
+
                 <div className="tech-dialog-row">
                   <span className="tech-dialog-label">Window</span>
                   <span className="tech-dialog-value">{jobWindowText(jobDetail.data)}</span>
@@ -546,15 +662,20 @@ export default function TechPortal() {
                 <div className="tech-dialog-actions">
                   {(jobDetail.data.actions || []).map((action) => {
                     const code = actionCode(action);
+                    const blocked = action?.allowed === false;
                     return (
-                      <Button
-                        key={code}
-                        className={`btn btn--small ${code === 'completed' ? 'btn--primary' : 'btn--secondary'}`}
-                        disabled={actionBusy !== null}
-                        onClick={() => handleAction(action)}
-                      >
-                        {actionBusy === code ? 'Saving…' : actionLabel(action)}
-                      </Button>
+                      <div key={code} className="tech-action-wrap">
+                        <Button
+                          className={`btn btn--small ${code === 'completed' ? 'btn--primary' : 'btn--secondary'}`}
+                          disabled={actionBusy !== null || blocked}
+                          onClick={() => handleAction(action)}
+                        >
+                          {actionBusy === code ? 'Saving…' : actionLabel(action)}
+                        </Button>
+                        {blocked && action?.why_not ? (
+                          <p className="muted small tech-action-why-not">{action.why_not}</p>
+                        ) : null}
+                      </div>
                     );
                   })}
                   {!jobDetail.data.actions?.length ? (

@@ -1,10 +1,12 @@
 // Campaigns: Outbound campaigns and Inbound workflows matching exact reference UI designs.
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { api } from '../lib/api.js';
 import { can } from '../lib/session.js';
-import { toast } from '../components/index.js';
+import { Spinner, toast } from '../components/index.js';
 
 const STATUS_TABS = ['All', 'Draft', 'Scheduled', 'Active', 'Paused', 'Completed', 'Canceled'];
+// The server's status word for a finished campaign is "finished", not "completed".
+const TAB_STATUS_VALUE = { Completed: 'finished' };
 
 const WIZARD_STEPS = [
   '1. Basics',
@@ -15,64 +17,15 @@ const WIZARD_STEPS = [
   '6. Test & review',
 ];
 
-const SAMPLE_CAMPAIGNS = [
-  {
-    id: 'sample_old_ac',
-    name: 'Old AC replacement leads',
-    status: 'active',
-    objective: 'Identify interested homeowners and arrange a callback.',
-    audience: { count: 120, label: 'past inquiries', text: '120 past inquiries' },
-    progress: { contacted: 42, total: 120, text: '42 / 120 contacted' },
-    script: 'Hi, we are following up on your earlier AC replacement inquiry. Would you like to discuss your options?',
-    interested: [
-      {
-        name: 'Taylor Green',
-        interest: 'Interested in a replacement',
-        status: 'Interested',
-        owner: 'Office team',
-        summary: 'Interested in a replacement · Office callback requested',
-      },
-    ],
-  },
-  {
-    id: 'sample_spring_maint',
-    name: 'Spring maintenance follow-up',
-    status: 'active',
-    objective: 'Reconnect with past customers about maintenance.',
-    audience: { count: 80, label: 'past customers', text: '80 past customers' },
-    progress: { contacted: 44, total: 80, text: '44 / 80 contacted' },
-    script: 'Would you like to schedule your next maintenance visit?',
-    interested: [
-      {
-        name: 'Jordan Lee',
-        interest: 'Interested in maintenance',
-        status: 'Interested',
-        owner: 'Office team',
-        summary: 'Interested in maintenance · Schedule a callback',
-      },
-    ],
-  },
-  {
-    id: 'sample_plumbing',
-    name: 'Unscheduled plumbing estimates',
-    status: 'draft',
-    objective: 'Follow up on unscheduled plumbing estimates.',
-    audience: { count: 35, label: 'old estimates', text: '35 old estimates' },
-    progress: { text: 'Ready for review' },
-    script: 'Would you like to discuss your plumbing estimate?',
-    interested: [],
-  },
-];
-
 export default function Campaigns() {
   const allowed = can('admin', 'dispatcher', 'approver');
   const [mainTab, setMainTab] = useState('outbound'); // 'outbound' | 'inbound'
   const [inboundMode, setInboundMode] = useState('overview'); // 'overview' | 'create'
   const [wizardStep, setWizardStep] = useState(1);
   const [statusFilter, setStatusFilter] = useState('All');
-  const [campaigns, setCampaigns] = useState(SAMPLE_CAMPAIGNS);
+  const [campaignState, setCampaignState] = useState({ status: 'loading', items: [], error: null });
   const [inboundWorkflows, setInboundWorkflows] = useState([]);
-  const [selectedCampaign, setSelectedCampaign] = useState(null);
+  const [selectedCampaignId, setSelectedCampaignId] = useState(null);
   const [showCreateCampaignModal, setShowCreateCampaignModal] = useState(false);
 
   // Inbound Workflow Wizard Form state
@@ -95,47 +48,46 @@ export default function Campaigns() {
   const [newCampaignScript, setNewCampaignScript] = useState('');
   const [newCampaignStatus, setNewCampaignStatus] = useState('Draft');
 
-  const initialized = useRef(false);
+  const loadCampaigns = useCallback(async () => {
+    setCampaignState((prev) => ({ ...prev, status: 'loading', error: null }));
+    try {
+      const res = await api('/v1/leads/campaigns');
+      const liveItems = Array.isArray(res?.campaigns) ? res.campaigns : [];
+      const mapped = liveItems.map((c) => ({
+        id: String(c.id),
+        name: c.name || 'Untitled Campaign',
+        status: (c.status || 'draft').toLowerCase(),
+        objective: c.objective || '',
+        audience: c.audience || { text: 'Target audience' },
+        progress: c.progress || { text: 'Ready' },
+        script: c.script || c.script_note || '',
+        interested: Array.isArray(c.interested) ? c.interested : [],
+      }));
+      setCampaignState({ status: 'ready', items: mapped, error: null });
+    } catch (error) {
+      setCampaignState({ status: 'error', items: [], error: error.message });
+    }
+  }, []);
 
-  // Fetch real data from backend
+  useEffect(() => { loadCampaigns(); }, [loadCampaigns]);
+
+  // Pulls the business name shown in the inbound-workflow wizard; unrelated to campaign data, so its own failure never blocks the campaigns list.
   useEffect(() => {
     let active = true;
     (async () => {
       try {
-        const res = await api('/v1/leads/campaigns');
-        if (!active) return;
-        const liveItems = Array.isArray(res?.campaigns) ? res.campaigns : [];
-        if (liveItems.length > 0 && !initialized.current) {
-          const mapped = liveItems.map((c) => ({
-            id: String(c.id),
-            name: c.name || 'Untitled Campaign',
-            status: (c.status || 'draft').toLowerCase(),
-            objective: c.objective || '',
-            audience: c.audience || { text: 'Target audience' },
-            progress: c.progress || { text: 'Ready' },
-            script: c.script || c.script_note || '',
-            interested: Array.isArray(c.interested) ? c.interested : [],
-          }));
-          setCampaigns(mapped);
-          initialized.current = true;
-        }
-      } catch (err) {
-        // Fallback to SAMPLE_CAMPAIGNS
-      }
-
-      try {
         const settingsRes = await api('/v1/settings');
         if (!active) return;
-        if (settingsRes?.profile?.name) {
-          setWfBusinessName(settingsRes.profile.name);
-        }
+        if (settingsRes?.profile?.name) setWfBusinessName(settingsRes.profile.name);
       } catch {
         // Use default business name
       }
     })();
-
     return () => { active = false; };
   }, []);
+
+  const campaigns = campaignState.items;
+  const selectedCampaign = campaigns.find((c) => c.id === selectedCampaignId) || null;
 
   if (!allowed) {
     return (
@@ -149,7 +101,8 @@ export default function Campaigns() {
   // Filter outbound campaigns by selected status tab
   const filteredCampaigns = campaigns.filter((c) => {
     if (statusFilter === 'All') return true;
-    return (c.status || '').toLowerCase() === statusFilter.toLowerCase();
+    const want = (TAB_STATUS_VALUE[statusFilter] || statusFilter).toLowerCase();
+    return (c.status || '').toLowerCase() === want;
   });
 
   const handleCreateCampaignSubmit = async (e) => {
@@ -159,28 +112,16 @@ export default function Campaigns() {
       return;
     }
 
-    const newObj = {
-      id: `camp_${Date.now()}`,
-      name: newCampaignName.trim(),
-      status: newCampaignStatus.toLowerCase(),
-      objective: newCampaignObjective.trim() || 'Customer follow-up',
-      audience: { text: newCampaignAudience.trim() || 'Selected contacts' },
-      progress: { text: newCampaignStatus === 'Active' ? '0 contacted' : 'Ready for review' },
-      script: newCampaignScript.trim(),
-      interested: [],
-    };
-
-    let created;
     try {
-      created = await api('/v1/leads/campaigns', {
+      await api('/v1/leads/campaigns', {
         method: 'POST',
         body: {
           kind: newCampaignKind,
           draft: newCampaignStatus.toLowerCase() === 'draft',
-          name: newObj.name,
-          objective: newObj.objective,
-          audience: newObj.audience.text,
-          script_note: newObj.script,
+          name: newCampaignName.trim(),
+          objective: newCampaignObjective.trim() || 'Customer follow-up',
+          audience: newCampaignAudience.trim() || 'Selected contacts',
+          script_note: newCampaignScript.trim(),
         },
       });
     } catch (error) {
@@ -188,8 +129,7 @@ export default function Campaigns() {
       return;
     }
 
-    setCampaigns((prev) => [{ ...newObj, id: String(created?.id ?? newObj.id) }, ...prev]);
-    toast('Campaign created successfully.');
+    toast('Campaign created.');
     setShowCreateCampaignModal(false);
     setNewCampaignName('');
     setNewCampaignKind('speed_to_lead');
@@ -197,16 +137,25 @@ export default function Campaigns() {
     setNewCampaignAudience('');
     setNewCampaignScript('');
     setNewCampaignStatus('Draft');
+    await loadCampaigns();
   };
 
-  const handleUpdateCampaignStatus = (campaignId, nextStatus) => {
-    setCampaigns((prev) =>
-      prev.map((c) => (c.id === campaignId ? { ...c, status: nextStatus.toLowerCase() } : c))
-    );
-    if (selectedCampaign && selectedCampaign.id === campaignId) {
-      setSelectedCampaign((prev) => ({ ...prev, status: nextStatus.toLowerCase() }));
+  // reviewFirst: a draft must be reviewed (POST .../review) before the server accepts a status change.
+  const handleUpdateCampaignStatus = async (campaignId, nextStatus, { reviewFirst = false } = {}) => {
+    try {
+      if (reviewFirst) {
+        await api(`/v1/leads/campaigns/${campaignId}/review`, { method: 'POST' });
+      }
+      await api(`/v1/leads/campaigns/${campaignId}/status`, {
+        method: 'POST',
+        body: { status: nextStatus },
+      });
+    } catch (error) {
+      toast(error.message, 'bad');
+      return;
     }
-    toast(`Campaign status updated to ${nextStatus}.`);
+    toast('Campaign updated.');
+    await loadCampaigns();
   };
 
   const handleSaveInboundWorkflow = (publish = false) => {
@@ -301,10 +250,12 @@ export default function Campaigns() {
         </button>
       </div>
 
-      {/* Demo notice subline */}
-      <div className="campaigns-demo-note">
-        Demo workspace · Calls, scheduling and AI responses are simulated. Saved on this browser only.
-      </div>
+      {/* Demo notice subline - inbound workflows only; outbound campaigns are real. */}
+      {mainTab === 'inbound' && (
+        <div className="campaigns-demo-note">
+          Demo workspace · Inbound workflows are not connected to a server yet. Changes are saved on this browser only.
+        </div>
+      )}
 
       {/* -------------------- OUTBOUND CAMPAIGNS TAB -------------------- */}
       {mainTab === 'outbound' && (
@@ -325,7 +276,22 @@ export default function Campaigns() {
 
           {/* Main Outbound Card */}
           <div className="campaigns-card">
-            {filteredCampaigns.length === 0 ? (
+            {campaignState.status === 'loading' ? (
+              <Spinner text="Loading campaigns…" />
+            ) : campaignState.status === 'error' ? (
+              <div className="campaigns-empty-card">
+                <h2 className="campaigns-empty-title">Could not load campaigns</h2>
+                <p className="campaigns-empty-sub">{campaignState.error}</p>
+                <button type="button" className="campaigns-action-btn" onClick={loadCampaigns}>
+                  Retry
+                </button>
+              </div>
+            ) : campaigns.length === 0 ? (
+              <div className="campaigns-empty-card">
+                <h2 className="campaigns-empty-title">No campaigns yet</h2>
+                <p className="campaigns-empty-sub">Create a campaign to start reaching out to customers.</p>
+              </div>
+            ) : filteredCampaigns.length === 0 ? (
               <div className="campaigns-empty-card">
                 <h2 className="campaigns-empty-title">No campaigns here</h2>
                 <p className="campaigns-empty-sub">Create a campaign or choose another status.</p>
@@ -351,7 +317,7 @@ export default function Campaigns() {
                         <button
                           type="button"
                           className="campaigns-action-btn"
-                          onClick={() => setSelectedCampaign(c)}
+                          onClick={() => setSelectedCampaignId(c.id)}
                         >
                           View campaign
                         </button>
@@ -874,17 +840,17 @@ export default function Campaigns() {
 
       {/* View Outbound Campaign Modal */}
       {selectedCampaign && (
-        <div className="campaigns-modal-overlay" onClick={() => setSelectedCampaign(null)}>
+        <div className="campaigns-modal-overlay" onClick={() => setSelectedCampaignId(null)}>
           <div className="campaigns-modal-card" onClick={(e) => e.stopPropagation()}>
             <div className="campaigns-modal-head">
               <div>
-                <div className="campaigns-modal-eyebrow">DEMO WORKSPACE</div>
+                <div className="campaigns-modal-eyebrow">GROWTH / CAMPAIGNS</div>
                 <h2 className="campaigns-modal-title">Campaign · {selectedCampaign.name}</h2>
               </div>
               <button
                 type="button"
                 className="campaigns-modal-close"
-                onClick={() => setSelectedCampaign(null)}
+                onClick={() => setSelectedCampaignId(null)}
               >
                 ×
               </button>
@@ -932,7 +898,7 @@ export default function Campaigns() {
                   </div>
                 ) : (
                   <p style={{ margin: 0, color: '#64748b', fontSize: '0.82rem' }}>
-                    No responses yet in this sample campaign.
+                    No responses yet.
                   </p>
                 )}
               </div>
@@ -943,7 +909,7 @@ export default function Campaigns() {
                 <button
                   type="button"
                   className="campaigns-create-btn"
-                  onClick={() => handleUpdateCampaignStatus(selectedCampaign.id, 'active')}
+                  onClick={() => handleUpdateCampaignStatus(selectedCampaign.id, 'active', { reviewFirst: true })}
                 >
                   Start campaign
                 </button>
@@ -966,11 +932,11 @@ export default function Campaigns() {
                   Resume campaign
                 </button>
               )}
-              {selectedCampaign.status !== 'completed' && (
+              {selectedCampaign.status !== 'finished' && selectedCampaign.status !== 'draft' && (
                 <button
                   type="button"
                   className="campaigns-action-btn"
-                  onClick={() => handleUpdateCampaignStatus(selectedCampaign.id, 'completed')}
+                  onClick={() => handleUpdateCampaignStatus(selectedCampaign.id, 'finished')}
                 >
                   Mark completed
                 </button>
@@ -978,7 +944,7 @@ export default function Campaigns() {
               <button
                 type="button"
                 className="campaigns-action-btn"
-                onClick={() => setSelectedCampaign(null)}
+                onClick={() => setSelectedCampaignId(null)}
               >
                 Close
               </button>
