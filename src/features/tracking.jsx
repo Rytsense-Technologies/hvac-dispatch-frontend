@@ -1,27 +1,24 @@
-// Team → Tracking nested view. Layout matches the reference schematic map + tech list + activity log.
+// Team → Tracking nested view. Layout matches the reference map + tech list + activity log.
 // Live feed: /v1/team/tracking. Day visits (booked vs actual): /v1/dispatch/tracking/summary + jobs.
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { api } from '../lib/api.js';
 import {
-  percent, todayIn, addDays, formatTime, lateness, PROGRESS, timeAgo,
+  percent, todayIn, addDays, formatTime, lateness, PROGRESS,
 } from '../lib/format.js';
 import { useEvery } from '../lib/hooks.js';
 import {
   Badge, Button, Empty, ErrorBox, Panel, PanelHead, Spinner,
   ProgressBadge, ArrivalBadge, DataTable, StatGrid,
 } from '../components/index.js';
+import { makeProjection } from './map.jsx';
 
-const STATUS_TONE = {
-  available: 'good', active: 'good',
-  on_a_job: 'info', en_route: 'info', arrived: 'info', on_site: 'info',
-  offline: 'warn', off: 'warn', stale: 'warn', disabled: 'bad',
-  time_off: 'neutral', unavailable: 'neutral', off_duty: 'neutral', not_on_shift: 'neutral',
+// Per-technician tracking state, straight from the API - never invent an "Offline" word here
+// (that belongs to the duty/account status, shown separately via status.label).
+const TRACKING_BADGE = {
+  live: { text: 'Live', tone: 'good' },
+  stale: { text: 'Old', tone: 'warn' },
+  off: { text: 'Not sharing', tone: 'neutral' },
 };
-const toneFor = (code) => STATUS_TONE[String(code || '').toLowerCase()] || 'neutral';
-
-const MARKER_PATH = [
-  [70, 220], [150, 220], [240, 220], [240, 90], [380, 90], [520, 90],
-];
 
 function initials(name) {
   return String(name || '?')
@@ -33,20 +30,57 @@ function initials(name) {
     .toUpperCase() || '?';
 }
 
-function RouteMap({ markerIndex = 0, markerLabel = 'M' }) {
-  const idx = Math.max(0, Math.min(MARKER_PATH.length - 1, markerIndex));
-  const [cx, cy] = MARKER_PATH[idx];
+const hasCoords = (p) => p && Number.isFinite(p.latitude) && Number.isFinite(p.longitude);
+
+// Each technician: location (now, or null), job (where they are heading, or null), base (their office/start point).
+// A line is drawn from location - or base when there is no location - to the job. A technician with no
+// location at all still gets its base-to-job line, as long as at least one other technician has a location;
+// the caller shows "No technician is sharing a location yet" instead of this map when none of them do.
+function TrackingMap({ technicians }) {
+  const rows = technicians.map((t) => {
+    const loc = hasCoords(t.location) ? t.location : null;
+    const base = hasCoords(t.base) ? t.base : null;
+    const job = hasCoords(t.job) ? t.job : null;
+    return { t, job, source: loc || base };
+  });
+
+  const points = [];
+  rows.forEach(({ source, job }) => {
+    if (source) points.push(source);
+    if (job) points.push(job);
+  });
+  if (!points.length) return null;
+
+  const view = makeProjection(points);
+
   return (
-    <svg viewBox="0 0 600 300" role="img" aria-label="Illustrative route from office to a service job" className="tracking-map">
-      <path d="M70 220 H240 V90 H520" fill="none" stroke="#c8d8e2" strokeWidth="12" strokeLinecap="round" />
-      <circle cx="70" cy="220" r="12" fill="#526777" />
-      <circle cx="520" cy="90" r="12" fill="#176b9b" />
-      <text x="40" y="260">Office</text>
-      <text x="455" y="60">Service job</text>
-      <g>
-        <circle cx={cx} cy={cy} r="16" fill="#176b9b" />
-        <text x={cx - 7} y={cy + 5} fill="#fff">{String(markerLabel || 'M').slice(0, 1)}</text>
-      </g>
+    <svg viewBox="0 0 760 440" role="img" aria-label="Technician locations and the jobs they are heading to" className="tracking-map">
+      {rows.map(({ t, source, job }, i) => (source && job ? (
+        <line
+          key={`route${i}`}
+          x1={view.x(source.longitude)} y1={view.y(source.latitude)}
+          x2={view.x(job.longitude)} y2={view.y(job.latitude)}
+          className={`tracking-route ${t.tracking === 'live' ? '' : 'tracking-route--stale'}`}
+        />
+      ) : null))}
+      {rows.map(({ t, job }, i) => (job ? (
+        <g key={`job${i}`} className="tracking-pin tracking-pin--job" transform={`translate(${view.x(job.longitude)} ${view.y(job.latitude)})`}>
+          <title>{`${job.service || 'Job'}${t.name ? ` · ${t.name}` : ''}`}</title>
+          <circle r={7} />
+          <text x={0} y={-13} textAnchor="middle">{job.service || 'Job'}</text>
+        </g>
+      ) : null))}
+      {rows.map(({ t, source }, i) => (source ? (
+        <g
+          key={`tech${i}`}
+          className={`tracking-pin tracking-pin--tech ${t.tracking === 'live' ? 'tracking-pin--live' : 'tracking-pin--stale'}`}
+          transform={`translate(${view.x(source.longitude)} ${view.y(source.latitude)})`}
+        >
+          <title>{`${t.name || 'Technician'} · ${t.tracking_text || ''}`}</title>
+          <circle r={9} />
+          <text x={0} y={22} textAnchor="middle">{t.name}</text>
+        </g>
+      ) : null))}
     </svg>
   );
 }
@@ -186,96 +220,39 @@ function VisitsPanel({ active }) {
  */
 export default function TeamTracking({ onBack, active = true }) {
   const state = useTeamTracking(active);
-  const [demoStep, setDemoStep] = useState(0);
-  const [playing, setPlaying] = useState(false);
-  const timer = useRef(null);
-
-  useEffect(() => () => { if (timer.current) clearInterval(timer.current); }, []);
 
   const live = state.status === 'ready' ? state.data : null;
   const technicians = live?.technicians || [];
   const enabled = Boolean(live?.enabled);
-  const hasLiveFeed = enabled && technicians.some((t) => t.tracking === 'live' || t.tracking_text?.toLowerCase?.().includes('live') || t.position);
-  // Demo layout only after a successful load with no feed rows — never during loading/error.
-  const showDemo = state.status === 'ready' && !technicians.length;
-
-  useEffect(() => {
-    if (!showDemo && playing) setPlaying(false);
-  }, [showDemo, playing]);
-
-  useEffect(() => {
-    if (!playing || !showDemo) {
-      if (timer.current) clearInterval(timer.current);
-      timer.current = null;
-      return undefined;
-    }
-    timer.current = setInterval(() => setDemoStep((s) => s + 1), 6000);
-    return () => { if (timer.current) clearInterval(timer.current); };
-  }, [playing, showDemo]);
-
-  const demoStates = ['Available', 'En route', 'En route', 'Arrived', 'On site', 'Job complete'];
-  const demoState = demoStates[Math.min(demoStep, demoStates.length - 1)];
-  const markerIndex = hasLiveFeed
-    ? Math.min(MARKER_PATH.length - 1, technicians.filter((t) => t.status?.code === 'on_a_job' || t.status?.code === 'en_route').length ? 3 : 0)
-    : (showDemo ? Math.min(MARKER_PATH.length - 1, demoStep) : 0);
+  const hasAnyLocation = technicians.some((t) => hasCoords(t.location));
+  const summaryLive = live?.summary?.live;
+  const liveCount = typeof summaryLive === 'number' ? summaryLive : technicians.filter((t) => t.tracking === 'live').length;
 
   const statusChip = useMemo(() => {
     if (state.status === 'loading') return { text: 'Loading tracking…', tone: 'neutral' };
     if (state.status === 'error') return { text: 'Tracking feed unavailable', tone: 'warn' };
-    if (hasLiveFeed) return { text: live?.note || 'Live location feed connected', tone: 'good' };
-    if (enabled) return { text: live?.note || 'Tracking on · waiting for location updates', tone: 'warn' };
-    return { text: live?.note || 'Simulated tracking · GPS not connected', tone: 'warn' };
-  }, [state.status, live, hasLiveFeed, enabled]);
+    if (!enabled) return { text: live?.note || 'Tracking is off.', tone: 'neutral' };
+    if (liveCount === 0) return { text: 'Tracking is on. Locations appear once a technician taps On my way.', tone: 'warn' };
+    return { text: live?.note || `${liveCount} technician${liveCount === 1 ? '' : 's'} sharing live location.`, tone: 'good' };
+  }, [state.status, live, enabled, liveCount]);
 
   const listRows = (() => {
     if (state.status !== 'ready') return [];
-    if (technicians.length) {
-      return technicians.map((t) => {
-        const code = t.status?.code || t.tracking || 'offline';
-        const label = t.status?.label || t.tracking_text || t.tracking || 'Unknown';
-        const detail = t.status?.detail;
-        const trade = t.trade || (Array.isArray(t.skills) ? t.skills[0] : '') || '';
-        const freshness = t.updated_at
-          ? `Updated ${timeAgo(t.updated_at)}`
-          : (t.eta_seconds != null ? `ETA ${Math.round(t.eta_seconds / 60)} min` : (enabled ? 'No recent location update' : 'No location available'));
-        // off_duty and not_on_shift are both "not working now" - neither has a live feed worth showing as such.
-        const offline = ['off', 'offline', 'stale', 'disabled', 'off_duty', 'not_on_shift'].includes(String(code).toLowerCase())
-          || String(t.tracking_text || '').toLowerCase().includes('off');
-        return {
-          id: t.id || t.name,
-          name: t.name,
-          initial: initials(t.name).slice(0, 1),
-          subtitle: `${label}${trade ? ` · ${trade}` : ''}`,
-          detail,
-          freshness,
-          badge: offline ? 'Offline' : (hasLiveFeed ? 'Live feed' : (enabled ? 'Tracking' : 'No GPS')),
-          tone: offline ? 'warn' : (hasLiveFeed ? 'good' : toneFor(code)),
-        };
-      });
-    }
-    if (!showDemo) return [];
-    return [
-      {
-        id: 'demo-1',
-        name: 'Mike Rodriguez',
-        initial: 'M',
-        subtitle: `${demoState} · HVAC`,
-        freshness: 'Sample update just now',
-        badge: 'Demo feed',
-        tone: 'good',
-        demo: true,
-      },
-      {
-        id: 'demo-2',
-        name: 'Alicia Brown',
-        initial: 'A',
-        subtitle: 'Location sharing off · Plumbing',
-        freshness: 'No location available',
-        badge: 'Offline',
-        tone: 'warn',
-        demo: true,
-      },
-    ];
+    return technicians.map((t) => {
+      const label = t.status?.label || '';
+      const trade = t.trade || (Array.isArray(t.skills) ? t.skills[0] : '') || '';
+      const trackInfo = TRACKING_BADGE[t.tracking] || { text: t.tracking_text || 'Unknown', tone: 'neutral' };
+      return {
+        id: t.id || t.name,
+        name: t.name,
+        initial: initials(t.name).slice(0, 1),
+        subtitle: [label, trade].filter(Boolean).join(' · '),
+        detail: t.status?.detail,
+        freshness: t.tracking_text || '',
+        badge: trackInfo.text,
+        tone: trackInfo.tone,
+      };
+    });
   })();
 
   const activity = (() => {
@@ -294,17 +271,11 @@ export default function TeamTracking({ onBack, active = true }) {
       return (
         <p>
           <strong>Latest status</strong>
-          {` · ${first?.name || 'Technician'} · ${first?.status?.label || first?.tracking_text || first?.tracking || '—'}`}
+          {` · ${first?.name || 'Technician'} · ${first?.status?.label || first?.tracking_text || '—'}`}
         </p>
       );
     }
-    if (!showDemo) return <p className="sub">No activity updates yet.</p>;
-    return (
-      <p>
-        <strong>{`Sample update ${demoStep + 1}`}</strong>
-        {` · Mike Rodriguez · ${demoState}`}
-      </p>
-    );
+    return <p className="sub">No activity updates yet.</p>;
   })();
 
   return (
@@ -322,22 +293,6 @@ export default function TeamTracking({ onBack, active = true }) {
 
       <div className="tracking-controls">
         <Badge text={statusChip.text} tone={statusChip.tone === 'neutral' ? 'neutral' : statusChip.tone} />
-        {showDemo ? (
-          <>
-            <Button
-              className="btn btn--secondary agent-btn"
-              onClick={() => setPlaying((p) => !p)}
-            >
-              {playing ? 'Pause simulation' : 'Start simulation'}
-            </Button>
-            <Button
-              className="btn btn--secondary agent-btn"
-              onClick={() => { setDemoStep((s) => s + 1); }}
-            >
-              Advance sample update
-            </Button>
-          </>
-        ) : null}
       </div>
 
       {state.status === 'loading' ? <Spinner /> : null}
@@ -347,13 +302,15 @@ export default function TeamTracking({ onBack, active = true }) {
         <>
           <div className="tracking-layout">
             <Panel>
-              <h2>Sample route overview</h2>
-              <p className="sub">
-                {hasLiveFeed
-                  ? 'Schematic overview · Not a geographic map. Live technician status comes from the tracking feed below.'
-                  : 'Schematic only · Not a geographic map or actual technician locations'}
-              </p>
-              <RouteMap markerIndex={markerIndex} markerLabel={listRows[0]?.initial || 'M'} />
+              <h2>Technician locations</h2>
+              {hasAnyLocation ? (
+                <>
+                  <p className="sub">Live locations and the job each technician is heading to.</p>
+                  <TrackingMap technicians={technicians} />
+                </>
+              ) : (
+                <p className="sub">No technician is sharing a location yet.</p>
+              )}
             </Panel>
             <Panel>
               <h2>Technicians</h2>
@@ -381,11 +338,7 @@ export default function TeamTracking({ onBack, active = true }) {
             <h2>Activity updates</h2>
             <div role="log" aria-live="polite">
               {activity}
-              <p className="sub">
-                {hasLiveFeed
-                  ? 'Status reflects the last known feed update. Confirm critical decisions in the job record.'
-                  : 'These updates do not change actual jobs, assignments, or GPS locations.'}
-              </p>
+              <p className="sub">Status reflects the last known feed update. Confirm critical decisions in the job record.</p>
             </div>
           </Panel>
         </>

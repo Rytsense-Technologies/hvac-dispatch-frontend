@@ -7350,6 +7350,32 @@ button.slot.booked:hover {
   fill: #415c6d;
 }
 
+.tracking-route {
+  stroke: #0ea5e9;
+  stroke-width: 2;
+  stroke-dasharray: 6 5;
+}
+.tracking-route--stale {
+  stroke: #cbd5e1;
+}
+
+.tracking-pin circle {
+  stroke: #fff;
+  stroke-width: 2;
+}
+.tracking-pin--job circle {
+  fill: #176b9b;
+}
+.tracking-pin--tech circle {
+  fill: #94a3b8;
+}
+.tracking-pin--tech.tracking-pin--live circle {
+  fill: #16a34a;
+}
+.tracking-pin--tech.tracking-pin--stale circle {
+  fill: #94a3b8;
+}
+
 .tracking-activity {
   margin-top: 16px;
 }
