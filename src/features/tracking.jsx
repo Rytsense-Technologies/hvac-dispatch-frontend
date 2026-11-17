@@ -1,6 +1,6 @@
 // Team → Tracking nested view. Layout matches the reference map + tech list + activity log.
 // Live feed: /v1/team/tracking. Day visits (booked vs actual): /v1/dispatch/tracking/summary + jobs.
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { api } from '../lib/api.js';
 import {
   percent, todayIn, addDays, formatTime, lateness, PROGRESS,
@@ -10,7 +10,7 @@ import {
   Badge, Button, Empty, ErrorBox, Panel, PanelHead, Spinner,
   ProgressBadge, ArrivalBadge, DataTable, StatGrid,
 } from '../components/index.js';
-import { makeProjection } from './map.jsx';
+import TechnicianMap, { etaText, distanceText } from './trackingMap.jsx';
 
 // Per-technician tracking state, straight from the API - never invent an "Offline" word here
 // (that belongs to the duty/account status, shown separately via status.label).
@@ -32,76 +32,26 @@ function initials(name) {
 
 const hasCoords = (p) => p && Number.isFinite(p.latitude) && Number.isFinite(p.longitude);
 
-// Each technician: location (now, or null), job (where they are heading, or null), base (their office/start point).
-// A line is drawn from location - or base when there is no location - to the job. A technician with no
-// location at all still gets its base-to-job line, as long as at least one other technician has a location;
-// the caller shows "No technician is sharing a location yet" instead of this map when none of them do.
-function TrackingMap({ technicians }) {
-  const rows = technicians.map((t) => {
-    const loc = hasCoords(t.location) ? t.location : null;
-    const base = hasCoords(t.base) ? t.base : null;
-    const job = hasCoords(t.job) ? t.job : null;
-    return { t, job, source: loc || base };
-  });
-
-  const points = [];
-  rows.forEach(({ source, job }) => {
-    if (source) points.push(source);
-    if (job) points.push(job);
-  });
-  if (!points.length) return null;
-
-  const view = makeProjection(points);
-
-  return (
-    <svg viewBox="0 0 760 440" role="img" aria-label="Technician locations and the jobs they are heading to" className="tracking-map">
-      {rows.map(({ t, source, job }, i) => (source && job ? (
-        <line
-          key={`route${i}`}
-          x1={view.x(source.longitude)} y1={view.y(source.latitude)}
-          x2={view.x(job.longitude)} y2={view.y(job.latitude)}
-          className={`tracking-route ${t.tracking === 'live' ? '' : 'tracking-route--stale'}`}
-        />
-      ) : null))}
-      {rows.map(({ t, job }, i) => (job ? (
-        <g key={`job${i}`} className="tracking-pin tracking-pin--job" transform={`translate(${view.x(job.longitude)} ${view.y(job.latitude)})`}>
-          <title>{`${job.service || 'Job'}${t.name ? ` · ${t.name}` : ''}`}</title>
-          <circle r={7} />
-          <text x={0} y={-13} textAnchor="middle">{job.service || 'Job'}</text>
-        </g>
-      ) : null))}
-      {rows.map(({ t, source }, i) => (source ? (
-        <g
-          key={`tech${i}`}
-          className={`tracking-pin tracking-pin--tech ${t.tracking === 'live' ? 'tracking-pin--live' : 'tracking-pin--stale'}`}
-          transform={`translate(${view.x(source.longitude)} ${view.y(source.latitude)})`}
-        >
-          <title>{`${t.name || 'Technician'} · ${t.tracking_text || ''}`}</title>
-          <circle r={9} />
-          <text x={0} y={22} textAnchor="middle">{t.name}</text>
-        </g>
-      ) : null))}
-    </svg>
-  );
-}
-
 function useTeamTracking(active) {
   const [state, setState] = useState({ status: 'idle' });
   const seq = useRef(0);
+  const load = useCallback(async (quiet) => {
+    const mine = (seq.current += 1);
+    if (!quiet) setState({ status: 'loading' });
+    try {
+      const data = await api('/v1/team/tracking');
+      if (mine === seq.current) setState({ status: 'ready', data });
+    } catch (error) {
+      // A refresh that fails keeps the map and the list on screen; only the first load shows the error.
+      if (mine === seq.current) setState((prev) => (quiet && prev.status === 'ready' ? prev : { status: 'error', error }));
+    }
+  }, []);
   useEffect(() => {
     if (!active) return undefined;
-    const mine = (seq.current += 1);
-    setState({ status: 'loading' });
-    (async () => {
-      try {
-        const data = await api('/v1/team/tracking');
-        if (mine === seq.current) setState({ status: 'ready', data });
-      } catch (error) {
-        if (mine === seq.current) setState({ status: 'error', error });
-      }
-    })();
+    load(false);
     return () => { seq.current += 1; };
-  }, [active]);
+  }, [active, load]);
+  useEvery(() => { if (active) load(true); }, 20000);
   return state;
 }
 
@@ -249,6 +199,8 @@ export default function TeamTracking({ onBack, active = true }) {
         subtitle: [label, trade].filter(Boolean).join(' · '),
         detail: t.status?.detail,
         freshness: t.tracking_text || '',
+        trip: [etaText(t.eta_seconds), distanceText(t.distance_meters)].filter(Boolean).join(' · '),
+        heading: t.job ? `${t.job.progress === 'en_route' ? 'Heading to' : 'At'} ${t.job.service || 'the job'}` : '',
         badge: trackInfo.text,
         tone: trackInfo.tone,
       };
@@ -303,14 +255,10 @@ export default function TeamTracking({ onBack, active = true }) {
           <div className="tracking-layout">
             <Panel>
               <h2>Technician locations</h2>
-              {hasAnyLocation ? (
-                <>
-                  <p className="sub">Live locations and the job each technician is heading to.</p>
-                  <TrackingMap technicians={technicians} />
-                </>
-              ) : (
-                <p className="sub">No technician is sharing a location yet.</p>
-              )}
+              <p className="sub">
+                {hasAnyLocation ? 'Live locations and the job each technician is heading to.' : 'No technician is sharing a location yet.'}
+              </p>
+              <TechnicianMap technicians={technicians} />
             </Panel>
             <Panel>
               <h2>Technicians</h2>
@@ -325,6 +273,8 @@ export default function TeamTracking({ onBack, active = true }) {
                         {row.detail ? <><br />{row.detail}</> : null}
                         <br />
                         {row.freshness}
+                        {row.heading ? <><br />{row.heading}</> : null}
+                        {row.trip ? <><br />{row.trip}</> : null}
                       </small>
                     </span>
                     <Badge text={row.badge} tone={row.tone} />
